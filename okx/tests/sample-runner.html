@@ -1,0 +1,76 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Sample Runner - OKX Calculate</title>
+  <link rel="stylesheet" href="../websocket-example.css">
+  <style>body{background:#0b1220;color:#e6eef8;font-family:system-ui,Segoe UI,Roboto,Arial;margin:16px}pre{background:#071025;padding:12px;border-radius:6px;overflow:auto}</style>
+</head>
+<body>
+  <h3>Sample Runner (open DevTools Console)</h3>
+  <p>This page loads core scripts and runs a sample payload to show outputs of <code>getUnifiedSmartMetrics</code> and <code>calculateRecommendation</code>.</p>
+  <pre id="out">Running...
+</pre>
+
+  <script src="../js/modules/helpers.js"></script>
+  <script src="../js/core/analytics-core.js"></script>
+  <script src="../js/formulas/math-formulas.js"></script>
+  <script src="../js/formulas/analytics-formulas.js"></script>
+  <script src="../js/modules/worker-pool.js"></script>
+  <script>
+    const write = (s) => { const el = document.getElementById('out'); el.textContent += '\n' + s; console.log(s); };
+
+    // Minimal sample payload (synthetic)
+    const sample = {
+      coin: 'TEST/USDT',
+      last: 12.34,
+      high: 12.8,
+      low: 11.9,
+      percent_change: 1.2,
+      // legacy analytics shape
+      _analytics: {
+        volBuy2h: 120000,
+        volSell2h: 40000,
+        freqBuy2h: 240,
+        freqSell2h: 80,
+        volDurability2h_percent: 75,
+        volBuy_vs_avg_percent: 220,
+        riskScore: 12,
+        smartSignal: { signal: 'BUY', confidence: 78, className: 'recommendation-buy' }
+      }
+    };
+
+    // Wait for optional globals to be available then run
+    window.addEventListener('load', () => {
+      try {
+        const unified = (typeof getUnifiedSmartMetrics === 'function') ? getUnifiedSmartMetrics(sample) : null;
+        write('Unified metrics: ' + JSON.stringify(unified, null, 2));
+
+        const pricePos = (unified && unified.pricePosition) ? unified.pricePosition : 50;
+        const rec = (typeof calculateRecommendation === 'function') ? calculateRecommendation(sample, pricePos, '120m', true) : null;
+        write('Recommendation: ' + JSON.stringify(rec, null, 2));
+
+        // Add a visible styled Smart Signal element so the CSS mapping can be verified
+        try {
+          const sigText = (unified && unified.smartSignal && unified.smartSignal.signal ? unified.smartSignal.signal : 'HOLD') + ' (' + ((unified && unified.smartSignal && unified.smartSignal.confidence) || 0) + '%)';
+          const sigEl = document.createElement('div');
+          sigEl.textContent = 'Smart Signal: ' + sigText;
+          sigEl.className = (unified && unified.smartSignal && unified.smartSignal.className) ? unified.smartSignal.className : '';
+          sigEl.style.padding = '8px';
+          sigEl.style.marginTop = '12px';
+          sigEl.style.display = 'inline-block';
+          document.body.appendChild(sigEl);
+        } catch (e) {
+          /* ignore */
+        }
+
+        const pct = (typeof getPercentValue === 'function') ? getPercentValue(unified, ['volDurability2h_percent','volDurability2h']) : null;
+        write('Normalized volDurability2h%: ' + pct + '%');
+      } catch (e) {
+        write('Sample run error: ' + e.message);
+        console.error(e);
+      }
+    });
+  </script>
+</body>
+</html>

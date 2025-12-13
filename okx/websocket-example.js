@@ -1,0 +1,1042 @@
+        const limitInput = document.getElementById('limitInput');
+        const sortBySelect = document.getElementById('sortBy');
+        // radio buttons for sort order
+        const sortOrderRadios = document.getElementsByName('sortOrderRad');
+        function getSortOrderValue() {
+            try { for (const r of sortOrderRadios) if (r.checked) return r.value; } catch (e) { }
+            return 'desc';
+        }
+        let rowLimit = 5; // default rows to display (changed from 20)
+
+        // Per-tab filter inputs
+        const filterInputs = {
+            summary: document.getElementById('coinFilter_summary'),
+            volume: document.getElementById('coinFilter_volume'),
+            volDur: document.getElementById('coinFilter_volDur'),
+            spikes: document.getElementById('coinFilter_spikes'),
+            recs: document.getElementById('coinFilter_recs'),
+            alerts: document.getElementById('coinFilter_alerts'),
+            micro: document.getElementById('coinFilter_micro'),
+            frequency: document.getElementById('coinFilter_frequency'),
+            freqRatio: document.getElementById('coinFilter_freqRatio'),
+            smart: document.getElementById('coinFilter_smart')
+        };
+
+        // debounce is in js/modules/helpers.js
+
+        // Schedule updates to the table at most once per 300ms (increased from 150ms for high-volume streams)
+        // `updateTable` is defined later; debounce will call it when available.
+        const scheduleUpdateTable = debounce(function () {
+            try { 
+                if (typeof updateTable === 'function') {
+                    updateTable();
+                } else if (typeof window.updateTable === 'function') {
+                    window.updateTable();
+                } else {
+                    console.warn('[scheduleUpdateTable] updateTable not defined yet');
+                }
+            }
+            catch (e) { console.error('[scheduleUpdateTable] error:', e); }
+        }, 300);
+        
+        // Throttle per-coin updates to avoid processing same coin too frequently
+        const lastCoinUpdate = {};
+        const COIN_THROTTLE_MS_MIN = 100; // Min 100ms between same coin updates
+        const COIN_THROTTLE_MS_MAX = 500; // Max 500ms during high load
+        let adaptiveThrottleMs = COIN_THROTTLE_MS_MIN;
+        
+        // Track message rate for adaptive throttling
+        let _msgCount = 0;
+        let _msgRatePerSec = 0;
+        setInterval(() => {
+            _msgRatePerSec = _msgCount;
+            _msgCount = 0;
+            // Adaptive throttle based on message rate
+            if (_msgRatePerSec > 500) {
+                adaptiveThrottleMs = COIN_THROTTLE_MS_MAX;
+            } else if (_msgRatePerSec > 200) {
+                adaptiveThrottleMs = 300;
+            } else if (_msgRatePerSec < 100) {
+                adaptiveThrottleMs = COIN_THROTTLE_MS_MIN;
+            }
+        }, 1000);
+        
+        function getAdaptiveThrottle() {
+            return adaptiveThrottleMs;
+        }
+        
+        let activeFilterTab = 'summary';
+
+        function setActiveFilterTab(tab) {
+            activeFilterTab = tab || 'summary';
+            for (const k in filterInputs) {
+                try {
+                    const el = filterInputs[k];
+                    if (!el) continue;
+                    if (k === activeFilterTab) el.classList.remove('d-none'); else el.classList.add('d-none');
+                } catch (e) { }
+            }
+            try {
+                // Refresh tables promptly when switching tabs so content appears immediately
+                if (typeof scheduleUpdateTable === 'function') scheduleUpdateTable();
+                else if (typeof updateTable === 'function') updateTable();
+            } catch (e) { console.warn('refresh on tab switch failed', e); }
+        }
+
+        function getActiveFilterValue() {
+            try {
+                const el = filterInputs[activeFilterTab];
+                if (!el) return '';
+                return (el.value || '').toLowerCase();
+            } catch (e) { return ''; }
+        }
+
+        // Recommendation UI controls
+        const useAtrRecs = document.getElementById('useAtrRecs');
+        const tpMinInput = document.getElementById('tpMin');
+        const tpMaxInput = document.getElementById('tpMax');
+        const slMaxInput = document.getElementById('slMax');
+        const confSensitivity = document.getElementById('confSensitivity');
+
+        // Listen for changes to the limit
+        limitInput.addEventListener('input', (event) => {
+            rowLimit = parseInt(event.target.value, 10) || Infinity;
+            scheduleUpdateTable(); // Update table when limit changes (debounced)
+        });
+
+        // Wire recommendation controls to refresh table when changed
+        try {
+            if (useAtrRecs) useAtrRecs.addEventListener('change', () => scheduleUpdateTable());
+            if (tpMinInput) tpMinInput.addEventListener('input', () => scheduleUpdateTable());
+            if (tpMaxInput) tpMaxInput.addEventListener('input', () => scheduleUpdateTable());
+            if (slMaxInput) slMaxInput.addEventListener('input', () => scheduleUpdateTable());
+            if (confSensitivity) confSensitivity.addEventListener('input', () => scheduleUpdateTable());
+        } catch (e) { console.warn('wiring rec controls failed', e); }
+
+        // Listen for changes in each per-tab filter input
+        try {
+            for (const k in filterInputs) {
+                const el = filterInputs[k];
+                if (!el) continue;
+                el.addEventListener('input', () => scheduleUpdateTable());
+            }
+        } catch (e) { console.warn('wiring per-tab filters failed', e); }
+
+        // Tab click handlers to switch active filter
+        try {
+            const tabMap = {
+                'summary-tab': 'summary',
+                'volume-tab': 'volume',
+                'vol-dur-tab': 'volDur',
+                'spike-tab': 'spikes',
+                'recs-tab': 'recs',
+                'alerts-tab': 'alerts',
+                'insight-tab': 'summary',
+                'info-tab': 'summary',
+                'micro-tab': 'micro',
+                'freq-tab': 'frequency',
+                'freqratio-tab': 'freqRatio',
+                'smart-tab': 'smart'
+            };
+            for (const tid in tabMap) {
+                const btn = document.getElementById(tid);
+                if (!btn) continue;
+                btn.addEventListener('click', () => setActiveFilterTab(tabMap[tid]));
+            }
+        } catch (e) { console.warn('wiring tab filter toggles failed', e); }
+
+        // show default filter
+        setActiveFilterTab('summary');
+
+        // Wire compact alert controls
+        try {
+            if (compactAlertsToggle) compactAlertsToggle.addEventListener('change', (ev) => {
+                try { localStorage.setItem('okx_compact_alerts', ev.target.checked ? 'true' : 'false'); } catch (e) { }
+            });
+            if (maxAlertBannersInput) maxAlertBannersInput.addEventListener('input', (ev) => {
+                try { localStorage.setItem('okx_max_alert_banners', String(parseInt(ev.target.value, 10) || 0)); } catch (e) { }
+            });
+            if (showHiddenAlertsBtn) showHiddenAlertsBtn.addEventListener('click', (ev) => {
+                try {
+                    // populate modal with hidden alerts
+                    const modalBody = document.getElementById('hiddenAlertsModalBody');
+                    if (!modalBody) return;
+                    modalBody.innerHTML = '';
+                    if (!hiddenAlertBuffer || hiddenAlertBuffer.length === 0) {
+                        modalBody.innerHTML = '<div class="small text-muted">No hidden alerts</div>';
+                    } else {
+                        for (const a of hiddenAlertBuffer) {
+                            const div = document.createElement('div');
+                            div.className = 'mb-2 p-2 bg-dark text-light';
+                            div.innerHTML = `<strong>${a.title}</strong><div style="font-size:0.9em;">${a.message}</div><div class="text-muted small">${new Date(a.ts).toLocaleString()}</div>`;
+                            modalBody.appendChild(div);
+                        }
+                    }
+                    const bs = new bootstrap.Modal(document.getElementById('hiddenAlertsModal'));
+                    bs.show();
+                } catch (e) { console.warn('showHiddenAlerts failed', e); }
+            });
+        } catch (e) { console.warn('wiring compact alert controls failed', e); }
+
+        // Listen for changes in sort criteria
+        sortBySelect.addEventListener('change', () => {
+            scheduleUpdateTable(); // Update table when sort criteria is changed (debounced)
+        });
+
+        // Listen for changes in sort order (radio buttons)
+        try {
+            for (const r of sortOrderRadios) { if (r) r.addEventListener('change', () => scheduleUpdateTable()); }
+        } catch (e) { console.warn('wiring sort order radios failed', e); }
+
+        const summaryBody = document.getElementById('summaryBody');
+        const volBody = document.getElementById('volBody');
+        const volRatioBody = document.getElementById('volRatioBody');
+        const spikeBody = document.getElementById('spikeBody');
+        const recsBody = document.getElementById('recsBody');
+        const microBody = document.getElementById('microBody');
+        const recTimeframeSelect = document.getElementById('recTimeframe');
+        const openRecsBtn = document.getElementById('openRecsBtn');
+        const advancedSortStatus = document.getElementById('advancedSortStatus');
+        const advancedSortHint = document.getElementById('advancedSortHint');
+        const disableAdvancedSortBtn = document.getElementById('disableAdvancedSortBtn');
+        const advancedSortModalEl = document.getElementById('advancedSortModal');
+        const advancedSortCriteriaContainer = document.getElementById('advancedSortCriteriaContainer');
+        const addAdvancedSortRowBtn = document.getElementById('addAdvancedSortRow');
+        const applyAdvancedSortBtn = document.getElementById('applyAdvancedSort');
+        const clearAdvancedSortBtn = document.getElementById('clearAdvancedSortBtn');
+        const advFilterFlowToggle = document.getElementById('advFilterFlowToggle');
+        const advFilterFlowControls = document.getElementById('advFilterFlowControls');
+        const advFilterFlowMetric = document.getElementById('advFilterFlowMetric');
+        const advFilterFlowComparator = document.getElementById('advFilterFlowComparator');
+        const advFilterFlowValue = document.getElementById('advFilterFlowValue');
+        const advFilterDurToggle = document.getElementById('advFilterDurToggle');
+        const advFilterDurControls = document.getElementById('advFilterDurControls');
+        const advFilterDurMetric = document.getElementById('advFilterDurMetric');
+        const advFilterDurComparator = document.getElementById('advFilterDurComparator');
+        const advFilterDurValue = document.getElementById('advFilterDurValue');
+        const advFilterPriceToggle = document.getElementById('advFilterPriceToggle');
+        const advFilterPriceControls = document.getElementById('advFilterPriceControls');
+        const advFilterPriceMin = document.getElementById('advFilterPriceMin');
+        const advFilterPriceMax = document.getElementById('advFilterPriceMax');
+
+        if (openRecsBtn) {
+            openRecsBtn.addEventListener('click', () => {
+                try { const tab = document.getElementById('recs-tab'); if (tab) tab.click(); } catch (e) { console.warn('openRecs click failed', e); }
+            });
+        }
+        if (recTimeframeSelect) recTimeframeSelect.addEventListener('change', () => scheduleUpdateTable());
+        // ws-client is in js/modules/ws-client.js
+
+        // --- Insight modal helpers (ensure global functions available) ---
+        function ensureInsightModal() {
+            if (document.getElementById('insightModal')) return;
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = `
+                        <div class="modal fade" id="insightModal" tabindex="-1" aria-hidden="true">
+                            <div class="modal-dialog modal-lg modal-dialog-centered">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title" id="insightModalLabel">Insight</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                    </div>
+                                    <div class="modal-body" id="insightModalBody">
+                                        <!-- populated dynamically -->
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                        <button type="button" class="btn btn-outline-primary" id="insightExportJson">Export JSON</button>
+                                        <button type="button" class="btn btn-outline-success" id="insightExportCsv">Export CSV</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>`;
+            document.body.appendChild(wrapper.firstElementChild);
+        }
+
+        // --- Test JSON modal helper ---
+        function ensureTestJsonModal() {
+            if (document.getElementById('testJsonModal')) return;
+            const w = document.createElement('div');
+            w.innerHTML = `
+                                        <div class="modal fade" id="testJsonModal" tabindex="-1" aria-hidden="true">
+                                            <div class="modal-dialog modal-lg modal-dialog-centered">
+                                                <div class="modal-content">
+                                                    <div class="modal-header">
+                                                        <h5 class="modal-title">Run JSON (Paste & Run)</h5>
+                                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                                    </div>
+                                                    <div class="modal-body">
+                                                        <p class="small text-muted">Paste a single JSON payload here and click <strong>Run</strong> to simulate receiving it from WebSocket.</p>
+                                                        <textarea id="testJsonTextarea" class="form-control" rows="8" placeholder='Paste JSON here'></textarea>
+                                                        <div id="testJsonError" class="text-danger small mt-2" style="display:none"></div>
+                                                    </div>
+                                                    <div class="modal-footer">
+                                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                                        <button type="button" class="btn btn-primary" id="testJsonRunBtn">Run</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>`;
+            document.body.appendChild(w.firstElementChild);
+        }
+
+        // drawSparkline is in js/modules/helpers.js
+
+        // Global error display for debugging (shows last uncaught error on page)
+        window.__displayError = function (err) {
+            try {
+                console.error('Captured Error:', err);
+                let el = document.getElementById('lastError');
+                if (!el) {
+                    el = document.createElement('div');
+                    el.id = 'lastError';
+                    el.style.position = 'fixed';
+                    el.style.right = '12px';
+                    el.style.bottom = '12px';
+                    el.style.zIndex = 2000;
+                    el.style.background = 'rgba(220,53,69,0.95)';
+                    el.style.color = '#fff';
+                    el.style.padding = '8px 12px';
+                    el.style.borderRadius = '6px';
+                    el.style.fontSize = '12px';
+                    document.body.appendChild(el);
+                }
+                el.textContent = typeof err === 'string' ? err : (err && err.stack) ? err.stack.split('\n')[0] : String(err);
+            } catch (e) { console.error('Error displaying error', e); }
+        };
+
+        window.addEventListener('error', function (ev) { window.__displayError(ev.error || ev.message || 'Unknown error'); });
+        window.addEventListener('unhandledrejection', function (ev) { window.__displayError(ev.reason || ev.reason && ev.reason.message || 'Unhandled rejection'); });
+
+        window.exportInsightJSON = function (coin, data) {
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${coin}-insight.json`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        };
+
+        window.exportInsightCSV = function (coin, data) {
+            // export history points and a few summary fields
+            const rows = [];
+            const _metricsCSV = (typeof getUnifiedSmartMetrics === 'function') ? getUnifiedSmartMetrics(data) : (data && (data.analytics || data._analytics)) ? (data.analytics || data._analytics) : {};
+            rows.push(['coin', coin]);
+            rows.push(['risk_score', data.risk_score || _metricsCSV.riskScore || 0]);
+            rows.push([]);
+            rows.push(['ts', 'price', 'volBuy2h', 'volSell2h']);
+            const hist = data._history || [];
+            for (const h of hist) rows.push([h.ts || '', h.price || '', h.volBuy2h || '', h.volSell2h || '']);
+            const csv = rows.map(r => r.map(c => String(c).replace(/"/g, '""')).map(c => `"${c}"`).join(',')).join('\n');
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${coin}-insight.csv`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        };
+
+        window.showInsightModal = function (coin, data) {
+            ensureInsightModal();
+            const modalEl = document.getElementById('insightModal');
+            const body = document.getElementById('insightModalBody');
+            const title = document.getElementById('insightModalLabel');
+            title.textContent = `Insights — ${coin}`;
+
+            const hist = data._history || [];
+            const _metrics = (typeof getUnifiedSmartMetrics === 'function') ? getUnifiedSmartMetrics(data) : (data && (data.analytics || data._analytics)) ? (data.analytics || data._analytics) : {};
+            const risk = data.risk_score || _metrics.riskScore || 0;
+            const comp = _metrics.components || {};
+            // prepare z-score / persistence diagnostics
+            const buySeries = hist.map(h => Number(h.volBuy2h || 0));
+            const sellSeries = hist.map(h => Number(h.volSell2h || 0));
+            const buyStat = meanStd(buySeries);
+            const sellStat = meanStd(sellSeries);
+            const currBuy = Number((_metrics && _metrics.volBuy2h) || getNumeric(data, 'count_VOL_minute_120_buy', 'vol_buy_2JAM') || 0);
+            const currSell = Number((_metrics && _metrics.volSell2h) || getNumeric(data, 'count_VOL_minute_120_sell', 'vol_sell_2JAM') || 0);
+            const zBuy = (buySeries.length >= 6 && buyStat.std > 0) ? ((currBuy - buyStat.mean) / buyStat.std) : null;
+            const zSell = (sellSeries.length >= 6 && sellStat.std > 0) ? ((currSell - sellStat.mean) / sellStat.std) : null;
+            // persistence: last 3 buys > mean+std
+            let persistBuy = null;
+            if (buySeries.length >= 3 && buyStat.std > 0) {
+                const recent = buySeries.slice(Math.max(0, buySeries.length - 3));
+                persistBuy = recent.filter(v => v > (buyStat.mean + buyStat.std)).length;
+            }
+
+            body.innerHTML = `
+                                <div class="mb-3">
+                                    <strong>Risk Score:</strong> <span class="fw-bold">${risk}%</span>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-12">${drawSparkline(hist, 560, 90)}</div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <h6>Components</h6>
+                                        <ul>
+                                            <li>Imbalance: ${Number(comp.imbalance || 0).toFixed(2)}</li>
+                                            <li>Deviation: ${Number(comp.deviation || 0).toFixed(2)}</li>
+                                            <li>Price Move: ${Number(comp.priceMove || 0).toFixed(2)}</li>
+                                            <li>Liquidity: ${Number(comp.liquidity || 0).toFixed(2)}</li>
+                                        </ul>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <h6>Summary</h6>
+                                        <table class="table table-sm">
+                                            <tr><td>Vol Buy (2h)</td><td>${getNumeric(data, 'count_VOL_minute_120_buy', 'vol_buy_2JAM') || 0}</td></tr>
+                                            <tr><td>Vol Sell (2h)</td><td>${getNumeric(data, 'count_VOL_minute_120_sell', 'vol_sell_2JAM') || 0}</td></tr>
+                                            <tr><td>Vol Dur (2h)</td><td>${getNumeric(data, 'percent_sum_VOL_minute_120_buy') || data.percent_sum_VOL_minute_120_buy || 0}%</td></tr>
+                                            <tr><td>Price</td><td>${data.last || 0}</td></tr>
+                                        </table>
+                                        <div class="small text-muted mt-2">
+                                            <strong>Buy z-score (2h):</strong> ${zBuy === null ? 'N/A' : Number(zBuy.toFixed(2))}
+                                            <br><small>Samples: ${buySeries.length} | mean: ${Number(buyStat.mean.toFixed(2))} | std: ${Number(buyStat.std.toFixed(2))}</small>
+                                            <br><strong>Sell z-score (2h):</strong> ${zSell === null ? 'N/A' : Number(zSell.toFixed(2))}
+                                            <br><small>Samples: ${sellSeries.length} | mean: ${Number(sellStat.mean.toFixed(2))} | std: ${Number(sellStat.std.toFixed(2))}</small>
+                                            <br><strong>Persistence (last3 buys > mean+std):</strong> ${persistBuy === null ? '-' : persistBuy}
+                                        </div>
+                                    </div>
+                                </div>`;
+
+            // wire export buttons
+            const btnJson = document.getElementById('insightExportJson');
+            const btnCsv = document.getElementById('insightExportCsv');
+            btnJson.onclick = () => window.exportInsightJSON(coin, data);
+            btnCsv.onclick = () => window.exportInsightCSV(coin, data);
+
+            // show modal using Bootstrap
+            try {
+                const bsModal = new bootstrap.Modal(modalEl);
+                bsModal.show();
+            } catch (e) {
+                console.warn('Bootstrap modal not available, falling back to alert', e);
+                alert(`${coin} — Risk: ${risk}%`);
+            }
+        };
+
+        // Show insight in the Insight tab (populate the insight pane and activate the tab)
+        window.showInsightTab = function (coin, data) {
+            try {
+                const pane = document.getElementById('insightPaneBody');
+                if (!pane) return showInsightModal(coin, data);
+                const hist = data._history || [];
+                const _metrics = (typeof getUnifiedSmartMetrics === 'function') ? getUnifiedSmartMetrics(data) : (data && (data.analytics || data._analytics)) ? (data.analytics || data._analytics) : {};
+                const risk = data.risk_score || _metrics.riskScore || 0;
+                const comp = _metrics.components || {};
+                // compute price position
+                const currentPrice = parseFloat(data.last) || 0;
+                const highPrice = parseFloat(data.high) || currentPrice;
+                const lowPrice = parseFloat(data.low) || currentPrice;
+                const priceRange = highPrice - lowPrice;
+                const pricePos = priceRange > 0 ? Math.round(((currentPrice - lowPrice) / priceRange) * 100) : 50;
+
+                // recommendation breakdown
+                const rec = (typeof calculateRecommendation === 'function') ? calculateRecommendation(data, pricePos, null, false) : { recommendation: 'N/A', className: '', score: 0, confidence: 0 };
+
+                // timeframes to show
+                const tfs = [
+                    { k: '1m', buyKeys: ['count_VOL_minute1_buy', 'vol_buy_1MENIT', 'vol_buy_1m'], sellKeys: ['count_VOL_minute1_sell', 'vol_sell_1MENIT', 'vol_sell_1m'], avgKeys: ['avg_VOLCOIN_buy_1MENIT'] },
+                    { k: '5m', buyKeys: ['count_VOL_minute_5_buy', 'vol_buy_5MENIT', 'vol_buy_5m'], sellKeys: ['count_VOL_minute_5_sell', 'vol_sell_5MENIT', 'vol_sell_5m'], avgKeys: ['avg_VOLCOIN_buy_5MENIT'] },
+                    { k: '10m', buyKeys: ['count_VOL_minute_10_buy', 'vol_buy_10MENIT', 'vol_buy_10m'], sellKeys: ['count_VOL_minute_10_sell', 'vol_sell_10MENIT', 'vol_sell_10m'], avgKeys: ['avg_VOLCOIN_buy_10MENIT'] },
+                    { k: '15m', buyKeys: ['count_VOL_minute_15_buy', 'vol_buy_15MENIT', 'vol_buy_15m'], sellKeys: ['count_VOL_minute_15_sell', 'vol_sell_15MENIT', 'vol_sell_15m'], avgKeys: ['avg_VOLCOIN_buy_15MENIT'] },
+                    { k: '30m', buyKeys: ['count_VOL_minute_30_buy', 'vol_buy_30MENIT', 'vol_buy_30m'], sellKeys: ['count_VOL_minute_30_sell', 'vol_sell_30MENIT', 'vol_sell_30m'], avgKeys: ['avg_VOLCOIN_buy_30MENIT'] },
+                    { k: '60m', buyKeys: ['count_VOL_minute_60_buy', 'vol_buy_1JAM', 'vol_buy_60MENIT'], sellKeys: ['count_VOL_minute_60_sell', 'vol_sell_1JAM', 'vol_sell_60MENIT'], avgKeys: ['avg_VOLCOIN_buy_1JAM'] },
+                    { k: '120m', buyKeys: ['count_VOL_minute_120_buy', 'vol_buy_2JAM', 'vol_buy_120MENIT'], sellKeys: ['count_VOL_minute_120_sell', 'vol_sell_2JAM', 'vol_sell_120MENIT'], avgKeys: ['avg_VOLCOIN_buy_2JAM'] },
+                    { k: '24h', buyKeys: ['count_VOL_minute_1440_buy', 'vol_buy_24JAM', 'vol_buy_24h'], sellKeys: ['count_VOL_minute_1440_sell', 'vol_sell_24JAM', 'vol_sell_24h'], avgKeys: ['avg_VOLCOIN_buy_24JAM'] }
+                ];
+
+                const tfRows = [];
+                const spikes = [];
+                for (const t of tfs) {
+                    const b = getNumeric(data, ...t.buyKeys);
+                    const s = getNumeric(data, ...t.sellKeys);
+                    let a = getNumeric(data, ...t.avgKeys);
+                    // Fallback: when avg is missing (0), estimate per-timeframe average
+                    // using 2-hour or 24-hour aggregates to avoid missing spikes intermittently.
+                    if (!a) {
+                        const volBuy2h = (_metrics && Number(_metrics.volBuy2h)) || getNumeric(data, 'count_VOL_minute_120_buy', 'vol_buy_2JAM') || 0;
+                        const volBuy24h = (_metrics && Number(_metrics.volBuy24h)) || getNumeric(data, 'count_VOL_minute_1440_buy', 'vol_buy_24JAM') || 0;
+                        const divisors = { '1m': 120, '5m': 24, '10m': 12, '15m': 8, '30m': 4, '60m': 2, '120m': 1 };
+                        if (t.k === '24h') {
+                            a = volBuy24h || a;
+                        } else {
+                            const div = divisors[t.k] || 1;
+                            a = volBuy2h > 0 ? Math.max(0, Math.round(volBuy2h / div)) : a;
+                        }
+                    }
+                    const ratio = a > 0 ? (b / a) : (s > 0 ? (b / (s || 1)) : 0);
+                    const buyShare = (b + s) > 0 ? Math.round((b / (b + s)) * 100) : 0;
+                    tfRows.push({ k: t.k, buy: b, sell: s, avg: a, buyShare, ratio });
+                    if (a > 0 && ratio >= 2) spikes.push({ k: t.k, ratio: ratio, buy: b, avg: a });
+                }
+                spikes.sort((x, y) => y.ratio - x.ratio);
+
+                // build HTML
+                let tfTable = '<table class="table table-sm text-light"><thead><tr><th>TF</th><th>Buy</th><th>Sell</th><th>Avg</th><th>Buy %</th><th>Vol/Avg</th></tr></thead><tbody>';
+                for (const r of tfRows) tfTable += `<tr><td>${r.k}</td><td>${r.buy}</td><td>${r.sell}</td><td>${r.avg}</td><td>${r.buyShare}%</td><td>${r.avg > 0 ? (r.buy / r.avg).toFixed(2) + 'x' : '-'}</td></tr>`;
+                tfTable += '</tbody></table>';
+
+                const topSpikeHtml = spikes.length > 0 ? `<div class="mb-2"><strong>Top Spike:</strong> ${spikes[0].k} — ${spikes[0].ratio.toFixed(2)}x (buy ${spikes[0].buy} vs avg ${spikes[0].avg})</div>` : '<div class="mb-2 text-muted">No significant spikes (vol >= 2x avg)</div>';
+
+                pane.innerHTML = `
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div><h4 class="mb-0">🔍 ${coin} — Insight</h4><small class="text-muted">Last update: ${data.update_time || data.update_time_VOLCOIN || '-'}</small></div>
+                                <div class="text-end"><small>Price: ${data.last || 0} • Change: ${data.percent_change || 0}%</small><div class="mt-1"><strong>Recommendation:</strong> ${rec.recommendation || 'N/A'} (${rec.confidence || 0}%)</div></div>
+                            </div>
+                            <div class="mb-3">${drawSparkline(hist, 760, 100)}</div>
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <h6>Metrics</h6>
+                                    <p><strong>Risk:</strong> ${risk}%</p>
+                                    <p><strong>Price Pos:</strong> ${pricePos}%</p>
+                                    <p><strong>Vol Buy (2h):</strong> ${getNumeric(data, 'count_VOL_minute_120_buy', 'vol_buy_2JAM') || 0}</p>
+                                    <p><strong>Vol Sell (2h):</strong> ${getNumeric(data, 'count_VOL_minute_120_sell', 'vol_sell_2JAM') || 0}</p>
+                                    <p><strong>Buy z-score (2h):</strong> ${_metrics && _metrics.zScoreBuy2h !== undefined ? _metrics.zScoreBuy2h : 'N/A'}</p>
+                                    <p><strong>Sell z-score (2h):</strong> ${_metrics && _metrics.zScoreSell2h !== undefined ? _metrics.zScoreSell2h : 'N/A'}</p>
+                                    <p><strong>Persistence (last3 buys > mean+std):</strong> ${_metrics && _metrics.persistenceBuy3 !== undefined ? _metrics.persistenceBuy3 : '-'}</p>
+                                    ${_metrics && _metrics.divergence ? `<p><strong>Divergence:</strong> <span class="${_metrics.divergence.className || 'text-warning'}" title="Divergence = flowBias - priceDir*0.5 (flowBias from volDurability2h_percent; priceDir from percent_change)">${_metrics.divergence.interpretation || ''}${(_metrics.divergence.value !== undefined ? ` (${Number(_metrics.divergence.value).toFixed(3)})` : '')}</span></p>` : ''}
+                                    ${_metrics && _metrics.sharpInsights ? `<p><strong>Insight:</strong><br/>${_metrics.sharpInsights.map(s => `- ${s}`).join('<br/>')}</p>` : ''}
+                                </div>
+                                <div class="col-md-4">
+                                    <h6>Recommendation Breakdown</h6>
+                                    <p>Score: ${rec.score !== undefined ? rec.score.toFixed(2) : '0.00'} • Confidence: ${rec.confidence || 0}%</p>
+                                    <div class="progress mb-2" style="height:10px"><div class="progress-bar bg-success" role="progressbar" style="width:${rec.score > 0 ? rec.confidence : 0}%"></div><div class="progress-bar bg-danger" role="progressbar" style="width:${rec.score < 0 ? rec.confidence : 0}%"></div></div>
+                                    ${topSpikeHtml}
+                                </div>
+                                <div class="col-md-4">
+                                    <h6>Components</h6>
+                                    <ul>
+                                        <li>Imbalance: ${Number(comp.imbalance || 0).toFixed(2)}</li>
+                                        <li>Deviation: ${Number(comp.deviation || 0).toFixed(2)}</li>
+                                        <li>Price Move: ${Number(comp.priceMove || 0).toFixed(2)}</li>
+                                        <li>Liquidity: ${Number(comp.liquidity || 0).toFixed(2)}</li>
+                                    </ul>
+                                </div>
+                            </div>
+                            <div class="mb-3"><h6>Timeframe Comparison</h6>${tfTable}</div>
+                            <div class="mb-3"><h6>Raw Data</h6><div class="d-flex gap-2"><button class="btn btn-outline-primary btn-sm" id="insightCopyJson">Copy JSON</button><button class="btn btn-outline-secondary btn-sm" id="insightExportJsonPane">Export JSON</button><button class="btn btn-outline-success btn-sm" id="insightExportCsvPane">Export CSV</button></div><pre id="insightRaw" style="max-height:200px;overflow:auto;margin-top:8px;background:#0b1220;padding:8px;border-radius:6px;color:#9ca3af;">${JSON.stringify(data, null, 2)}</pre></div>
+                        `;
+
+                document.getElementById('insightCopyJson').onclick = function () {
+                    try { navigator.clipboard.writeText(JSON.stringify(data, null, 2)); } catch (e) { window.__displayError('Clipboard copy failed'); }
+                };
+                document.getElementById('insightExportJsonPane').onclick = () => window.exportInsightJSON(coin, data);
+                document.getElementById('insightExportCsvPane').onclick = () => window.exportInsightCSV(coin, data);
+
+                // activate the tab
+                try {
+                    const tabEl = document.getElementById('insight-tab');
+                    if (tabEl) tabEl.click();
+                } catch (e) { console.warn('Could not activate insight tab', e); }
+
+                // Also set the summary coin filter to this coin and refresh table
+                try {
+                    const filterEl = document.getElementById('coinFilter_summary');
+                    if (filterEl) {
+                        filterEl.value = coin;
+                        // trigger input handlers (if any) and refresh table
+                        try { filterEl.dispatchEvent(new Event('input')); } catch (e) { }
+                        try { if (typeof scheduleUpdateTable === 'function') scheduleUpdateTable(); } catch (e) { }
+                    }
+                } catch (e) { console.warn('Could not set summary filter for insight tab', e); }
+            } catch (e) { console.error('showInsightTab error', e); window.__displayError(e); }
+        };
+
+        // Object to store data by coin - MUST be on window immediately for update-table.js
+        const coinDataMap = {};
+        window.coinDataMap = coinDataMap; // Expose immediately!
+        
+        // ===================== PRELOAD HISTORY ONLY (NOT DATA) =====================
+        // Preload history arrays from localStorage for analytics continuity
+        // But DON'T render - wait for real WebSocket data
+        function preloadHistoryFromStorage() {
+            try {
+                const PERSIST_KEY = 'okx_calc_persist_history';
+                const store = JSON.parse(localStorage.getItem(PERSIST_KEY) || '{}');
+                const coins = Object.keys(store);
+                
+                if (coins.length === 0) return;
+                
+                // Store only history arrays, data will come from WebSocket
+                window._preloadedHistory = store;
+                console.log(`[Startup] Preloaded history for ${coins.length} coins`);
+            } catch (e) { 
+                console.warn('[Startup] Failed to preload history:', e); 
+            }
+        }
+        
+        // Run preload immediately
+        preloadHistoryFromStorage();
+
+        // Delegated click handler: ensure clicks anywhere in a summary row open the insight tab.
+        try {
+            const summaryBodyEl = document.getElementById('summaryBody');
+            if (summaryBodyEl) {
+                summaryBodyEl.addEventListener('click', (ev) => {
+                    try {
+                        const tr = ev.target.closest && ev.target.closest('tr');
+                        if (!tr) return;
+                        const coin = tr.dataset && tr.dataset.coin ? tr.dataset.coin : (tr.cells && tr.cells[0] ? tr.cells[0].textContent.trim() : null);
+                        if (!coin) return;
+                        const data = coinDataMap[coin] || null;
+                        // If data is present, show insight tab; otherwise try fallback
+                        showInsightTab(coin, data || {});
+                    } catch (e) { /* swallow */ }
+                }, { passive: true });
+            }
+        } catch (e) { console.warn('Delegated click wiring failed', e); }
+
+        // Lightweight debug click logger: when clicking inside the summary table area,
+        // log the actual event.target and the element at the click coordinates (elementFromPoint).
+        // This helps detect invisible overlays or other elements intercepting clicks.
+        try {
+            document.addEventListener('click', function _dbgClickLogger(ev) {
+                try {
+                    const summaryEl = document.getElementById('summaryBody');
+                    if (!summaryEl) return;
+                    const rect = summaryEl.getBoundingClientRect();
+                    // only log clicks that occur within the bounding box of the summary table
+                    if (ev.clientX >= rect.left && ev.clientX <= rect.right && ev.clientY >= rect.top && ev.clientY <= rect.bottom) {
+                        const target = ev.target;
+                        const atPoint = document.elementFromPoint(ev.clientX, ev.clientY);
+                        // Log useful identifying info
+                        console.log('[DBG_CLICK] client:', ev.clientX, ev.clientY, 'target:', target, 'tag:', target.tagName, 'classes:', target.className);
+                        console.log('[DBG_CLICK] elementFromPoint:', atPoint, 'tag:', atPoint && atPoint.tagName, 'classes:', atPoint && atPoint.className);
+                        // If elementFromPoint is not contained inside the summary table, warn
+                        if (atPoint && !summaryEl.contains(atPoint)) {
+                            console.warn('[DBG_CLICK] Click inside summary bounds but top element is outside summary — possible overlay blocking clicks', atPoint);
+                        }
+                    }
+                } catch (e) { /* swallow */ }
+            }, true);
+        } catch (e) { /* ignore in old browsers */ }
+        // track which coins we've logged (to avoid noisy logs)
+        const loggedCoins = new Set();
+        const eventWatchBuffer = window._eventWatchBuffer || (window._eventWatchBuffer = []);
+        // lastAlertAt is in js/modules/alerts.js
+
+        window.onWsOpen = function onWsOpen() {
+            console.log("WebSocket connected (main handler).");
+        };
+
+        window.onWsMessage = function onWsMessage(event) {
+            const raw = JSON.parse(event.data);
+            // If incoming message nests actual fields under `data`/`payload`/`message`, flatten them
+            try {
+                const nested = raw && (raw.data || raw.payload || raw.message);
+                if (nested && typeof nested === 'object') {
+                    for (const k of Object.keys(nested)) {
+                        if (raw[k] === undefined) raw[k] = nested[k];
+                    }
+                }
+            } catch (e) { /* ignore flatten errors */ }
+            const coin = raw.coin; // Extract the coin from data
+            // store last raw message and coin for UI inspection
+            try { window._lastWsRaw = raw; window._lastReceivedCoin = coin; } catch (e) { }
+            
+            // Update last received time in UI (throttled to reduce DOM updates)
+            const now = Date.now();
+            try {
+                if (!window._lastUIUpdate || now - window._lastUIUpdate > 500) {
+                    const lastUpdateEl = document.getElementById('lastUpdateTime');
+                    if (lastUpdateEl) lastUpdateEl.textContent = 'Last: ' + new Date().toLocaleTimeString();
+                    window._lastUIUpdate = now;
+                }
+            } catch (e) { }
+            
+            if (!coin) return; // If there's no coin, skip
+            
+            // Track message rate for adaptive throttling
+            _msgCount++;
+            
+            // Throttle per-coin: skip if same coin was updated less than adaptive throttle ago
+            const lastUpdate = lastCoinUpdate[coin] || 0;
+            const throttleMs = getAdaptiveThrottle();
+            if (now - lastUpdate < throttleMs) {
+                return; // Skip this update, too soon
+            }
+            lastCoinUpdate[coin] = now;
+            
+            const prevCoinData = coinDataMap[coin] || null;
+            const prevAnalytics = prevCoinData && (prevCoinData.analytics || prevCoinData._analytics) ? (prevCoinData.analytics || prevCoinData._analytics) : null;
+
+            // Debug: log keys and 24h-related fields once per coin (helps find naming mismatches)
+            if (!loggedCoins.has(coin)) {
+                try {
+                    // console.log('[WS] Received keys for', coin, Object.keys(raw));
+                } catch (e) { console.error('Logging error', e); }
+                loggedCoins.add(coin);
+            }
+
+            // Keep only fields that are used by the table to reduce noise
+            const keep = [
+                // core
+                'coin', 'last', 'percent_change', 'open', 'previous', 'high', 'low', 'update_time', 'update_time_VOLCOIN', 'update_time_FREQCOIN',
+                // percent/durability fields (various names)
+                'percent_vol_buy_1min', 'percent_vol_buy_5min', 'percent_vol_buy_10min', 'percent_vol_buy_15min', 'percent_vol_buy_20min', 'percent_vol_buy_30min', 'percent_vol_buy_60min', 'percent_vol_buy_120min',
+                'percent_vol_sell_1min', 'percent_vol_sell_5min', 'percent_vol_sell_10min', 'percent_vol_sell_15min', 'percent_vol_sell_20min', 'percent_vol_sell_30min', 'percent_vol_sell_60min', 'percent_vol_sell_120min',
+                'percent_sum_VOL_minute_120_buy', 'percent_sum_VOL_overall_buy',
+                // 2h / 120min totals
+                'count_VOL_minute_120_buy', 'count_VOL_minute_120_sell', 'vol_buy_2JAM', 'vol_sell_2JAM', 'vol_buy_120MENIT', 'vol_sell_120MENIT',
+                // 24h
+                'count_VOL_minute_1440_buy', 'count_VOL_minute_1440_sell', 'vol_buy_24JAM', 'vol_sell_24JAM', 'vol_buy_24jam', 'vol_sell_24jam', 'vol_buy_24h', 'vol_sell_24h', 'total_vol', 'total_vol_fiat',
+                // smaller timeframes (1m,5m,10m,15m,20m,30m,60m)
+                'vol_buy_1MENIT', 'vol_sell_1MENIT', 'vol_buy_5MENIT', 'vol_sell_5MENIT', 'vol_buy_10MENIT', 'vol_sell_10MENIT', 'vol_buy_15MENIT', 'vol_sell_15MENIT', 'vol_buy_20MENIT', 'vol_sell_20MENIT', 'vol_buy_30MENIT', 'vol_sell_30MENIT', 'vol_buy_1JAM', 'vol_sell_1JAM',
+                // averages for timeframes
+                'avg_VOLCOIN_buy_1MENIT', 'avg_VOLCOIN_sell_1MENIT', 'avg_VOLCOIN_buy_5MENIT', 'avg_VOLCOIN_sell_5MENIT', 'avg_VOLCOIN_buy_10MENIT', 'avg_VOLCOIN_sell_10MENIT', 'avg_VOLCOIN_buy_15MENIT', 'avg_VOLCOIN_sell_15MENIT', 'avg_VOLCOIN_buy_20MENIT', 'avg_VOLCOIN_sell_20MENIT', 'avg_VOLCOIN_buy_30MENIT', 'avg_VOLCOIN_sell_30MENIT', 'avg_VOLCOIN_buy_1JAM', 'avg_VOLCOIN_sell_1JAM', 'avg_VOLCOIN_buy_2JAM', 'avg_VOLCOIN_sell_2JAM', 'avg_VOLCOIN_buy_24JAM', 'avg_VOLCOIN_sell_24JAM'
+            ];
+
+            const data = {};
+            for (const k of keep) {
+                if (raw[k] !== undefined) data[k] = raw[k];
+                // also try lowercase variants
+                else if (raw[k.toLowerCase()] !== undefined) data[k] = raw[k.toLowerCase()];
+            }
+            // automatically keep newly introduced freq/avg/update-time fields without listing every variant
+            const autoKeepPatterns = [
+                /^count_freq_/i,
+                /^freq_/i,
+                /^avg_freqcoin_/i,
+                /^update_time_(?:freq|vol)_/i,
+                // preserve price-related fields (open, price_1MENIT, price_move_1MENIT, etc.)
+                /^price_/i
+            ];
+            for (const key in raw) {
+                if (data[key] !== undefined || raw[key] === undefined) continue;
+                if (autoKeepPatterns.some((rx) => rx.test(key))) {
+                    data[key] = raw[key];
+                }
+            }
+            // always keep coin
+            data.coin = coin;
+
+            // Compute client-side analytics (risk, ratios, deviation) for recent payload via shared helper
+
+            // attach analytics and maintain short history for sparkline and z-scores
+            try {
+                data._analytics = computeAnalytics(data);
+                // mirror into new `analytics` property to support unified accessors
+                try { data.analytics = data._analytics; } catch (e) { /* ignore */ }
+                data.risk_score = ((data.analytics || data._analytics) && (data.analytics || data._analytics).riskScore) || data.risk_score || 0;
+                // keep history; prefer persisted history when available
+                if (!data._history || !Array.isArray(data._history) || data._history.length === 0) {
+                    // try load from preloaded first (faster), then from localStorage
+                    let persisted = [];
+                    if (window._preloadedHistory && window._preloadedHistory[coin]) {
+                        persisted = window._preloadedHistory[coin];
+                    } else if (persistHistoryEnabled) {
+                        persisted = loadPersistedHistory(coin);
+                    }
+                    data._history = (persisted && persisted.length > 0) ? persisted.slice(-MAX_HISTORY) : [];
+                }
+                // include frequency fields in persisted history so z-scores can be computed later
+                const _histMetrics = (typeof getUnifiedSmartMetrics === 'function') ? getUnifiedSmartMetrics(data) : (data && (data.analytics || data._analytics)) ? (data.analytics || data._analytics) : {};
+                data._history.push({
+                    ts: Date.now(),
+                    volBuy2h: Number((_histMetrics && typeof _histMetrics.volBuy2h !== 'undefined') ? _histMetrics.volBuy2h : ((data.analytics || data._analytics) && (data.analytics || data._analytics).volBuy2h) || 0),
+                    volSell2h: Number((_histMetrics && typeof _histMetrics.volSell2h !== 'undefined') ? _histMetrics.volSell2h : ((data.analytics || data._analytics) && (data.analytics || data._analytics).volSell2h) || 0),
+                    volBuy24h: Number((_histMetrics && typeof _histMetrics.volBuy24h !== 'undefined') ? _histMetrics.volBuy24h : ((data.analytics || data._analytics) && (data.analytics || data._analytics).volBuy24h) || 0),
+                    volSell24h: Number((_histMetrics && typeof _histMetrics.volSell24h !== 'undefined') ? _histMetrics.volSell24h : ((data.analytics || data._analytics) && (data.analytics || data._analytics).volSell24h) || 0),
+                    freqBuy2h: Number((_histMetrics && typeof _histMetrics.freqBuy2h !== 'undefined') ? _histMetrics.freqBuy2h : ((data.analytics || data._analytics) && (data.analytics || data._analytics).freqBuy2h) || 0),
+                    freqSell2h: Number((_histMetrics && typeof _histMetrics.freqSell2h !== 'undefined') ? _histMetrics.freqSell2h : ((data.analytics || data._analytics) && (data.analytics || data._analytics).freqSell2h) || 0),
+                    price: Number(data.last) || 0,
+                    change: Number(data.percent_change) || 0,
+                    high: Number(data.high || data.last || 0),
+                    low: Number(data.low || data.last || 0),
+                    liquidity: Number(((_histMetrics && typeof _histMetrics.liquidity !== 'undefined') ? _histMetrics.liquidity : ((data.analytics || data._analytics) && (data.analytics || data._analytics).liquidity_avg_trade_value)) || 0)
+                });
+                if (data._history.length > MAX_HISTORY) data._history = data._history.slice(-MAX_HISTORY);
+                // save (throttled)
+                try { savePersistedHistory(coin, data._history); } catch (e) { }
+
+                // --- Additional sharp insights (z-scores, persistence, divergence) ---
+                try {
+                    const hist = data._history.map(h => ({
+                        buy: Number(h.volBuy2h || 0),
+                        sell: Number(h.volSell2h || 0),
+                        freqBuy: Number(h.freqBuy2h || 0),
+                        freqSell: Number(h.freqSell2h || 0),
+                        price: Number(h.price || 0),
+                        high: Number(h.high || h.price || 0),
+                        low: Number(h.low || h.price || 0),
+                        liquidity: Number(h.liquidity || 0)
+                    }));
+                    const buySeries = hist.map(h => h.buy);
+                    const sellSeries = hist.map(h => h.sell);
+                    const freqBuySeries = hist.map(h => h.freqBuy);
+                    const freqSellSeries = hist.map(h => h.freqSell);
+                    const buyStat = meanStd(buySeries);
+                    const sellStat = meanStd(sellSeries);
+                    const freqBuyStat = meanStd(freqBuySeries);
+                    const freqSellStat = meanStd(freqSellSeries);
+                    const _metricsWs = (typeof getUnifiedSmartMetrics === 'function') ? getUnifiedSmartMetrics(data) : (data && (data.analytics || data._analytics)) ? (data.analytics || data._analytics) : {};
+                    const currBuy = Number((_metricsWs && typeof _metricsWs.volBuy2h !== 'undefined') ? _metricsWs.volBuy2h : ((data.analytics || data._analytics) && (data.analytics || data._analytics).volBuy2h) || getNumeric(data, 'count_VOL_minute_120_buy', 'vol_buy_2JAM')) || 0;
+                    const currSell = Number((_metricsWs && typeof _metricsWs.volSell2h !== 'undefined') ? _metricsWs.volSell2h : ((data.analytics || data._analytics) && (data.analytics || data._analytics).volSell2h) || getNumeric(data, 'count_VOL_minute_120_sell', 'vol_sell_2JAM')) || 0;
+                    const currFreqBuy = Number((_metricsWs && typeof _metricsWs.freqBuy2h !== 'undefined') ? _metricsWs.freqBuy2h : ((data.analytics || data._analytics) && (data.analytics || data._analytics).freqBuy2h) || getNumeric(data, 'count_FREQ_minute_120_buy', 'freq_buy_2JAM')) || 0;
+                    const currFreqSell = Number((_metricsWs && typeof _metricsWs.freqSell2h !== 'undefined') ? _metricsWs.freqSell2h : ((data.analytics || data._analytics) && (data.analytics || data._analytics).freqSell2h) || getNumeric(data, 'count_FREQ_minute_120_sell', 'freq_sell_2JAM')) || 0;
+
+                    // require a minimum number of samples and non-zero std to compute z-scores
+                    const MIN_SAMPLES_FOR_Z = 6;
+                    let zBuy = null, zSell = null, zFreqBuy = null, zFreqSell = null;
+                    if (buySeries.length >= MIN_SAMPLES_FOR_Z && buyStat.std > 0) {
+                        zBuy = (currBuy - buyStat.mean) / buyStat.std;
+                    }
+                    if (sellSeries.length >= MIN_SAMPLES_FOR_Z && sellStat.std > 0) {
+                        zSell = (currSell - sellStat.mean) / sellStat.std;
+                    }
+                    if (freqBuySeries.length >= MIN_SAMPLES_FOR_Z && freqBuyStat.std > 0) {
+                        zFreqBuy = (currFreqBuy - freqBuyStat.mean) / freqBuyStat.std;
+                    }
+                    if (freqSellSeries.length >= MIN_SAMPLES_FOR_Z && freqSellStat.std > 0) {
+                        zFreqSell = (currFreqSell - freqSellStat.mean) / freqSellStat.std;
+                    }
+
+                    // persistence: count of last 3 points where buy > mean+std, only when stats meaningful
+                    const lastN = 3;
+                    let persistBuy = null, persistFreqBuy = null;
+                    if (buySeries.length >= lastN && buyStat.std > 0) {
+                        const recent = buySeries.slice(Math.max(0, buySeries.length - lastN));
+                        persistBuy = recent.filter(v => v > (buyStat.mean + buyStat.std)).length;
+                    }
+                    if (freqBuySeries.length >= lastN && freqBuyStat.std > 0) {
+                        const recentF = freqBuySeries.slice(Math.max(0, freqBuySeries.length - lastN));
+                        persistFreqBuy = recentF.filter(v => v > (freqBuyStat.mean + freqBuyStat.std)).length;
+                    }
+
+                    // divergence: price down but buy durability high
+                    const pctChange = Number(data.percent_change) || (data.last && data.previous ? ((Number(data.last) - Number(data.previous)) / Number(data.previous)) * 100 : 0);
+                    const _metrics = (typeof getUnifiedSmartMetrics === 'function') ? getUnifiedSmartMetrics(data) : (data && (data.analytics || data._analytics)) ? (data.analytics || data._analytics) : {};
+                    const volDur2h = (_metrics && _metrics.volDurability2h_percent !== undefined && _metrics.volDurability2h_percent !== null) ? Number(_metrics.volDurability2h_percent) : ((data.analytics || data._analytics) && (data.analytics || data._analytics).volDurability2h_percent ? Number((data.analytics || data._analytics).volDurability2h_percent) : 0);
+                    let divergence = null;
+                    if (pctChange < -0.5 && volDur2h >= 60 && zBuy > 1) divergence = 'Bullish divergence: price down while buy durability & volume surge';
+                    else if (pctChange > 0.5 && volDur2h <= 40 && zSell > 1) divergence = 'Bearish divergence: price up but sell pressure increasing';
+
+                    data._analytics.zScoreBuy2h = (zBuy === null || zBuy === undefined) ? undefined : Number(zBuy.toFixed(2));
+                    data._analytics.zScoreSell2h = (zSell === null || zSell === undefined) ? undefined : Number(zSell.toFixed(2));
+                    data._analytics.zScoreFreqBuy2h = (zFreqBuy === null || zFreqBuy === undefined) ? undefined : Number(zFreqBuy.toFixed(2));
+                    data._analytics.zScoreFreqSell2h = (zFreqSell === null || zFreqSell === undefined) ? undefined : Number(zFreqSell.toFixed(2));
+                    data._analytics.persistenceBuy3 = (persistBuy === null || persistBuy === undefined) ? undefined : persistBuy; // 0..3 or undefined
+                    data._analytics.persistenceFreqBuy3 = (persistFreqBuy === null || persistFreqBuy === undefined) ? undefined : persistFreqBuy;
+                    try { data.analytics = data._analytics; } catch (e) { /* ignore */ }
+                    data._analytics.divergence = divergence;
+
+                    // sharp insight summary
+                    let sharp = [];
+                    if (zBuy >= 2 && persistBuy >= 2) sharp.push('Strong buy momentum (z>=2 & persistent)');
+                    if (zFreqBuy >= 2 && persistFreqBuy >= 2) sharp.push('Strong trade-frequency surge (freq z>=2 & persistent)');
+                    if (zBuy >= 1.5 && volDur2h >= 60) sharp.push('Elevated buy interest vs history');
+                    if (divergence) sharp.push(divergence);
+                    if (sharp.length === 0) sharp.push('No strong anomalies detected');
+                    data._analytics.sharpInsights = sharp;
+                    const meaningful = sharp.filter(s => s && !/No strong anomalies detected/i.test(s));
+                    try {
+                        if (meaningful.length > 0) {
+                            eventWatchBuffer.push({ ts: Date.now(), coin, type: 'insight', messages: meaningful.slice(0, 3) });
+                            if (eventWatchBuffer.length > 200) eventWatchBuffer.splice(0, eventWatchBuffer.length - 200);
+                        }
+                    } catch (e) { console.warn('event buffer push failed', e); }
+                    // trigger alert if sharp insights are meaningful
+                    try {
+                        if (meaningful.length > 0) {
+                            const now = Date.now();
+                            const last = (window.lastAlertAt && window.lastAlertAt[coin]) || 0;
+                            // throttle per coin: 60s
+                            if (now - last > 60 * 1000) {
+                                if (window.lastAlertAt) window.lastAlertAt[coin] = now;
+                                const title = `${coin} — Alert`;
+                                const msg = meaningful.join(' • ');
+                                showAlertBanner(title, msg, 'warning', 10000);
+                                // send webhook if configured
+                                sendAlertWebhook(coin, { insights: meaningful, ts: now });
+                            }
+                        }
+                    } catch (e) { console.warn('alert trigger error', e); }
+
+                    const a = data.analytics || data._analytics || {};
+                    const priceNow = Number(data.last) || 0;
+                    const pricePrev = Number(data.previous) || priceNow;
+                    const priceChangePct = Number.isFinite(pctChange) ? pctChange : (pricePrev ? ((priceNow - pricePrev) / pricePrev) * 100 : 0);
+                    const volDiff2h = (a.volBuy2h || 0) - (a.volSell2h || 0);
+                    const totalVol2h = (a.volBuy2h || 0) + (a.volSell2h || 0);
+                    const totalFreq2h = (a.freqBuy2h || 0) + (a.freqSell2h || 0);
+                    const priceSeries = hist.map(h => Number(h.price) || 0).filter(v => v > 0);
+                    const priceStat = priceSeries.length ? meanStd(priceSeries) : { mean: 0, std: 0 };
+                    const priceZ = (priceSeries.length >= MIN_SAMPLES_FOR_Z && priceStat.std > 0 && priceNow)
+                        ? Number(((priceNow - priceStat.mean) / priceStat.std).toFixed(2)) : 0;
+                    a.priceZScore = priceZ;
+                    let atr14 = 0;
+                    try {
+                        const atrSeries = hist.map(point => ({ high: point.high || point.price || 0, low: point.low || point.price || 0, price: point.price || 0 }));
+                        atr14 = (atrSeries.length && typeof computeATR === 'function') ? computeATR(atrSeries, 14) : 0;
+                    } catch (atrErr) { atr14 = 0; }
+                    a.atr14 = Number.isFinite(atr14) ? Number(atr14) : 0;
+                    const currentLiquidity = Number(a.liquidity_avg_trade_value || 0);
+                    const liquiditySamples = hist.slice(Math.max(0, hist.length - 6), hist.length - 1).map(h => Number(h.liquidity || 0)).filter(v => v > 0);
+                    const avgPrevLiquidity = liquiditySamples.length ? (liquiditySamples.reduce((sum, v) => sum + v, 0) / liquiditySamples.length) : 0;
+                    a.liquidityShockIndex = avgPrevLiquidity > 0 ? (currentLiquidity / avgPrevLiquidity) : 1;
+                    a.rangeCompressionIndex = (a.atr14 > 0 && a.priceRange24h > 0) ? a.atr14 / a.priceRange24h : 0;
+                    a.flowStrengthIndex = (a.atr14 > 0 && priceNow > 0) ? (volDiff2h / (a.atr14 * priceNow)) : 0;
+                    a.impactAdjustedOrderFlow = (a.atr14 > 0) ? (volDiff2h * ((priceNow - pricePrev) / Math.max(a.atr14, 1e-6))) : 0;
+                    a.flowVolatilityRatio = (a.atr14 > 0 && priceNow > 0) ? (Math.abs(volDiff2h) / (a.atr14 * priceNow)) : 0;
+                    a.liquidityHeatRisk = (a.atr14 > 0 && totalVol2h > 0) ? (a.atr14 / totalVol2h) : (a.atr14 || 0);
+                    a.orderFlowStabilityIndex = _tanh((((zBuy || 0) + (zFreqBuy || 0)) / 2) || 0);
+                    a.orderFlowStabilityIndexSell = _tanh((((zSell || 0) + (zFreqSell || 0)) / 2) || 0);
+                    const smoothAboveMean = (series, stat) => {
+                        const last5 = series.slice(-5);
+                        if (!last5.length || !stat || stat.std <= 0) return 0;
+                        let hits = 0;
+                        for (const val of last5) {
+                            const z = (val - stat.mean) / stat.std;
+                            if (z > 1) hits++;
+                        }
+                        return hits / last5.length;
+                    };
+                    a.persistenceBuySmooth = smoothAboveMean(buySeries, buyStat);
+                    a.persistenceFreqSmooth = smoothAboveMean(freqBuySeries, freqBuyStat);
+                    a.zWeightedPressure = _tanh(((((zBuy || 0) + (zFreqBuy || 0)) - ((zSell || 0) + (zFreqSell || 0))) / 4) || 0);
+                    const prevImbalance = prevAnalytics && Number.isFinite(prevAnalytics.volImbalance2h) ? prevAnalytics.volImbalance2h : 0;
+                    a.tradeImbalanceMomentum = a.volImbalance2h - prevImbalance;
+                    const prevCps = prevAnalytics && Number.isFinite(prevAnalytics.cumulativePressure) ? prevAnalytics.cumulativePressure : 0;
+                    a.cumulativePressure = prevCps + volDiff2h;
+                    const priceSign = priceChangePct === 0 ? 0 : (priceChangePct > 0 ? 1 : -1);
+                    const flowSign = volDiff2h === 0 ? 0 : (volDiff2h > 0 ? 1 : -1);
+                    a.priceFlowConflictIndex = (priceSign && flowSign) ? priceSign * -flowSign : 0;
+                    a.priceEfficiencyIndex = totalVol2h > 0 ? Math.abs(priceChangePct) / Math.max(totalVol2h, 1) : 0;
+                    const denomVfd = Math.abs(a.priceZScore || 0) > 0.25 ? Math.abs(a.priceZScore || 0) : 0.25;
+                    a.volumeFlowDivergence = ((zBuy || 0) - (zSell || 0)) / denomVfd;
+                    a.smartMoneyDivergence = (a.zWeightedPressure || 0) - (a.priceZScore || 0);
+                    const prevZBuy = (buySeries.length >= 2 && buyStat.std > 0) ? ((buySeries[buySeries.length - 2] - buyStat.mean) / buyStat.std) : 0;
+                    const prevZFreqBuy = (freqBuySeries.length >= 2 && freqBuyStat.std > 0) ? ((freqBuySeries[freqBuySeries.length - 2] - freqBuyStat.mean) / freqBuyStat.std) : 0;
+                    a.trendVelocityVol = Number.isFinite(zBuy) && Number.isFinite(prevZBuy) ? Number((zBuy - prevZBuy).toFixed(2)) : 0;
+                    a.trendVelocityFreq = Number.isFinite(zFreqBuy) && Number.isFinite(prevZFreqBuy) ? Number((zFreqBuy - prevZFreqBuy).toFixed(2)) : 0;
+                    const velocityFactor = (Number(a.trendVelocityVol || 0) + Number(a.trendVelocityFreq || 0)) / 2;
+                    const persistenceSmooth = a.persistenceBuySmooth || 0;
+                    const fbi = a.freqBurstBuy || 0;
+                    const cohesion = a.multiTfCohesion || 0;
+                    const accVol = a.volumeAcceleration || 0;
+                    const fvr = a.flowVolatilityRatio || 0;
+                    a.compositeInstitutionalSignal = (0.25 * cohesion) + (0.20 * accVol) + (0.15 * fbi) + (0.15 * (a.zWeightedPressure || 0)) + (0.10 * fvr) + (0.07 * velocityFactor) + (0.08 * persistenceSmooth);
+                    const stabilityWindow = hist.slice(-10);
+                    let stabilityScore = 0;
+                    let stabilityCount = 0;
+                    for (const point of stabilityWindow) {
+                        const tot = (point.buy || 0) + (point.sell || 0);
+                        if (tot <= 0) continue;
+                        stabilityScore += Math.sign((point.buy || 0) - (point.sell || 0));
+                        stabilityCount++;
+                    }
+                    a.directionalStabilityScore = stabilityCount ? (stabilityScore / stabilityCount) : 0;
+                    a.freqRatio2h_percent = totalFreq2h > 0 ? (a.freqBuy2h / totalFreq2h) * 100 : 0;
+                    a.flowToVolatilityRatio = a.flowVolatilityRatio;
+                } catch (e) { console.error('analytics extras error', e); }
+
+                } catch (e) { data._analytics = {}; try { data.analytics = data._analytics; } catch(_){} data.risk_score = 0; }
+
+            // Derive percent_sum_VOL_* fields from volume / avg if backend didn't provide them (localGetNumeric lives in analytics-formulas.js).
+
+            const timeframeMap = [
+                { pctKey: 'percent_sum_VOL_minute1_buy', volKeys: ['count_VOL_minute1_buy', 'vol_buy_1MENIT', 'vol_buy_1m'], avgKeys: ['avg_VOLCOIN_buy_1MENIT'] },
+                { pctKey: 'percent_sum_VOL_minute_5_buy', volKeys: ['count_VOL_minute_5_buy', 'vol_buy_5MENIT', 'vol_buy_5m'], avgKeys: ['avg_VOLCOIN_buy_5MENIT'] },
+                { pctKey: 'percent_sum_VOL_minute_10_buy', volKeys: ['count_VOL_minute_10_buy', 'vol_buy_10MENIT', 'vol_buy_10m'], avgKeys: ['avg_VOLCOIN_buy_10MENIT'] },
+                { pctKey: 'percent_sum_VOL_minute_15_buy', volKeys: ['count_VOL_minute_15_buy', 'vol_buy_15MENIT', 'vol_buy_15m'], avgKeys: ['avg_VOLCOIN_buy_15MENIT'] },
+                { pctKey: 'percent_sum_VOL_minute_20_buy', volKeys: ['count_VOL_minute_20_buy', 'vol_buy_20MENIT', 'vol_buy_20m'], avgKeys: ['avg_VOLCOIN_buy_20MENIT'] },
+                { pctKey: 'percent_sum_VOL_minute_30_buy', volKeys: ['count_VOL_minute_30_buy', 'vol_buy_30MENIT', 'vol_buy_30m'], avgKeys: ['avg_VOLCOIN_buy_30MENIT'] },
+                { pctKey: 'percent_sum_VOL_minute_60_buy', volKeys: ['count_VOL_minute_60_buy', 'vol_buy_1JAM', 'vol_buy_60MENIT'], avgKeys: ['avg_VOLCOIN_buy_1JAM', 'avg_VOLCOIN_buy_60MENIT'] },
+                { pctKey: 'percent_sum_VOL_minute_120_buy', volKeys: ['count_VOL_minute_120_buy', 'vol_buy_2JAM', 'vol_buy_120MENIT'], avgKeys: ['avg_VOLCOIN_buy_2JAM', 'avg_VOLCOIN_buy_120MENIT'] },
+                { pctKey: 'percent_sum_VOL_overall_buy', volKeys: ['count_VOL_minute_1440_buy', 'vol_buy_24JAM', 'vol_buy_24h'], avgKeys: ['avg_VOLCOIN_buy_24JAM'] }
+            ];
+
+            for (const tf of timeframeMap) {
+                // if backend already provided a value, skip
+                if (data[tf.pctKey] !== undefined && data[tf.pctKey] !== null) continue;
+                const volBuy = localGetNumeric(data, ...tf.volKeys);
+                const avgBuy = localGetNumeric(data, ...tf.avgKeys);
+                // If avg present and >0, compute vol/avg*100; else fallback to buy/(buy+sell)*100 when possible
+                let pct = 0;
+                if (avgBuy > 0) {
+                    pct = Math.round((volBuy / avgBuy) * 100);
+                } else {
+                    // try compute by proportion of buy vs total
+                    const volSellKeyGuess = tf.volKeys.map(k => k.replace(/buy/i, 'sell'));
+                    const volSell = localGetNumeric(data, ...volSellKeyGuess, 'count_VOL_minute_120_sell');
+                    const total = (volBuy || 0) + (volSell || 0);
+                    pct = total > 0 ? Math.round((volBuy / total) * 100) : 0;
+                }
+                data[tf.pctKey] = pct;
+            }
+
+            // Store sanitized data by coin
+            coinDataMap[coin] = data;
+            window.coinDataMap = coinDataMap; // keep window in sync
+
+            // Evaluate alert rules for this incoming data (non-blocking)
+            try { if (typeof evaluateAlertRulesForData === 'function') evaluateAlertRulesForData(data); } catch (e) { console.warn('evaluateAlertRules call failed', e); }
+
+            // DIRECT call to updateTable (bypass debounce for debugging)
+            // scheduleUpdateTable(); 
+            try {
+                if (typeof window.updateTable === 'function') {
+                    // Still use debounce but ensure it's working
+                    if (!window._lastTableUpdate || (Date.now() - window._lastTableUpdate) > 300) {
+                        window._lastTableUpdate = Date.now();
+                        window.updateTable();
+                    }
+                }
+            } catch (e) { console.error('updateTable call failed', e); }
+        };
+
+        // onclose/onerror are handled when a socket is (re)created via attachHandlers
+
+        // Function to update table based on filter, row limit, and sort order (relies on shared getNumeric helper).
+
+        // Recommendation engine: normalized, z-score aware, with per-coin cooldown and logging (calculateRecommendation lives in analytics-formulas.js)
+
+        // Advanced sort logic moved to js/modules/advanced-sort.js
+        // Initialize advanced sort module
+        if (typeof window.initAdvancedSort === 'function') {
+            window.initAdvancedSort();
+        }
+
+        // compareWithComparator is in js/modules/helpers.js
+        // updateTable is in js/modules/update-table.js
+        // renderInfoTab is in js/modules/info-tab.js
+
+        // Expose globals needed by modules
+        window.coinDataMap = coinDataMap;
+        window.getSortOrderValue = getSortOrderValue;
+        window.getActiveFilterValue = getActiveFilterValue;
+        window.rowLimit = rowLimit;
+        window.PERSIST_KEY = PERSIST_KEY;
+        window.persistHistoryEnabled = persistHistoryEnabled;
+        window.getAdvancedSortState = function() { return advancedSortState; };
+        
+        // Update rowLimit when limitInput changes
+        limitInput.addEventListener('change', () => { window.rowLimit = parseInt(limitInput.value, 10) || Infinity; });
+
+        // Functions moved to modules:
+        // - updateTable -> js/modules/update-table.js
+        // - renderInfoTab -> js/modules/info-tab.js
+        // - Tab renderers -> js/modules/tab-renderers.js
+
+        // Restore hidden alerts as banners when modal button clicked
+        try {
+            const restoreBtn = document.getElementById('restoreHiddenAsBanners');
+            if (restoreBtn) restoreBtn.addEventListener('click', () => {
+                try {
+                    const container = document.getElementById('alertBanner');
+                    if (!container) return;
+                    while (hiddenAlertBuffer && hiddenAlertBuffer.length) {
+                        const a = hiddenAlertBuffer.shift();
+                        try { showAlertBanner(a.title, a.message, a.type, 8000); } catch (e) { console.warn('restore show failed', e); }
+                    }
+                    try { const bm = bootstrap.Modal.getInstance(document.getElementById('hiddenAlertsModal')); if (bm) bm.hide(); } catch (e) { }
+                } catch (e) { console.warn('restoreHiddenAsBanners failed', e); }
+            });
+        } catch (e) { console.warn('wiring restore hidden alerts failed', e); }
+

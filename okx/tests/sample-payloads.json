@@ -1,0 +1,58 @@
+[
+  {
+    "coin": "COIN1",
+    "last": 100,
+    "high": 110,
+    "low": 90,
+    "count_VOL_minute_120_buy": 400,
+    "count_VOL_minute_120_sell": 100,
+    "count_FREQ_minute_120_buy": 200,
+    "count_FREQ_minute_120_sell": 50,
+    "expectedRecommendation": "HOLD"
+  },
+  {
+    "coin": "COIN2",
+    "last": 100,
+    "high": 120,
+    "low": 95,
+    "count_VOL_minute_120_buy": 80,
+    "count_VOL_minute_120_sell": 240,
+    "count_FREQ_minute_120_buy": 40,
+    "count_FREQ_minute_120_sell": 120,
+    "expectedRecommendation": "HOLD"
+  }
+  ,
+  {
+    "coin": "COIN3",
+    "last": 100,
+    "high": 130,
+    "low": 80,
+    "count_VOL_minute_120_buy": 1200,
+    "count_VOL_minute_120_sell": 150,
+    "count_FREQ_minute_120_buy": 600,
+    "count_FREQ_minute_120_sell": 40,
+    "expectedRecommendation": "BUY"
+  },
+  {
+    "coin": "COIN4",
+    "last": 100,
+    "high": 115,
+    "low": 85,
+    "count_VOL_minute_120_buy": 60,
+    "count_VOL_minute_120_sell": 900,
+    "count_FREQ_minute_120_buy": 25,
+    "count_FREQ_minute_120_sell": 350,
+    "expectedRecommendation": "SELL"
+  },
+  {
+    "coin": "COIN5",
+    "last": 100,
+    "high": 105,
+    "low": 95,
+    "count_VOL_minute_120_buy": 300,
+    "count_VOL_minute_120_sell": 300,
+    "count_FREQ_minute_120_buy": 150,
+    "count_FREQ_minute_120_sell": 150,
+    "expectedRecommendation": "HOLD"
+  }
+]

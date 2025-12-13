@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="websocket-example.css">
+    <link rel="shortcut icon" href="https://www.okx.com/cdn/assets/imgs/226/EB771F0EE8994DD5.png" />
+    <link rel="apple-touch-icon" href="https://www.okx.com/cdn/assets/imgs/253/59830BB78B18A776.png" type="image/png" />
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <title>OKX Futures Trading Dashboard</title>
+</head>
+
+<body>
+    <div class="container">
+        <h2>🚀 OKX Futures Trading Dashboard</h2>
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <label class="form-label">🔍 Filter by Coin (per-tab)</label>
+                <div id="filterContainer">
+                    <input type="text" class="form-control filter-input" id="coinFilter_summary"
+                        placeholder="e.g., BTC, ETH">
+                    <input type="text" class="form-control filter-input d-none" id="coinFilter_volume"
+                        placeholder="e.g., BTC, ETH">
+                    <input type="text" class="form-control filter-input d-none" id="coinFilter_volDur"
+                        placeholder="e.g., BTC, ETH">
+                    <input type="text" class="form-control filter-input d-none" id="coinFilter_spikes"
+                        placeholder="e.g., BTC, ETH">
+                    <input type="text" class="form-control filter-input d-none" id="coinFilter_recs"
+                        placeholder="e.g., BTC, ETH">
+                    <input type="text" class="form-control filter-input d-none" id="coinFilter_alerts"
+                        placeholder="e.g., BTC, ETH">
+                    <input type="text" class="form-control filter-input d-none" id="coinFilter_micro"
+                        placeholder="e.g., BTC, ETH">
+                    <input type="text" class="form-control filter-input d-none" id="coinFilter_frequency"
+                        placeholder="e.g., BTC, ETH">
+                    <input type="text" class="form-control filter-input d-none" id="coinFilter_freqRatio"
+                        placeholder="e.g., BTC, ETH">
+                    <input type="text" class="form-control filter-input d-none" id="coinFilter_smart"
+                        placeholder="e.g., BTC, ETH">
+                </div>
+            </div>
+            <div class="col-md-4">
+                <label for="limitInput" class="form-label">📊 Limit Rows</label>
+                <input type="number" class="form-control" id="limitInput" placeholder="Enter row limit" min="1"
+                    value="5">
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+                <div class="form-check form-switch me-3">
+                    <input class="form-check-input" type="checkbox" id="persistHistoryToggle" checked>
+                    <label class="form-check-label" for="persistHistoryToggle">💾 Persist History</label>
+                </div>
+                <button class="btn btn-sm btn-outline-danger" id="clearStorageBtn"
+                    title="Clear stored history to free up space">🗑️ Clear</button>
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+                <div>
+                    <small class="text-muted">🔔 Alerts configurable in the <strong>Alerts</strong> tab.</small>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <label for="sortBy" class="form-label">📊 Sort By <span class="badge bg-success">NEW: Vol Ratio
+                        %</span></label>
+                <div class="form-text small text-muted">Note: feed no longer provides separate per-trade counts —
+                    "Activity" sorts use volume as a proxy.</div>
+                <select class="form-select" id="sortBy"
+                    style="position: relative; z-index: 9999; pointer-events: auto !important;">
+                    <!-- Options loaded dynamically from js/data/sort-options.json -->
+                    <option value="price_position" selected>Loading...</option>
+                </select>
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">📈 Sort Order</label>
+                <div id="sortOrder" class="d-flex gap-2 align-items-center">
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="sortOrderRad" id="sortOrder_desc"
+                            value="desc" checked>
+                        <label class="form-check-label small" for="sortOrder_desc">Descending ⬇️</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="sortOrderRad" id="sortOrder_asc" value="asc">
+                        <label class="form-check-label small" for="sortOrder_asc">Ascending ⬆️</label>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <button type="button" class="btn btn-sm btn-outline-warning text-dark" id="openAdvancedSortBtn"
+                            data-bs-toggle="modal" data-bs-target="#advancedSortModal">⚙️ Advanced Sort &
+                            Filter</button>
+                        <span id="advancedSortStatus" class="badge bg-secondary">OFF</span>
+                        <button type="button" class="btn btn-sm btn-outline-light d-none" id="disableAdvancedSortBtn">
+                            ✖ Disable
+                        </button>
+                    </div>
+                    <small id="advancedSortHint" class="text-white-50">Pilih beberapa kategori untuk prioritas
+                        sorting + filter tambahan.</small>
+                </div>
+            </div>
+        </div>
+
+        <div id="loading" class="loading">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p>Connecting to WebSocket...</p>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <span id="wsStatus" class="badge bg-warning">🟡 Connecting...</span>
+            <small class="text-muted" id="lastUpdateTime"></small>
+        </div>
+
+        <ul class="nav nav-tabs" id="dataTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="summary-tab" data-bs-toggle="tab" data-bs-target="#summary"
+                    type="button" role="tab">📊 Summary</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="volume-tab" data-bs-toggle="tab" data-bs-target="#volume" type="button"
+                    role="tab">📊 Volume</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="volratio-tab" data-bs-toggle="tab" data-bs-target="#volRatio" type="button"
+                    role="tab">📈 Vol Ratio</button>
+            </li>
+
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="vol-dur-tab" data-bs-toggle="tab" data-bs-target="#volDur" type="button"
+                    role="tab">📈 Vol Dur</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="micro-tab" data-bs-toggle="tab" data-bs-target="#microstructure"
+                    type="button" role="tab">🧠 Microstructure</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="insight-tab" data-bs-toggle="tab" data-bs-target="#insight" type="button"
+                    role="tab">🔍 Insight</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="info-tab" data-bs-toggle="tab" data-bs-target="#info" type="button"
+                    role="tab">ℹ️ Info</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="alerts-tab" data-bs-toggle="tab" data-bs-target="#alerts" type="button"
+                    role="tab">🔔 Alerts</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="recs-tab" data-bs-toggle="tab" data-bs-target="#recommendations"
+                    type="button" role="tab">🧭 Recs</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="signal-tab" data-bs-toggle="tab" data-bs-target="#signalLab" type="button"
+                    role="tab">🧪 Signal Lab</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="backtest-tab" data-bs-toggle="tab" data-bs-target="#backtest" type="button"
+                    role="tab">🧮 Backtest</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="risk-tab" data-bs-toggle="tab" data-bs-target="#risk" type="button"
+                    role="tab">⚠️ Risk</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="events-tab" data-bs-toggle="tab" data-bs-target="#events" type="button"
+                    role="tab">📅 Events</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="spike-tab" data-bs-toggle="tab" data-bs-target="#spikes" type="button"
+                    role="tab">⚡ Spikes</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="freq-tab" data-bs-toggle="tab" data-bs-target="#frequency" type="button"
+                    role="tab">📊 Frequency</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="freqratio-tab" data-bs-toggle="tab" data-bs-target="#freqRatio"
+                    type="button" role="tab">📈 Freq Ratio</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="price-moves-tab" data-bs-toggle="tab" data-bs-target="#priceMoves"
+                    type="button" role="tab">💹 Price Moves</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="smart-tab" data-bs-toggle="tab" data-bs-target="#smartAnalysis"
+                    type="button" role="tab">🧠 Smart</button>
+            </li>
+        </ul>
+
+        <div class="tab-content mt-2" id="dataTabsContent">
+            <div class="tab-pane fade show active" id="summary" role="tabpanel">
+                <div class="d-flex justify-content-center" style="margin-bottom: 4px;">
+                    <button class="btn btn-outline-success btn-sm me-2" onclick="quickSort('vol_ratio')">
+                        🚀 Quick Sort: Vol Ratio %
+                    </button>
+                    <button class="btn btn-outline-info btn-sm" onclick="showVolRatioInfo()">
+                        📚 Learn About Vol Ratio %
+                    </button>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-striped" id="summaryTable">
+                        <thead>
+                            <tr>
+                                <th>Coin</th>
+                                <th>💰 Price</th>
+                                <th>📊 Change %</th>
+                                <th>📍 Price Pos</th>
+                                <th>🎯 Recommendation</th>
+                                <th>⚖️ Risk</th>
+                                <th>📊 Vol Ratio % (2h)</th>
+                                <th>📊 Vol Buy (2h)</th>
+                                <th>📊 Vol Sell (2h)</th>
+                                <th>⚖️ Vol Dur (2h)</th>
+                                <th>📊 Vol Buy (24h)</th>
+                                <th>📊 Vol Sell (24h)</th>
+                                <th>⏰ Update</th>
+                            </tr>
+                        </thead>
+                        <tbody id="summaryBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Activity tab removed: feed only provides volume-based metrics now -->
+
+            <div class="tab-pane fade" id="volume" role="tabpanel">
+                <div class="table-responsive">
+                    <table class="table table-striped" id="volTable">
+                        <thead>
+                            <tr>
+                                <th>Coin</th>
+                                <th>📊 Buy 1m</th>
+                                <th>📊 Sell 1m</th>
+                                <th>📊 Buy 5m</th>
+                                <th>📊 Sell 5m</th>
+                                <th>📊 Buy 10m</th>
+                                <th>📊 Sell 10m</th>
+                                <th>📊 Buy 15m</th>
+                                <th>📊 Sell 15m</th>
+                                <th>📊 Buy 20m</th>
+                                <th>📊 Sell 20m</th>
+                                <th>📊 Buy 30m</th>
+                                <th>📊 Sell 30m</th>
+                                <th>📊 Buy 60m</th>
+                                <th>📊 Sell 60m</th>
+                                <th>📊 Buy 120m</th>
+                                <th>📊 Sell 120m</th>
+                                <th>📊 Ratio %</th>
+                                <th>📊 Buy (24h)</th>
+                                <th>📊 Sell (24h)</th>
+                                <th>📊 Total (24h)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="volBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="volRatio" role="tabpanel">
+                <div class="table-responsive">
+                    <table class="table table-striped" id="volRatioTable">
+                        <thead>
+                            <tr>
+                                <th>Coin</th>
+                                <th>1m</th>
+                                <th>5m</th>
+                                <th>10m</th>
+                                <th>15m</th>
+                                <th>20m</th>
+                                <th>30m</th>
+                                <th>1h</th>
+                                <th>2h</th>
+                                <th>24h</th>
+                                <th>Last Change %</th>
+                            </tr>
+                        </thead>
+                        <tbody id="volRatioBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="priceMoves" role="tabpanel">
+                <div class="table-responsive">
+                    <table class="table table-striped" id="priceMovesTable">
+                        <thead>
+                            <tr>
+                                <th>Coin</th>
+                                <th>Current</th>
+                                <th>1m</th>
+                                <th>5m</th>
+                                <th>10m</th>
+                                <th>15m</th>
+                                <th>20m</th>
+                                <th>30m</th>
+                                <th>1h</th>
+                                <th>2h</th>
+                                <th>24h</th>
+                                <th>Update</th>
+                            </tr>
+                        </thead>
+                        <tbody id="priceMovesBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="volDur" role="tabpanel">
+                <div class="table-responsive">
+                    <table class="table table-striped" id="volDurTable">
+                        <thead>
+                            <tr>
+                                <th>Coin</th>
+                                <th>📊 Change %</th>
+                                <th>1m</th>
+                                <th>5m</th>
+                                <th>10m</th>
+                                <th>15m</th>
+                                <th>20m</th>
+                                <th>30m</th>
+                                <th>1h</th>
+                                <th>24h</th>
+                            </tr>
+                        </thead>
+                        <tbody id="volDurBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="microstructure" role="tabpanel">
+
+
+                <div class="table-responsive">
+                    <table class="table table-striped" id="microTable">
+                        <thead>
+                            <tr>
+                                <th>Coin</th>
+                                <th>Cohesion</th>
+                                <th>Acc Vol</th>
+                                <th>FBI</th>
+                                <th>OFSI</th>
+                                <th>FSI</th>
+                                <th>Z-Press</th>
+                                <th>TIM</th>
+                                <th>CIS</th>
+                                <th>LSI</th>
+                                <th>Range Comp</th>
+                                <th>PFCI</th>
+                            </tr>
+                        </thead>
+                        <tbody id="microBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="insight" role="tabpanel">
+                <div class="row">
+                    <div class="col-12">
+                        <div id="insightPane">
+                            <h4 class="text-info">🔍 Insight</h4>
+                            <div id="insightPaneBody" class="card bg-dark text-light p-3">
+                                <p class="text-muted">Select a coin from the Summary tab to see detailed insights here.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="info" role="tabpanel">
+                <!-- Runtime status rendered by info-tab.js -->
+                <div id="infoRuntime" class="mb-3"></div>
+
+                <!-- Documentation rendered from JSON by info-tab.js -->
+                <div id="infoDocsContainer" class="mb-3"></div>
+
+                <!-- Alert Controls - keep these as they're interactive -->
+                <div class="card bg-dark text-light mb-3">
+                    <div class="card-body">
+                        <h5 class="text-info mb-3">🔔 Alert Controls</h5>
+                        <div class="d-flex gap-2 flex-wrap align-items-center">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="compactAlertsToggle">
+                                <label class="form-check-label small" for="compactAlertsToggle">Compact banners</label>
+                            </div>
+                            <div class="input-group input-group-sm" style="width:120px;">
+                                <span class="input-group-text">Max</span>
+                                <input type="number" id="maxAlertBanners" class="form-control" value="3" min="0">
+                            </div>
+                            <button id="showHiddenAlertsBtn" class="btn btn-sm btn-outline-secondary">Show
+                                hidden</button>
+                            <button id="openRecsBtn" class="btn btn-sm btn-outline-primary">Open Recs</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="tab-pane fade" id="signalLab" role="tabpanel">
+                <div class="card bg-dark text-light mb-3">
+                    <div class="card-body">
+                        <div class="row g-3 align-items-end">
+                            <div class="col-md-4">
+                                <label class="form-label small text-muted">Coin</label>
+                                <select id="signalLabCoinSelect"
+                                    class="form-select form-select-sm bg-dark text-light border-secondary"></select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small text-muted">Timeframe</label>
+                                <select id="signalLabTfSelect"
+                                    class="form-select form-select-sm bg-dark text-light border-secondary">
+                                    <option value="1m">1m</option>
+                                    <option value="5m">5m</option>
+                                    <option value="10m">10m</option>
+                                    <option value="30m">30m</option>
+                                    <option value="60m">60m</option>
+                                    <option value="120m" selected>120m</option>
+                                    <option value="24h">24h</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small text-muted">Status</label>
+                                <div id="signalLabStatus" class="fw-bold">-</div>
+                            </div>
+                        </div>
+                        <div id="signalLabPane" class="mt-3 small text-muted">
+                            <p class="mb-0">Select a coin to see the multi-factor recommendation breakdown.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="backtest" role="tabpanel">
+                <div class="card bg-dark text-light mb-3">
+                    <div class="card-body">
+                        <div class="row g-3 align-items-end">
+                            <div class="col-md-4">
+                                <label class="form-label small text-muted">Coin</label>
+                                <select id="backtestCoinSelect"
+                                    class="form-select form-select-sm bg-dark text-light border-secondary"></select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small text-muted">Samples Used</label>
+                                <div id="backtestSampleCount" class="fw-bold">-</div>
+                            </div>
+                            <div class="col-md-4 text-end">
+                                <small class="text-muted">Based on recommendation log & local history</small>
+                            </div>
+                        </div>
+                        <div id="backtestPane" class="mt-3 small text-muted">
+                            <p class="mb-0">Waiting for recommendation history…</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="risk" role="tabpanel">
+                <div class="card bg-dark text-light mb-3">
+                    <div class="card-body">
+                        <div class="row g-3 align-items-end">
+                            <div class="col-md-4">
+                                <label class="form-label small text-muted">Coin</label>
+                                <select id="riskCoinSelect"
+                                    class="form-select form-select-sm bg-dark text-light border-secondary"></select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small text-muted">Lookback</label>
+                                <select id="riskLookbackSelect"
+                                    class="form-select form-select-sm bg-dark text-light border-secondary">
+                                    <option value="50">Last 50 pts</option>
+                                    <option value="100" selected>Last 100 pts</option>
+                                    <option value="200">Last 200 pts</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4 text-end">
+                                <small class="text-muted">ATR, realized volatility, drawdowns</small>
+                            </div>
+                        </div>
+                        <div id="riskPane" class="mt-3 small text-muted">
+                            <p class="mb-0">Waiting for history…</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="events" role="tabpanel">
+                <div class="card bg-dark text-light mb-3">
+                    <div class="card-body">
+                        <h5 class="text-info">📅 Event Watch</h5>
+                        <p class="small text-muted">Combines rule-based alerts, sharp insights, and spike detections
+                            logged locally.</p>
+                        <div id="eventPane" class="mt-3 small text-muted">
+                            <p class="mb-0">No events yet.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="alerts" role="tabpanel">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h4 class="text-info">🔔 Alerts</h4>
+                        <div class="card bg-dark text-light mb-3">
+                            <div class="card-body">
+                                <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" id="enableAlertsToggle">
+                                    <label class="form-check-label" for="enableAlertsToggle">🔔 Enable Alerts</label>
+                                </div>
+                                <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" id="enableSoundToggle">
+                                    <label class="form-check-label" for="enableSoundToggle">🔊 Sound Alerts</label>
+                                </div>
+                                <div class="input-group input-group-sm mt-2">
+                                    <input type="text" id="alertWebhookUrl" class="form-control"
+                                        placeholder="Webhook URL (optional)">
+                                    <button class="btn btn-outline-secondary" id="alertWebhookTest">Test</button>
+                                </div>
+                                <div class="form-check form-switch mt-2">
+                                    <input class="form-check-input" type="checkbox" id="persistHistoryToggleAlt">
+                                    <label class="form-check-label" for="persistHistoryToggleAlt">💾 Persist History
+                                        (LocalStorage) — control</label>
+                                </div>
+                                <div class="form-text small text-muted mt-2">Alerts appear as a banner and can send
+                                    webhooks when configured.</div>
+                                <div id="alertsListContainer" class="mt-3">
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <h6 class="small text-muted mb-0">Recent Alerts</h6>
+                                        <div>
+                                            <button id="clearAlertsBtn"
+                                                class="btn btn-sm btn-outline-danger">Clear</button>
+                                        </div>
+                                    </div>
+                                    <div id="alertsList" class="list-group list-group-flush"
+                                        style="max-height:240px;overflow:auto;"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6" id="alertRulesNotesColumn">
+                        <h6 class="text-success">Alert Rules & Editor</h6>
+                        <div class="card bg-dark text-light mb-3">
+                            <div class="card-body small">
+                                <form id="alertRuleForm" class="mb-2">
+                                    <input type="hidden" id="ruleId">
+                                    <div class="mb-2">
+                                        <label class="form-label small">Coin (optional)</label>
+                                        <input type="text" id="ruleCoin" class="form-control form-control-sm"
+                                            placeholder="e.g. BTC-USDT-SWAP or leave blank for all coins">
+                                    </div>
+                                    <div class="mb-2">
+                                        <label class="form-label small">Metric</label>
+                                        <select id="ruleMetric" class="form-select form-select-sm">
+                                            <option value="percent_change">percent_change</option>
+                                            <option value="vol_ratio_2h">vol_ratio_2h</option>
+                                            <option value="freq_vs_avg_buy_percent">freq_vs_avg_buy_percent</option>
+                                            <option value="price_move_1MENIT">price_move_1MENIT</option>
+                                            <option value="price_move_5MENIT">price_move_5MENIT</option>
+                                            <option value="price_move_10MENIT">price_move_10MENIT</option>
+                                            <option value="price_move_15MENIT">price_move_15MENIT</option>
+                                            <option value="price_move_20MENIT">price_move_20MENIT</option>
+                                            <option value="price_move_30MENIT">price_move_30MENIT</option>
+                                            <option value="price_move_1JAM">price_move_1JAM</option>
+                                            <option value="price_move_2JAM">price_move_2JAM</option>
+                                            <option value="price_move_24JAM">price_move_24JAM</option>
+                                        </select>
+                                    </div>
+                                    <div class="row g-2">
+                                        <div class="col-5">
+                                            <label class="form-label small">Operator</label>
+                                            <select id="ruleOp" class="form-select form-select-sm">
+                                                <option value=">">&gt;</option>
+                                                <option value="<">&lt;</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-7">
+                                            <label class="form-label small">Threshold</label>
+                                            <input type="number" id="ruleThreshold" class="form-control form-control-sm"
+                                                step="0.01">
+                                        </div>
+                                    </div>
+                                    <div class="mb-2 mt-2">
+                                        <label class="form-label small">Severity</label>
+                                        <select id="ruleSeverity" class="form-select form-select-sm">
+                                            <option value="warning">warning</option>
+                                            <option value="danger">danger</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-2">
+                                        <label class="form-label small">Name</label>
+                                        <input type="text" id="ruleName" class="form-control form-control-sm"
+                                            placeholder="Rule display name">
+                                    </div>
+                                    <div class="mb-2">
+                                        <label class="form-label small">Message</label>
+                                        <input type="text" id="ruleMessage" class="form-control form-control-sm"
+                                            placeholder="Message shown when alert triggers">
+                                    </div>
+                                    <div class="d-flex gap-2">
+                                        <button type="button" id="ruleSaveBtn" class="btn btn-sm btn-primary">Save
+                                            Rule</button>
+                                        <button type="button" id="ruleCancelBtn"
+                                            class="btn btn-sm btn-secondary">Cancel</button>
+                                    </div>
+                                </form>
+
+                                <div id="alertRulesEditorList" style="max-height:220px;overflow:auto;"></div>
+                                <div class="form-text text-muted mt-2">Create per-coin or global alert rules. Edit or
+                                    delete existing rules below.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="tab-pane fade" id="spikes" role="tabpanel">
+                <div class="table-responsive">
+                    <table class="table table-striped" id="spikeTable">
+                        <thead>
+                            <tr>
+                                <th>Coin</th>
+                                <th>⏱ Timeframe</th>
+                                <th>📊 Vol</th>
+                                <th>➗ Avg</th>
+                                <th>⚡ Ratio</th>
+                                <th>📈 Change</th>
+                                <th>💡 Recs</th>
+                                <th>⏰ Update</th>
+                            </tr>
+                        </thead>
+                        <tbody id="spikeBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Frequency Tab -->
+            <div class="tab-pane fade" id="frequency" role="tabpanel">
+                <div class="table-responsive">
+                    <table class="table table-striped table-sm" id="freqTable">
+                        <thead>
+                            <tr>
+                                <th>Coin</th>
+                                <th>📊 1m B</th>
+                                <th>📊 1m S</th>
+                                <th>📊 5m B</th>
+                                <th>📊 5m S</th>
+                                <th>📊 10m B</th>
+                                <th>📊 10m S</th>
+                                <th>📊 30m B</th>
+                                <th>📊 30m S</th>
+                                <th>📊 1h B</th>
+                                <th>📊 1h S</th>
+                                <th>📊 2h B</th>
+                                <th>📊 2h S</th>
+                                <th>📊 24h B</th>
+                                <th>📊 24h S</th>
+                            </tr>
+                        </thead>
+                        <tbody id="freqBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Freq Ratio Tab -->
+            <div class="tab-pane fade" id="freqRatio" role="tabpanel">
+                <div class="table-responsive">
+                    <table class="table table-striped table-sm" id="freqRatioTable">
+                        <thead>
+                            <tr>
+                                <th>Coin</th>
+                                <th>⚖️ 1m</th>
+                                <th>⚖️ 5m</th>
+                                <th>⚖️ 10m</th>
+                                <th>⚖️ 30m</th>
+                                <th>⚖️ 1h</th>
+                                <th>⚖️ 2h</th>
+                                <th>⚖️ 24h</th>
+                                <th>📊 vs Avg 2h</th>
+                                <th>📈 Freq Spike</th>
+                            </tr>
+                        </thead>
+                        <tbody id="freqRatioBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Smart Analysis Tab -->
+            <div class="tab-pane fade" id="smartAnalysis" role="tabpanel">
+                <small class="text-muted d-block" style="margin-bottom: 4px;">Advanced formulas: Smart Money Index,
+                    Trade Intensity, Momentum Divergence, Accumulation Score, Breakout Prob, LSI, Market Mode</small>
+                <div class="table-responsive">
+                    <table class="table table-striped table-sm" id="smartTable">
+                        <thead>
+                            <tr>
+                                <th>Coin</th>
+                                <th>💰 SMI</th>
+                                <th title="Trade Intensity - measures trading activity level">🔥 Intensity</th>
+                                <th title="Momentum Divergence - price vs volume mismatch">💥 Divergence</th>
+                                <th title="Accumulation/Distribution Score">🎯 Accum Score</th>
+                                <th title="Whale Activity Index">🐋 Whale</th>
+                                <th title="Retail vs Institution ratio">👥 R/I Ratio</th>
+                                <th title="Pressure Index - buy/sell pressure">💪 Pressure</th>
+                                <th title="Trend Strength 0-100">📈 Trend</th>
+                                <th title="Breakout Probability - likelihood of price breakout">🚀 Breakout%</th>
+                                <th title="Liquidity Stress Index - measures market stress">⚡ LSI</th>
+                                <th title="Market Mode Classification">🏷️ Mode</th>
+                                <th>💡 Signal</th>
+                            </tr>
+                        </thead>
+                        <tbody id="smartBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="tab-pane fade" id="recommendations" role="tabpanel">
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap">
+                        <div class="input-group input-group-sm" style="width:160px;">
+                            <span class="input-group-text">Timeframe</span>
+                            <select id="recTimeframe" class="form-select">
+                                <option value="All">All</option>
+                                <option value="1m">1m</option>
+                                <option value="5m">5m</option>
+                                <option value="10m">10m</option>
+                                <option value="30m">30m</option>
+                                <option value="60m">60m</option>
+                                <option value="120m">120m</option>
+                                <option value="24h">24h</option>
+                            </select>
+                        </div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="useAtrRecs">
+                            <label class="form-check-label small text-muted" for="useAtrRecs">Use ATR-based
+                                TP/SL</label>
+                        </div>
+                        <div class="input-group input-group-sm" style="width:260px;">
+                            <span class="input-group-text">TP% min / max</span>
+                            <input type="number" id="tpMin" class="form-control" placeholder="min" value="2" step="0.1">
+                            <input type="number" id="tpMax" class="form-control" placeholder="max" value="10"
+                                step="0.1">
+                        </div>
+                        <div class="input-group input-group-sm" style="width:160px;">
+                            <span class="input-group-text">SL% max</span>
+                            <input type="number" id="slMax" class="form-control" placeholder="max" value="5" step="0.1">
+                        </div>
+                        <div class="input-group input-group-sm" style="width:200px;">
+                            <span class="input-group-text">Sens</span>
+                            <input type="range" id="confSensitivity" min="0" max="2" step="0.05" value="1">
+                        </div>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-striped" id="recsTable">
+                        <thead>
+                            <tr>
+                                <th>Coin</th>
+                                <th>⏱ Timeframe</th>
+                                <th>🎯 Recommendation</th>
+                                <th>🔎 Confidence</th>
+                                <th>💰 Price</th>
+                                <th>🎯 TP</th>
+                                <th>⛔ SL</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade" id="advancedSortModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content bg-dark text-light border border-warning border-opacity-50">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title">⚙️ Advanced Sort & Filter</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-white-50">Susun prioritas hingga 5 kriteria sekaligus dan tambahkan filter
+                        berbasis flow/durability/price position untuk mempersempit pencarian.</p>
+                    <div id="advancedSortCriteriaContainer" class="mb-3"></div>
+                    <button type="button" class="btn btn-sm btn-outline-info" id="addAdvancedSortRow">+ Tambah
+                        Kriteria</button>
+                    <div class="alert alert-dark border border-secondary small mt-3">
+                        <strong>Panduan:</strong> Kriteria #1 dievaluasi terlebih dahulu. Jika nilainya sama, sistem
+                        lanjut ke kriteria berikutnya. Gunakan tombol panah untuk mengubah urutan.
+                    </div>
+                    <hr class="border-secondary">
+                    <h6 class="text-info">Filter Tambahan</h6>
+                    <div class="mb-3">
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" id="advFilterFlowToggle">
+                            <label class="form-check-label small" for="advFilterFlowToggle">Aktifkan Flow Pressure
+                                filter</label>
+                        </div>
+                        <div id="advFilterFlowControls" class="row g-2 align-items-center mb-3 d-none">
+                            <div class="col-md-4">
+                                <select class="form-select form-select-sm" id="advFilterFlowMetric">
+                                    <option value="vol_ratio_1m">Vol Ratio % (1m)</option>
+                                    <option value="vol_ratio_5m">Vol Ratio % (5m)</option>
+                                    <option value="vol_ratio_10m">Vol Ratio % (10m)</option>
+                                    <option value="vol_ratio_15m">Vol Ratio % (15m)</option>
+                                    <option value="vol_ratio_20m">Vol Ratio % (20m)</option>
+                                    <option value="vol_ratio_30m">Vol Ratio % (30m)</option>
+                                    <option value="vol_ratio_1h">Vol Ratio % (1h)</option>
+                                    <option value="vol_ratio">Vol Ratio % (2h)</option>
+                                    <option value="vol_ratio_24h">Vol Ratio % (24h)</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <select class="form-select form-select-sm" id="advFilterFlowComparator">
+                                    <option value=">">&gt; Greater than</option>
+                                    <option value="<">&lt; Less than</option>
+                                    <option value="=">= Equal to</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <input type="number" class="form-control form-control-sm" id="advFilterFlowValue"
+                                    placeholder="Value">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" id="advFilterDurToggle">
+                            <label class="form-check-label small" for="advFilterDurToggle">Aktifkan Durability
+                                filter</label>
+                        </div>
+                        <div id="advFilterDurControls" class="row g-2 align-items-center mb-3 d-none">
+                            <div class="col-md-4">
+                                <select class="form-select form-select-sm" id="advFilterDurMetric">
+                                    <option value="vol_durability_1m">Vol Durability (1m)</option>
+                                    <option value="vol_durability_5m">Vol Durability (5m)</option>
+                                    <option value="vol_durability_10m">Vol Durability (10m)</option>
+                                    <option value="vol_durability_15m">Vol Durability (15m)</option>
+                                    <option value="vol_durability_20m">Vol Durability (20m)</option>
+                                    <option value="vol_durability_30m">Vol Durability (30m)</option>
+                                    <option value="vol_durability_60m">Vol Durability (60m)</option>
+                                    <option value="vol_durability">Vol Durability (120m)</option>
+                                    <option value="vol_durability_24h">Vol Durability (24h)</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <select class="form-select form-select-sm" id="advFilterDurComparator">
+                                    <option value=">">&gt; Greater than</option>
+                                    <option value="<">&lt; Less than</option>
+                                    <option value="=">= Equal to</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <input type="number" class="form-control form-control-sm" id="advFilterDurValue"
+                                    placeholder="Value">
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" id="advFilterPriceToggle">
+                            <label class="form-check-label small" for="advFilterPriceToggle">Aktifkan Price Position
+                                window</label>
+                        </div>
+                        <div id="advFilterPriceControls" class="row g-2 align-items-center d-none">
+                            <div class="col-md-6">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text">Min %</span>
+                                    <input type="number" class="form-control" id="advFilterPriceMin" min="0" max="100"
+                                        placeholder="0-100">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text">Max %</span>
+                                    <input type="number" class="form-control" id="advFilterPriceMax" min="0" max="100"
+                                        placeholder="0-100">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="clearAdvancedSortBtn">
+                        Reset
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-light" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-sm btn-warning text-dark" id="applyAdvancedSort">Apply</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Hidden Alerts Modal -->
+    <div class="modal fade" id="hiddenAlertsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content bg-dark text-light">
+                <div class="modal-header">
+                    <h5 class="modal-title">Hidden Alerts</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="hiddenAlertsModalBody" style="max-height:60vh;overflow:auto;"></div>
+                <div class="modal-footer">
+                    <button type="button" id="restoreHiddenAsBanners" class="btn btn-sm btn-outline-primary">Show as
+                        banners</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                        data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="js/config/metrics-constants.js"></script>
+    <script src="js/config/info-docs.js"></script>
+    <script src="js/core/analytics-core.js"></script>
+    <script src="js/formulas/math-formulas.js"></script>
+    <script src="js/formulas/analytics-formulas.js"></script>
+    <script src="js/formulas/smart-formulas.js"></script>
+    <script src="js/modules/worker-pool.js"></script>
+    <script src="js/modules/helpers.js"></script>
+    <script src="js/modules/alerts.js"></script>
+    <script src="js/modules/sort-options-loader.js"></script>
+    <script src="js/modules/advanced-sort.js"></script>
+    <script src="js/modules/tab-renderers.js"></script>
+    <script src="js/modules/info-tab.js"></script>
+    <script src="js/modules/update-table.js"></script>
+    <script src="websocket-example.js"></script>
+    <script src="js/modules/ws-client.js"></script>
+    <script>
+        // Debug: ensure select is clickable
+        document.addEventListener('DOMContentLoaded', function () {
+            const sel = document.getElementById('sortBy');
+            if (sel) {
+                sel.disabled = false;
+                sel.style.pointerEvents = 'auto';
+                sel.style.position = 'relative';
+                sel.style.zIndex = '9999';
+                console.log('[DEBUG] sortBy select enabled:', !sel.disabled);
+            }
+            // Debug click on select
+            document.addEventListener('click', function (e) {
+                const sel = document.getElementById('sortBy');
+                if (!sel) return;
+                const rect = sel.getBoundingClientRect();
+                if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
+                    const topEl = document.elementFromPoint(e.clientX, e.clientY);
+                    console.log('[DEBUG CLICK] target:', e.target.tagName, e.target.id);
+                    console.log('[DEBUG CLICK] elementFromPoint:', topEl ? topEl.tagName : null, topEl ? topEl.id : null, topEl ? topEl.className : null);
+                    if (topEl !== sel && !sel.contains(topEl)) {
+                        console.warn('[DEBUG CLICK] Something is blocking the select!', topEl);
+                    }
+                }
+            }, true);
+        });
+    </script>
+</body>
+
+</html>
