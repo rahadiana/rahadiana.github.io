@@ -11,6 +11,12 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <title>OKX Futures Trading Dashboard</title>
+    <style>
+        /* Phase-2 UI polish: small muted badges and column sizing */
+        .phase2-badge { font-size: 0.75rem; color: #9aa0a6; margin-left:6px; }
+        .phase2-col { width: 96px; min-width: 80px; text-align: center; }
+        @media (max-width: 900px) { .phase2-col { width: 72px; min-width: 56px; } }
+    </style>
 </head>
 
 <body>
@@ -46,7 +52,13 @@
                 <label for="limitInput" class="form-label">📊 Limit Rows</label>
                 <input type="number" class="form-control" id="limitInput" placeholder="Enter row limit" min="1"
                     value="5">
+                <div class="form-check form-switch mt-2">
+                    <input class="form-check-input" type="checkbox" id="showAdvancedMetricsToggle" checked>
+                    <label class="form-check-label small" for="showAdvancedMetricsToggle">Show Advanced Metrics</label>
+                </div>
             </div>
+            <!-- Spike-specific row limit removed: Spike tab follows global Limit Rows -->
+            
             <div class="col-md-4 d-flex align-items-end">
                 <div class="form-check form-switch me-3">
                     <input class="form-check-input" type="checkbox" id="persistHistoryToggle" checked>
@@ -110,7 +122,10 @@
 
         <div class="d-flex justify-content-between align-items-center mb-2">
             <span id="wsStatus" class="badge bg-warning">🟡 Connecting...</span>
-            <small class="text-muted" id="lastUpdateTime"></small>
+            <div style="text-align:right">
+                <small class="text-muted d-block" id="lastUpdateTime"></small>
+                <small class="text-muted d-block" id="lastSpikeScan">Last spike: -</small>
+            </div>
         </div>
 
         <ul class="nav nav-tabs" id="dataTabs" role="tablist">
@@ -202,20 +217,31 @@
                 <div class="table-responsive">
                     <table class="table table-striped" id="summaryTable">
                         <thead>
-                            <tr>
-                                <th>Coin</th>
-                                <th>💰 Price</th>
-                                <th>📊 Change %</th>
-                                <th>📍 Price Pos</th>
-                                <th>🎯 Recommendation</th>
-                                <th>⚖️ Risk</th>
-                                <th>📊 Vol Ratio % (2h)</th>
-                                <th>📊 Vol Buy (2h)</th>
-                                <th>📊 Vol Sell (2h)</th>
-                                <th>⚖️ Vol Dur (2h)</th>
-                                <th>📊 Vol Buy (24h)</th>
-                                <th>📊 Vol Sell (24h)</th>
-                                <th>⏰ Update</th>
+                            <tr class="advanced-header">
+                                <th rowspan="2">Coin</th>
+                                <th rowspan="2">💰 Price</th>
+                                <th rowspan="2">📊 Change %</th>
+                                <th rowspan="2">📍 Price Pos</th>
+                                <th rowspan="2">🎯 Recommendation</th>
+                                <th rowspan="2">⚖️ Risk</th>
+                                <th rowspan="2">📊 Vol Ratio % (2h)</th>
+                                <th rowspan="2">📊 Vol Buy (2h)</th>
+                                <th rowspan="2">📊 Vol Sell (2h)</th>
+                                <th rowspan="2">⚖️ Vol Dur (2h)</th>
+                                <th rowspan="2">📊 Vol Buy (24h)</th>
+                                <th rowspan="2">📊 Vol Sell (24h)</th>
+                                <th class="advanced-group" colspan="8">Advanced</th>
+                                <th rowspan="2">⏰ Update</th>
+                            </tr>
+                            <tr class="advanced-subheaders">
+                                <th class="advanced-metric">λ (Kyle)</th>
+                                <th class="advanced-metric">VWAP</th>
+                                <th class="advanced-metric">CVD</th>
+                                <th class="advanced-metric">RVOL</th>
+                                <th class="phase2-col advanced-metric">VPIN <small class="phase2-badge">(norm)</small></th>
+                                <th class="phase2-col advanced-metric">Hurst <small class="phase2-badge">(norm)</small></th>
+                                <th class="phase2-col advanced-metric">POC <small class="phase2-badge">(VA)</small></th>
+                                <th class="phase2-col advanced-metric">Depth Imb <small class="phase2-badge">(norm)</small></th>
                             </tr>
                         </thead>
                         <tbody id="summaryBody">
@@ -614,11 +640,24 @@
             </div>
 
             <div class="tab-pane fade" id="spikes" role="tabpanel">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div>
+                        <label class="form-label small me-2">Spike Mode</label>
+                        <select id="spikeModeSelect" class="form-select form-select-sm" style="width:160px; display:inline-block;">
+                            <option value="all">All</option>
+                            <option value="buy-only">Buy-only</option>
+                            <option value="sell-only">Sell-only</option>
+                            <option value="total">Total-only</option>
+                        </select>
+                    </div>
+                    <div><small class="text-muted">This filter applies only to the Spike tab.</small></div>
+                </div>
                 <div class="table-responsive">
                     <table class="table table-striped" id="spikeTable">
                         <thead>
                             <tr>
                                 <th>Coin</th>
+                                <th>Side</th>
                                 <th>⏱ Timeframe</th>
                                 <th>📊 Vol</th>
                                 <th>➗ Avg</th>
@@ -908,12 +947,19 @@
     </div>
     <script src="js/config/metrics-constants.js"></script>
     <script src="js/config/info-docs.js"></script>
-    <script src="js/core/analytics-core.js"></script>
+    <script src="js/formulas/core-availability.js"></script>
+    <script type="module">
+        import AnalyticsCore from './dist/analytics-core.esm.js';
+        globalThis.AnalyticsCore = AnalyticsCore;
+    </script>
+    <script nomodule src="dist/analytics-core.umd.js"></script>
     <script src="js/formulas/math-formulas.js"></script>
     <script src="js/formulas/analytics-formulas.js"></script>
     <script src="js/formulas/smart-formulas.js"></script>
     <script src="js/modules/worker-pool.js"></script>
     <script src="js/modules/helpers.js"></script>
+    <script src="js/modules/storage-utils.js"></script>
+    <script src="js/modules/idb-history.js"></script>
     <script src="js/modules/alerts.js"></script>
     <script src="js/modules/sort-options-loader.js"></script>
     <script src="js/modules/advanced-sort.js"></script>
@@ -931,7 +977,7 @@
                 sel.style.pointerEvents = 'auto';
                 sel.style.position = 'relative';
                 sel.style.zIndex = '9999';
-                console.log('[DEBUG] sortBy select enabled:', !sel.disabled);
+                // console.log('[DEBUG] sortBy select enabled:', !sel.disabled);
             }
             // Debug click on select
             document.addEventListener('click', function (e) {
@@ -940,10 +986,10 @@
                 const rect = sel.getBoundingClientRect();
                 if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
                     const topEl = document.elementFromPoint(e.clientX, e.clientY);
-                    console.log('[DEBUG CLICK] target:', e.target.tagName, e.target.id);
-                    console.log('[DEBUG CLICK] elementFromPoint:', topEl ? topEl.tagName : null, topEl ? topEl.id : null, topEl ? topEl.className : null);
+                    // console.log('[DEBUG CLICK] target:', e.target.tagName, e.target.id);
+                    // console.log('[DEBUG CLICK] elementFromPoint:', topEl ? topEl.tagName : null, topEl ? topEl.id : null, topEl ? topEl.className : null);
                     if (topEl !== sel && !sel.contains(topEl)) {
-                        console.warn('[DEBUG CLICK] Something is blocking the select!', topEl);
+                        // console.warn('[DEBUG CLICK] Something is blocking the select!', topEl);
                     }
                 }
             }, true);

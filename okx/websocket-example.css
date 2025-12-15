@@ -377,3 +377,43 @@ label {
 .form-control::placeholder, .form-select::placeholder {
     color: #cbd5e1 !important;
 }
+
+/* Toggle to hide advanced metrics in summary table */
+.hide-advanced th.advanced-metric,
+.hide-advanced td.advanced-metric {
+    display: none !important;
+}
+
+.hide-advanced th.advanced-group { display: none !important; }
+
+/* Slightly reduce padding when advanced columns hidden to tighten layout */
+.hide-advanced td,
+.hide-advanced th {
+    padding-left: 0.4rem !important;
+    padding-right: 0.4rem !important;
+}
+
+/* Advanced header grouping style */
+.advanced-header th {
+    vertical-align: middle;
+    text-align: center;
+    font-size: 0.78rem;
+    padding: 0.35rem 0.45rem !important;
+}
+
+.advanced-subheaders th.advanced-metric {
+    font-size: 0.72rem;
+    padding: 0.25rem 0.35rem !important;
+}
+
+/* Make phase2 cols slightly narrower */
+.phase2-col {
+    width: 84px; min-width: 60px; text-align: center;
+    padding-left: 0.25rem !important; padding-right: 0.25rem !important;
+}
+
+/* Reduce TD padding for advanced metric cells for compact layout */
+td.advanced-metric { padding: 0.25rem 0.35rem !important; font-size: 0.82rem; }
+
+/* Slightly dim the secondary header row to separate groups visually */
+.advanced-subheaders th { background: rgba(255,255,255,0.02) !important; }

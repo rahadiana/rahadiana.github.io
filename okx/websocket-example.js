@@ -24,8 +24,9 @@
 
         // debounce is in js/modules/helpers.js
 
-        // Schedule updates to the table at most once per 300ms (increased from 150ms for high-volume streams)
-        // `updateTable` is defined later; debounce will call it when available.
+        // Real-time mode: when enabled, reduce debounce and avoid dropping updates
+        window.REALTIME_MODE = (typeof window.REALTIME_MODE === 'boolean') ? window.REALTIME_MODE : true;
+        // Schedule updates to the table (debounced). Use shorter debounce in REALTIME_MODE.
         const scheduleUpdateTable = debounce(function () {
             try { 
                 if (typeof updateTable === 'function') {
@@ -37,11 +38,11 @@
                 }
             }
             catch (e) { console.error('[scheduleUpdateTable] error:', e); }
-        }, 300);
+        }, window.REALTIME_MODE ? 50 : 300);
         
         // Throttle per-coin updates to avoid processing same coin too frequently
         const lastCoinUpdate = {};
-        const COIN_THROTTLE_MS_MIN = 100; // Min 100ms between same coin updates
+        const COIN_THROTTLE_MS_MIN = 50; // Min 50ms between same coin updates
         const COIN_THROTTLE_MS_MAX = 500; // Max 500ms during high load
         let adaptiveThrottleMs = COIN_THROTTLE_MS_MIN;
         
@@ -52,17 +53,22 @@
             _msgRatePerSec = _msgCount;
             _msgCount = 0;
             // Adaptive throttle based on message rate
-            if (_msgRatePerSec > 500) {
-                adaptiveThrottleMs = COIN_THROTTLE_MS_MAX;
-            } else if (_msgRatePerSec > 200) {
-                adaptiveThrottleMs = 300;
-            } else if (_msgRatePerSec < 100) {
+            if (!window.REALTIME_MODE) {
+                if (_msgRatePerSec > 500) {
+                    adaptiveThrottleMs = COIN_THROTTLE_MS_MAX;
+                } else if (_msgRatePerSec > 200) {
+                    adaptiveThrottleMs = 300;
+                } else if (_msgRatePerSec < 100) {
+                    adaptiveThrottleMs = COIN_THROTTLE_MS_MIN;
+                }
+            } else {
+                // In realtime mode keep throttle minimal
                 adaptiveThrottleMs = COIN_THROTTLE_MS_MIN;
             }
         }, 1000);
         
         function getAdaptiveThrottle() {
-            return adaptiveThrottleMs;
+            return window.REALTIME_MODE ? 0 : adaptiveThrottleMs;
         }
         
         let activeFilterTab = 'summary';
@@ -101,6 +107,7 @@
         // Listen for changes to the limit
         limitInput.addEventListener('input', (event) => {
             rowLimit = parseInt(event.target.value, 10) || Infinity;
+            try { window.rowLimit = rowLimit; } catch (e) { }
             scheduleUpdateTable(); // Update table when limit changes (debounced)
         });
 
@@ -151,10 +158,10 @@
         // Wire compact alert controls
         try {
             if (compactAlertsToggle) compactAlertsToggle.addEventListener('change', (ev) => {
-                try { localStorage.setItem('okx_compact_alerts', ev.target.checked ? 'true' : 'false'); } catch (e) { }
+                try { if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet('okx_compact_alerts', ev.target.checked ? 'true' : 'false'); else localStorage.setItem('okx_compact_alerts', ev.target.checked ? 'true' : 'false'); } catch (e) { }
             });
             if (maxAlertBannersInput) maxAlertBannersInput.addEventListener('input', (ev) => {
-                try { localStorage.setItem('okx_max_alert_banners', String(parseInt(ev.target.value, 10) || 0)); } catch (e) { }
+                try { if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet('okx_max_alert_banners', String(parseInt(ev.target.value, 10) || 0)); else localStorage.setItem('okx_max_alert_banners', String(parseInt(ev.target.value, 10) || 0)); } catch (e) { }
             });
             if (showHiddenAlertsBtn) showHiddenAlertsBtn.addEventListener('click', (ev) => {
                 try {
@@ -553,26 +560,44 @@
         window.coinDataMap = coinDataMap; // Expose immediately!
         
         // ===================== PRELOAD HISTORY ONLY (NOT DATA) =====================
-        // Preload history arrays from localStorage for analytics continuity
+        // Preload history arrays from IndexedDB for analytics continuity (async)
         // But DON'T render - wait for real WebSocket data
-        function preloadHistoryFromStorage() {
+        async function preloadHistoryFromStorage() {
             try {
-                const PERSIST_KEY = 'okx_calc_persist_history';
-                const store = JSON.parse(localStorage.getItem(PERSIST_KEY) || '{}');
-                const coins = Object.keys(store);
-                
-                if (coins.length === 0) return;
-                
-                // Store only history arrays, data will come from WebSocket
-                window._preloadedHistory = store;
-                console.log(`[Startup] Preloaded history for ${coins.length} coins`);
-            } catch (e) { 
-                console.warn('[Startup] Failed to preload history:', e); 
+                if (window.idbHistory && typeof window.idbHistory.loadAllHistories === 'function') {
+                    const store = await window.idbHistory.loadAllHistories();
+                    if (store && Object.keys(store).length) {
+                        window._preloadedHistory = store;
+                        console.log('[Startup] Preloaded history from IndexedDB for', Object.keys(store).length, 'coins');
+                    }
+                } else {
+                    // If IndexedDB not available, leave _preloadedHistory empty and rely on in-memory
+                    window._preloadedHistory = {};
+                }
+            } catch (e) {
+                console.warn('[Startup] Failed to preload history from IDB:', e);
+                window._preloadedHistory = {};
             }
         }
-        
-        // Run preload immediately
+
+        // Run preload immediately (async)
         preloadHistoryFromStorage();
+
+        // Delegated click handler: ensure clicks anywhere in a summary row open the insight tab.
+
+        // Additionally try IndexedDB preload if available (async)
+        try {
+            if (window.idbHistory && typeof window.idbHistory.loadAllHistories === 'function') {
+                window.idbHistory.loadAllHistories().then(store => {
+                    if (store && Object.keys(store).length) {
+                        window._preloadedHistory = Object.assign({}, window._preloadedHistory || {}, store);
+                        console.log('[Startup] Preloaded history from IndexedDB for', Object.keys(store).length, 'coins');
+                    }
+                }).catch(err => {
+                    console.warn('[Startup] idb preload failed', err);
+                });
+            }
+        } catch (e) { /* ignore */ }
 
         // Delegated click handler: ensure clicks anywhere in a summary row open the insight tab.
         try {
@@ -655,11 +680,25 @@
             // Track message rate for adaptive throttling
             _msgCount++;
             
-            // Throttle per-coin: skip if same coin was updated less than adaptive throttle ago
+            // Throttle per-coin: if updates are too frequent, do a lightweight in-memory refresh
             const lastUpdate = lastCoinUpdate[coin] || 0;
             const throttleMs = getAdaptiveThrottle();
-            if (now - lastUpdate < throttleMs) {
-                return; // Skip this update, too soon
+            if (throttleMs > 0 && (now - lastUpdate < throttleMs)) {
+                try {
+                    // Lightweight update: copy a few key fields so UI uses freshest price/change
+                    const existing = coinDataMap[coin] || {};
+                    const minimal = {};
+                    const copyKeys = ['last', 'percent_change', 'update_time', 'update_time_VOLCOIN', 'high', 'low'];
+                    for (const k of copyKeys) { if (raw[k] !== undefined) minimal[k] = raw[k]; else if (raw[k.toLowerCase()] !== undefined) minimal[k] = raw[k.toLowerCase()]; }
+                    if (Object.keys(minimal).length) {
+                        coinDataMap[coin] = Object.assign({}, existing, minimal);
+                        window.coinDataMap = coinDataMap;
+                    }
+                    // still schedule a table refresh (debounced) so UI updates soon
+                    try { scheduleUpdateTable(); } catch (e) { }
+                } catch (e) { /* ignore lightweight update errors */ }
+                // do not proceed with heavy processing to keep realtime responsiveness
+                return;
             }
             lastCoinUpdate[coin] = now;
             
@@ -720,10 +759,34 @@
 
             // attach analytics and maintain short history for sparkline and z-scores
             try {
-                data._analytics = computeAnalytics(data);
-                // mirror into new `analytics` property to support unified accessors
+                // Synchronous fallback: compute on main thread (fast for small payloads)
+                try { data._analytics = computeAnalytics(data); } catch (e) { data._analytics = {}; }
+                // Mirror into `analytics` for compatibility
                 try { data.analytics = data._analytics; } catch (e) { /* ignore */ }
                 data.risk_score = ((data.analytics || data._analytics) && (data.analytics || data._analytics).riskScore) || data.risk_score || 0;
+                // Offload heavier analytics to worker pool when available and replace later
+                try {
+                    if (window.workerPool && typeof window.workerPool.computeAnalyticsBatch === 'function') {
+                        // create a shallow copy with only needed serializable fields to avoid sending DOM nodes
+                        const payload = Object.assign({}, data);
+                        // fire-and-forget; when worker returns, update data and re-render
+                        window.workerPool.computeAnalyticsBatch([payload]).then(res => {
+                            try {
+                                if (Array.isArray(res) && res[0]) {
+                                    data._analytics = res[0];
+                                    try { data.analytics = data._analytics; } catch (e) { }
+                                    // Ensure coinDataMap gets updated and UI refreshed
+                                    if (window.coinDataMap && window.coinDataMap[coin]) {
+                                        window.coinDataMap[coin] = data;
+                                        try { if (typeof scheduleUpdateTable === 'function') scheduleUpdateTable(); } catch (e) { }
+                                    }
+                                }
+                            } catch (e) { console.warn('worker analytics apply failed', e); }
+                        }).catch(err => {
+                            // worker failed; keep main-thread analytics
+                        });
+                    }
+                } catch (e) { /* ignore worker errors */ }
                 // keep history; prefer persisted history when available
                 if (!data._history || !Array.isArray(data._history) || data._history.length === 0) {
                     // try load from preloaded first (faster), then from localStorage
@@ -1017,7 +1080,7 @@
         window.getAdvancedSortState = function() { return advancedSortState; };
         
         // Update rowLimit when limitInput changes
-        limitInput.addEventListener('change', () => { window.rowLimit = parseInt(limitInput.value, 10) || Infinity; });
+        limitInput.addEventListener('change', () => { window.rowLimit = parseInt(limitInput.value, 10) || Infinity; scheduleUpdateTable(); });
 
         // Functions moved to modules:
         // - updateTable -> js/modules/update-table.js
