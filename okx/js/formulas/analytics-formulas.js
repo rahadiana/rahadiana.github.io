@@ -237,6 +237,57 @@ function computeAnalytics(p) {
     out.velocityOfImbalance = (bias1m - bias5m) / 5;
     out.volumeBiasMap = Object.fromEntries(Object.entries(timeframeMetrics).map(([tf, vals]) => [tf, vals.volBias || 0]));
 
+    // Advanced Tier-1 metrics (use AnalyticsCore if available)
+    try {
+        const history = Array.isArray(p._history) ? p._history.slice(-120) : (Array.isArray(p.history) ? p.history.slice(-120) : []);
+        const core = (typeof window !== 'undefined' && window.AnalyticsCore) ? window.AnalyticsCore : null;
+        if (core && typeof core.computeKyleLambda === 'function') {
+            out.kyleLambda = core.computeKyleLambda(history, { lookbackPeriods: 20, minSamples: 10, smoothingWindow: 5 });
+        } else {
+            out.kyleLambda = { valid: false };
+        }
+
+        if (core && typeof core.computeVWAPBands === 'function') {
+            out.vwapBands = core.computeVWAPBands(history, { lookbackPeriods: 120, stdMultiplier: 2.0, adaptiveMultiplier: true, minMultiplier: 1.5, maxMultiplier: 3.0 });
+        } else {
+            out.vwapBands = { valid: false };
+        }
+
+        if (core && typeof core.computeCVD === 'function') {
+            out.cvd = core.computeCVD(history, { window: 'all', normalizationMethod: 'total', smoothingPeriod: 3 });
+        } else {
+            out.cvd = { valid: false };
+        }
+
+        if (core && typeof core.computeRVOL === 'function') {
+            out.rvol = core.computeRVOL(history, { baselinePeriods: 14, minSamplesRequired: 10 });
+        } else {
+            out.rvol = { valid: false };
+        }
+        // Normalized Tier-1 composite scores
+        try {
+            if (core && typeof core.computeTier1Normalized === 'function') {
+                out.tier1 = core.computeTier1Normalized({ kyleLambda: out.kyleLambda, vwapBands: out.vwapBands, cvd: out.cvd, rvol: out.rvol });
+            }
+        } catch (e) { /* ignore normalization errors */ }
+
+        // Phase-2 advanced metrics
+        try {
+            if (core && typeof core.computeVPIN === 'function') {
+                out.vpin = core.computeVPIN(history, { lookbackBars: 50, minSamples: 10 });
+            }
+            if (core && typeof core.computeHurstExponent === 'function') {
+                out.hurst = core.computeHurstExponent(history, { minSamples: 50 });
+            }
+            if (core && typeof core.computeVolumeProfilePOC === 'function') {
+                out.volumeProfile = core.computeVolumeProfilePOC(history, { bins: 24 });
+            }
+            if (core && typeof core.computeDepthImbalance === 'function') {
+                out.depthImbalance = core.computeDepthImbalance((Array.isArray(p._history) ? p._history.slice(-1)[0] : p) || p);
+            }
+        } catch (e) { /* ignore phase-2 errors */ }
+    } catch (e) { out.kyleLambda = out.vwapBands = out.cvd = out.rvol = { valid: false }; }
+
     return out;
 }
 
@@ -276,10 +327,23 @@ function calculateRecommendation(data, pricePosition, timeframe, applyState = fa
             };
             const info = map[String(timeframe)] || null;
             if (info) {
-                volBuyTf = getNumeric(data, info.buyKey) || 0;
-                volSellTf = getNumeric(data, info.sellKey) || 0;
-                volDurTf = getNumeric(data, info.volKey) || (volBuyTf + volSellTf > 0 ? Math.round((volBuyTf / (volBuyTf + volSellTf)) * 100) : null);
-                zImbalanceTf = _tanh(((volBuyTf || 0) - (volSellTf || 0)) / Math.max((volBuyTf || 0) + (volSellTf || 0), 1));
+                // Prefer analytics timeframes (computed metrics) when available
+                const tfKey = String(timeframe);
+                const tfMetrics = a && a.timeframes && a.timeframes[tfKey] ? a.timeframes[tfKey] : null;
+                if (tfMetrics) {
+                    volBuyTf = Number(tfMetrics.volBuy || tfMetrics.vol_buy || 0) || 0;
+                    volSellTf = Number(tfMetrics.volSell || tfMetrics.vol_sell || 0) || 0;
+                    const total = (volBuyTf || 0) + (volSellTf || 0);
+                    volDurTf = total > 0 ? Math.round((volBuyTf / total) * 100) : null;
+                    zImbalanceTf = _tanh(((volBuyTf || 0) - (volSellTf || 0)) / Math.max(total, 1));
+                } else {
+                    // Fallback to raw aliases in payload
+                    volBuyTf = getNumeric(data, info.buyKey) || 0;
+                    volSellTf = getNumeric(data, info.sellKey) || 0;
+                    const total = (volBuyTf || 0) + (volSellTf || 0);
+                    volDurTf = getNumeric(data, info.volKey) || (total > 0 ? Math.round((volBuyTf / total) * 100) : null);
+                    zImbalanceTf = _tanh(((volBuyTf || 0) - (volSellTf || 0)) / Math.max(total, 1));
+                }
             }
         }
     } catch (e) { }

@@ -10,11 +10,17 @@
     'use strict';
 
     // ===================== Helper: Get AnalyticsCore =====================
+    // Use centralized helper (globalThis.getAnalyticsCore) when available.
     function getCore() {
-        if (typeof AnalyticsCore !== 'undefined') {
-            return AnalyticsCore;
+        if (typeof globalThis !== 'undefined' && typeof globalThis.getAnalyticsCore === 'function') {
+            return globalThis.getAnalyticsCore();
         }
-        console.warn('[smart-formulas] AnalyticsCore not loaded, using fallback');
+        if (typeof AnalyticsCore !== 'undefined') return AnalyticsCore;
+        // Final fallback: warn once locally
+        if (!getCore._warned) {
+            getCore._warned = true;
+            console.warn('[smart-formulas] AnalyticsCore not loaded, using fallback');
+        }
         return null;
     }
 

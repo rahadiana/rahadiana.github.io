@@ -12,22 +12,27 @@ function CheckInfinity(value, avg) {
     return persentase;
 }
 
+// ===================== Helper: Get AnalyticsCore (centralized) =====================
+function getCoreMath() {
+    if (typeof globalThis !== 'undefined' && typeof globalThis.getAnalyticsCore === 'function') {
+        return globalThis.getAnalyticsCore();
+    }
+    if (typeof AnalyticsCore !== 'undefined') return AnalyticsCore;
+    if (!getCoreMath._warned) {
+        getCoreMath._warned = true;
+        console.warn('[math-formulas] AnalyticsCore not loaded; using fallback');
+    }
+    return null;
+}
+
 /**
  * Returns the mean and population standard deviation for a numeric series.
  * @deprecated Prefer using AnalyticsCore.meanStd if available
  */
 function meanStd(arr) {
-    // Delegate to AnalyticsCore if available
-    if (typeof AnalyticsCore !== 'undefined' && AnalyticsCore.meanStd) {
-        return AnalyticsCore.meanStd(arr);
-    }
-    // Fallback implementation
-    if (!arr || arr.length === 0) return { mean: 0, std: 0 };
-    const nums = arr.filter(x => Number.isFinite(x));
-    if (nums.length === 0) return { mean: 0, std: 0 };
-    const mean = nums.reduce((sum, v) => sum + v, 0) / nums.length;
-    const variance = nums.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / nums.length;
-    return { mean, std: Math.sqrt(variance) };
+    const core = getCoreMath();
+    if (core && core.meanStd) return core.meanStd(arr);
+    return { mean: 0, std: 0 };
 }
 
 /**
@@ -45,26 +50,8 @@ function _tanh(x) {
  */
 function computeATR(history, periods = 14) {
     // Delegate to AnalyticsCore if available (it has the proper True Range calculation)
-    if (typeof AnalyticsCore !== 'undefined' && AnalyticsCore.computeATR) {
-        return AnalyticsCore.computeATR(history, periods);
-    }
-    // Fallback: simplified average absolute change
-    try {
-        if (!history || !Array.isArray(history) || history.length < 2) return 0;
-        const arr = history.slice(-Math.max(periods, 2));
-        let sum = 0;
-        let count = 0;
-        for (let i = 1; i < arr.length; i++) {
-            const p0 = Number(arr[i - 1].price) || Number(arr[i - 1].last) || 0;
-            const p1 = Number(arr[i].price) || Number(arr[i].last) || 0;
-            if (p0 > 0 && p1 > 0) {
-                sum += Math.abs(p1 - p0);
-                count++;
-            }
-        }
-        return count > 0 ? (sum / count) : 0;
-    } catch (e) {
-        return 0;
-    }
+    const core = getCoreMath();
+    if (core && core.computeATR) return core.computeATR(history, periods);
+    return 0;
 }
 
