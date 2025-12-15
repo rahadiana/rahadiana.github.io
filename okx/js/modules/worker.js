@@ -8,7 +8,56 @@ try {
     console.error('[worker] failed to import analytics-core.js', e);
 }
 
+// Notify main thread that worker script executed (helps diagnose load/import errors)
+try {
+    self.postMessage({ id: -2, success: true, info: 'worker-classic-init', script: 'js/modules/worker.js' });
+} catch (e) { /* ignore */ }
+
+// Load WebGPU config first so helper can read flags — wrap loads to surface precise failures
+try {
+    try {
+        importScripts('../config/webgpu-config.js');
+    } catch (err) {
+        self.postMessage({ id: -1, phase: 'import-webgpu-config', success: false, error: String(err), stack: err && err.stack ? err.stack : undefined });
+        throw err;
+    }
+    try {
+        importScripts('webgpu-weight.js');
+    } catch (err) {
+        // non-fatal but still report exact failure
+        self.postMessage({ id: -1, phase: 'import-webgpu-weight', success: false, error: String(err), stack: err && err.stack ? err.stack : undefined });
+    }
+} catch (e) {
+    // If config load failed we rethrow to make the failure obvious in dev tools
+    throw e;
+}
 let EMIT_LEGACY = true;
+// Global error handlers to forward detailed errors to main thread for easier debugging
+self.addEventListener('error', function (ev) {
+    try {
+        const payload = {
+            message: ev && ev.message ? String(ev.message) : (ev && ev.type ? String(ev.type) : String(ev)),
+            filename: ev && ev.filename ? ev.filename : undefined,
+            lineno: ev && ev.lineno ? ev.lineno : undefined,
+            colno: ev && ev.colno ? ev.colno : undefined,
+            stack: ev && ev.error && ev.error.stack ? ev.error.stack : undefined,
+            type: ev && ev.type ? ev.type : 'error'
+        };
+        self.postMessage({ id: -1, success: false, error: payload });
+    } catch (e) { /* ignore */ }
+});
+
+self.addEventListener('unhandledrejection', function (ev) {
+    try {
+        const reason = ev && ev.reason ? ev.reason : ev;
+        const payload = {
+            message: reason && reason.message ? String(reason.message) : String(reason),
+            stack: reason && reason.stack ? reason.stack : undefined,
+            type: ev && ev.type ? ev.type : 'unhandledrejection'
+        };
+        self.postMessage({ id: -1, success: false, error: payload });
+    } catch (e) { /* ignore */ }
+});
 
 self.onmessage = function(e) {
     const { id, type, payload } = e.data || {};

@@ -510,6 +510,11 @@
             this.busyWorkers = new Set();
             this.initialized = false;
             this.emitLegacy = true; // default: keep emitting legacy flattened keys
+            // Prefer classic workers by default to maximize compatibility in older browsers
+            this.preferClassic = true;
+            // Respawn/backoff policy
+            this.maxWorkerRespawn = 2;
+            this.initialRespawnDelay = 1000; // ms
             this.stats = {
                 tasksCompleted: 0,
                 tasksQueued: 0,
@@ -522,18 +527,47 @@
             
             const classicScript = 'js/modules/worker.js';
             const moduleScript = 'js/modules/worker.mjs';
+            // Quick non-blocking checks to help diagnose worker load issues (logs HTTP status / content-type)
+            try {
+                fetch(moduleScript, { method: 'GET' }).then(r => console.log('[WorkerPool] moduleScript fetch', moduleScript, r.status, r.headers.get('content-type'))).catch(err => console.warn('[WorkerPool] moduleScript fetch failed', moduleScript, err));
+            } catch (e) {}
+            try {
+                fetch(classicScript, { method: 'GET' }).then(r => console.log('[WorkerPool] classicScript fetch', classicScript, r.status, r.headers.get('content-type'))).catch(err => console.warn('[WorkerPool] classicScript fetch failed', classicScript, err));
+            } catch (e) {}
             for (let i = 0; i < this.size; i++) {
                 let worker;
+                let usedScript = null;
                 try {
-                    // Prefer module worker when supported
-                    worker = new Worker(moduleScript, { type: 'module' });
+                    if (this.preferClassic) {
+                        worker = new Worker(classicScript);
+                        usedScript = classicScript;
+                    } else {
+                        // Prefer module worker when supported
+                        worker = new Worker(moduleScript, { type: 'module' });
+                        usedScript = moduleScript;
+                    }
                 } catch (e) {
-                    // Fallback to classic worker
-                    worker = new Worker(classicScript);
+                    // Fallback to the other script if creation failed
+                    try {
+                        worker = new Worker(this.preferClassic ? moduleScript : classicScript, this.preferClassic ? { type: 'module' } : undefined);
+                        usedScript = this.preferClassic ? moduleScript : classicScript;
+                    } catch (ee) {
+                        console.error('[WorkerPool] Failed to spawn worker with either script', ee);
+                        continue;
+                    }
                 }
                 worker.id = i;
+                worker._inited = false;
+                worker._errorCount = 0;
+                worker._retryDelay = this.initialRespawnDelay;
+                // if worker doesn't post an init message within 5s, warn
+                const initTimer = setTimeout(() => {
+                    if (!worker._inited) console.warn(`[WorkerPool] Worker ${worker.id} did not send init message (script: ${usedScript}) within 5s`);
+                }, 5000);
+                worker._clearInitTimer = () => clearTimeout(initTimer);
                 worker.onmessage = (e) => this._handleMessage(worker, e);
                 worker.onerror = (e) => this._handleError(worker, e);
+                console.log(`[WorkerPool] Spawned worker ${i} using ${usedScript}`);
                 this.workers.push(worker);
             }
 
@@ -549,7 +583,24 @@
         }
 
         _handleMessage(worker, e) {
-            const { id, success, result, error } = e.data;
+            const { id, success, result, error, init } = e.data || {};
+            // detect init messages from worker (id: -2 or explicit init flag)
+            if (typeof id !== 'undefined' && id === -2 || init === true || e.data && e.data.info) {
+                worker._inited = true;
+                if (typeof worker._clearInitTimer === 'function') worker._clearInitTimer();
+                try { console.log(`[WorkerPool] Worker ${worker.id} init:`, e.data); } catch (ex) {}
+            }
+            const { id: _id, success: _success, result: _result, error: _error } = { id, success, result, error };
+            // Special: worker forwarded runtime errors use id === -1
+            if (typeof id !== 'undefined' && id === -1) {
+                try {
+                    console.error(`[WorkerPool] Worker ${worker.id} forwarded error:`, { success, error, result });
+                } catch (ex) {
+                    console.error(`[WorkerPool] Worker ${worker.id} forwarded error (raw):`, e.data);
+                }
+                // don't treat this as a task completion
+                return;
+            }
             const task = this.pendingTasks.get(id);
             
             if (task) {
@@ -570,9 +621,52 @@
         }
 
         _handleError(worker, e) {
-            console.error(`[WorkerPool] Worker ${worker.id} error:`, e);
+            // Log detailed ErrorEvent fields where available
+            try {
+                const msg = e && e.message ? e.message : (e && e.error && e.error.message ? e.error.message : String(e));
+                const file = e && e.filename ? e.filename : (e && e.fileName ? e.fileName : undefined);
+                const lineno = e && e.lineno ? e.lineno : (e && e.lineNumber ? e.lineNumber : undefined);
+                const colno = e && e.colno ? e.colno : (e && e.columnNumber ? e.columnNumber : undefined);
+                console.error(`[WorkerPool] Worker ${worker.id} error:`, { message: msg, file, lineno, colno, event: e });
+            } catch (logErr) {
+                console.error(`[WorkerPool] Worker ${worker.id} error:`, e);
+            }
             this.busyWorkers.delete(worker.id);
             this._processQueue();
+
+            // Respawn with limited retries and exponential backoff to avoid tight loops
+            worker._errorCount = (worker._errorCount || 0) + 1;
+            if (worker._errorCount <= this.maxWorkerRespawn) {
+                const retryDelay = worker._retryDelay || this.initialRespawnDelay || 1000;
+                console.warn(`[WorkerPool] Scheduling respawn of worker ${worker.id} in ${retryDelay}ms (attempt ${worker._errorCount}/${this.maxWorkerRespawn})`);
+                try { worker.terminate(); } catch (tErr) { /* ignore */ }
+                setTimeout(() => {
+                    try {
+                        let newWorker;
+                        if (this.preferClassic) newWorker = new Worker('js/modules/worker.js');
+                        else newWorker = new Worker('js/modules/worker.mjs', { type: 'module' });
+                        newWorker.id = worker.id;
+                        newWorker._errorCount = worker._errorCount;
+                        newWorker._retryDelay = Math.min((worker._retryDelay || this.initialRespawnDelay) * 2, 30000);
+                        newWorker.onmessage = (ev) => this._handleMessage(newWorker, ev);
+                        newWorker.onerror = (ev) => this._handleError(newWorker, ev);
+                        const idx = this.workers.findIndex(w => w === worker || w.id === worker.id);
+                        if (idx >= 0) this.workers[idx] = newWorker; else this.workers.push(newWorker);
+                        try { newWorker.postMessage({ type: 'config', payload: { emitLegacy: !!this.emitLegacy } }); } catch (e) { /* ignore */ }
+                        console.log(`[WorkerPool] Respawned worker ${newWorker.id}`);
+                    } catch (respawnErr) {
+                        console.error('[WorkerPool] Failed to respawn worker', respawnErr);
+                    }
+                }, retryDelay);
+                // increase worker retry delay for next attempt
+                worker._retryDelay = Math.min((worker._retryDelay || this.initialRespawnDelay) * 2, 30000);
+            } else {
+                // Give up: terminate and remove worker
+                console.error(`[WorkerPool] Worker ${worker.id} exceeded max respawn attempts; removing`);
+                try { worker.terminate(); } catch (tErr) { /* ignore */ }
+                const idx = this.workers.findIndex(w => w === worker || w.id === worker.id);
+                if (idx >= 0) this.workers.splice(idx, 1);
+            }
         }
 
         _getIdleWorker() {
