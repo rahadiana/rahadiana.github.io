@@ -21,6 +21,13 @@
             freqRatio: document.getElementById('coinFilter_freqRatio'),
             smart: document.getElementById('coinFilter_smart')
         };
+// If ws-client buffered messages, flush them now that handler exists
+try {
+    if (typeof window._flushWsBuffer === 'function') {
+        const flushed = window._flushWsBuffer();
+        if (flushed) console.info('[ws-client] Flushed', flushed, 'buffered messages');
+    }
+} catch (e) { }
 
         // debounce is in js/modules/helpers.js
 
@@ -39,6 +46,8 @@
             }
             catch (e) { console.error('[scheduleUpdateTable] error:', e); }
         }, window.REALTIME_MODE ? 50 : 300);
+        // Expose globally so other modules can schedule updates
+        try { window.scheduleUpdateTable = scheduleUpdateTable; } catch (e) { }
         
         // Throttle per-coin updates to avoid processing same coin too frequently
         const lastCoinUpdate = {};
@@ -651,6 +660,9 @@
         };
 
         window.onWsMessage = function onWsMessage(event) {
+            try {
+                // console.info('[onWsMessage] entry — rawLen:', event && event.data && event.data.length ? event.data.length : 'n/a');
+            } catch (e) { }
             const raw = JSON.parse(event.data);
             // If incoming message nests actual fields under `data`/`payload`/`message`, flatten them
             try {
@@ -664,6 +676,9 @@
             const coin = raw.coin; // Extract the coin from data
             // store last raw message and coin for UI inspection
             try { window._lastWsRaw = raw; window._lastReceivedCoin = coin; } catch (e) { }
+            try { 
+                // console.info('[onWsMessage] parsed coin:', coin); 
+            } catch (e) { }
             
             // Update last received time in UI (throttled to reduce DOM updates)
             const now = Date.now();
@@ -1037,6 +1052,9 @@
             // Store sanitized data by coin
             coinDataMap[coin] = data;
             window.coinDataMap = coinDataMap; // keep window in sync
+            try {
+                //  console.info('[onWsMessage] stored coinDataMap for', coin, 'fields:', Object.keys(data).length); 
+                } catch (e) { }
 
             // Evaluate alert rules for this incoming data (non-blocking)
             try { if (typeof evaluateAlertRulesForData === 'function') evaluateAlertRulesForData(data); } catch (e) { console.warn('evaluateAlertRules call failed', e); }

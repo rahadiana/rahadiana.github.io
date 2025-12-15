@@ -6,6 +6,11 @@ var reconnectTimeout = null;
 var wsStatus = 'disconnected'; // 'connecting', 'connected', 'disconnected'
 var messageCount = 0;
 var lastResetTime = Date.now();
+// Buffer incoming messages until the app registers `window.onWsMessage`
+var _wsMessageBuffer = [];
+var _wsFlushInterval = null;
+// How long to keep polling for a handler before dropping buffered messages
+var _WS_FLUSH_TIMEOUT_MS = 30000; // 30s
 
 // Exponential backoff configuration
 var reconnectDelay = 1000; // Start with 1 second
@@ -46,8 +51,62 @@ function attachHandlers(socket) {
     socket.onmessage = function (event) {
         messageCount++;
         updateLastActivity(); // Update activity time for heartbeat
-        try { if (typeof window.onWsMessage === 'function') window.onWsMessage(event); } catch (e) { console.error('onWsMessage handler error', e); }
+        try {
+            if (typeof window.onWsMessage === 'function') {
+                // If handler exists, flush any buffered messages first
+                if (_wsMessageBuffer && _wsMessageBuffer.length) {
+                    try {
+                        for (const ev of _wsMessageBuffer) {
+                            try { window.onWsMessage(ev); } catch (err) { console.error('onWsMessage handler error (buffered)', err); }
+                        }
+                    } catch (err) { }
+                    _wsMessageBuffer = [];
+                }
+                // deliver current
+                window.onWsMessage(event);
+            } else {
+                // buffer until handler registered
+                _wsMessageBuffer.push(event);
+                // start a short poll to flush when handler becomes available
+                if (!_wsFlushInterval) {
+                    let waited = 0;
+                    _wsFlushInterval = setInterval(() => {
+                        if (typeof window.onWsMessage === 'function') {
+                            try {
+                                for (const ev of _wsMessageBuffer) {
+                                    try { window.onWsMessage(ev); } catch (err) { console.error('onWsMessage handler error (flushed)', err); }
+                                }
+                            } catch (e) { }
+                            _wsMessageBuffer = [];
+                            clearInterval(_wsFlushInterval);
+                            _wsFlushInterval = null;
+                        }
+                        waited += 100;
+                        if (waited > _WS_FLUSH_TIMEOUT_MS) { // stop polling after timeout
+                            _wsMessageBuffer = [];
+                            clearInterval(_wsFlushInterval);
+                            _wsFlushInterval = null;
+                        }
+                    }, 100);
+                }
+            }
+        } catch (e) { console.error('onWsMessage handler error', e); }
     };
+
+// Expose a manual flush function so consumers can force delivery of buffered messages
+window._flushWsBuffer = function () {
+    try {
+        if (!_wsMessageBuffer || !_wsMessageBuffer.length) return 0;
+        if (typeof window.onWsMessage !== 'function') return 0;
+        for (const ev of _wsMessageBuffer) {
+            try { window.onWsMessage(ev); } catch (err) { console.error('onWsMessage handler error (manual flush)', err); }
+        }
+        const n = _wsMessageBuffer.length;
+        _wsMessageBuffer = [];
+        if (_wsFlushInterval) { clearInterval(_wsFlushInterval); _wsFlushInterval = null; }
+        return n;
+    } catch (e) { return 0; }
+};
     socket.onclose = function (ev) {
         console.log('WebSocket closed', ev && ev.code);
         stopHeartbeat(); // Stop heartbeat on close

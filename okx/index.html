@@ -953,65 +953,51 @@
         globalThis.AnalyticsCore = AnalyticsCore;
         try { document.dispatchEvent(new CustomEvent('AnalyticsCore:loaded')); } catch (e) { /* ignore */ }
     </script>
+    <!-- Ensure WebSocket client connects immediately (do not wait for AnalyticsCore) -->
+    <script src="js/modules/ws-client.js"></script>
+
+    <script src="js/config/metrics-constants.js"></script>
+    <script src="js/config/info-docs.js"></script>
+    <script src="js/core/analytics-core.js"></script>
+    <script src="js/formulas/math-formulas.js"></script>
+    <script src="js/formulas/analytics-formulas.js"></script>
+    <script src="js/formulas/smart-formulas.js"></script>
+    <script src="js/modules/worker-pool.js"></script>
+    <script src="js/modules/helpers.js"></script>
+    <script src="js/modules/alerts.js"></script>
+    <script src="js/modules/sort-options-loader.js"></script>
+    <script src="js/modules/advanced-sort.js"></script>
+    <script src="js/modules/tab-renderers.js"></script>
+    <script src="js/modules/info-tab.js"></script>
+    <script src="js/modules/update-table.js"></script>
+    <script src="websocket-example.js"></script>
+    <script src="js/modules/ws-client.js"></script>
     <script>
-        // Load remaining app scripts only after AnalyticsCore is available (or after timeout)
-        (function () {
-            const scripts = [
-                { src: 'dist/analytics-core.umd.js', nomodule: true },
-                { src: 'js/formulas/math-formulas.js' },
-                { src: 'js/formulas/analytics-formulas.js' },
-                { src: 'js/formulas/smart-formulas.js' },
-                { src: 'js/modules/worker-pool.js' },
-                { src: 'js/modules/helpers.js' },
-                { src: 'js/modules/storage-utils.js' },
-                { src: 'js/modules/idb-history.js' },
-                { src: 'js/modules/alerts.js' },
-                { src: 'js/modules/sort-options-loader.js' },
-                { src: 'js/modules/advanced-sort.js' },
-                { src: 'js/modules/tab-renderers.js' },
-                { src: 'js/modules/info-tab.js' },
-                { src: 'js/modules/update-table.js' },
-                { src: 'websocket-example.js' },
-                { src: 'js/modules/ws-client.js' }
-            ];
-
-            function loadScriptEntry(entry) {
-                return new Promise((resolve, reject) => {
-                    const s = document.createElement('script');
-                    s.src = entry.src;
-                    if (entry.nomodule) s.noModule = true;
-                    s.onload = () => resolve(entry.src);
-                    s.onerror = (e) => reject(new Error('Failed to load ' + entry.src));
-                    document.body.appendChild(s);
-                });
+        // Debug: ensure select is clickable
+        document.addEventListener('DOMContentLoaded', function () {
+            const sel = document.getElementById('sortBy');
+            if (sel) {
+                sel.disabled = false;
+                sel.style.pointerEvents = 'auto';
+                sel.style.position = 'relative';
+                sel.style.zIndex = '9999';
+                console.log('[DEBUG] sortBy select enabled:', !sel.disabled);
             }
-
-            async function loadAllSequentially() {
-                for (const e of scripts) {
-                    try {
-                        await loadScriptEntry(e);
-                    } catch (err) {
-                        console.warn('Deferred loader: error loading', e.src, err);
+            // Debug click on select
+            document.addEventListener('click', function (e) {
+                const sel = document.getElementById('sortBy');
+                if (!sel) return;
+                const rect = sel.getBoundingClientRect();
+                if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
+                    const topEl = document.elementFromPoint(e.clientX, e.clientY);
+                    console.log('[DEBUG CLICK] target:', e.target.tagName, e.target.id);
+                    console.log('[DEBUG CLICK] elementFromPoint:', topEl ? topEl.tagName : null, topEl ? topEl.id : null, topEl ? topEl.className : null);
+                    if (topEl !== sel && !sel.contains(topEl)) {
+                        console.warn('[DEBUG CLICK] Something is blocking the select!', topEl);
                     }
                 }
-            }
-
-            const START_TIMEOUT = 3000;
-            let started = false;
-
-            function startLoader() {
-                if (started) return; started = true;
-                loadAllSequentially().catch(() => { /* swallow */ });
-            }
-
-            if (window.AnalyticsCore) {
-                startLoader();
-            } else {
-                // Prefer event, but fall back to timeout to avoid locking if event never fires
-                document.addEventListener('AnalyticsCore:loaded', startLoader, { once: true });
-                setTimeout(startLoader, START_TIMEOUT);
-            }
-        })();
+            }, true);
+        });
     </script>
     <script>
         // Debug: ensure select is clickable
