@@ -202,6 +202,9 @@
                 <button class="nav-link" id="smart-tab" data-bs-toggle="tab" data-bs-target="#smartAnalysis"
                     type="button" role="tab">🧠 Smart</button>
             </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings" type="button" role="tab">⚙️ Settings</button>
+            </li>
         </ul>
 
         <div class="tab-content mt-2" id="dataTabsContent">
@@ -378,6 +381,13 @@
                         </thead>
                         <tbody id="microBody"></tbody>
                     </table>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="settings" role="tabpanel">
+                <div class="p-3">
+                    <h5>Settings</h5>
+                    <div id="settingsPanel" class="mt-3"></div>
                 </div>
             </div>
 
@@ -962,14 +972,17 @@
     <script src="js/formulas/math-formulas.js"></script>
     <script src="js/formulas/analytics-formulas.js"></script>
     <script src="js/formulas/smart-formulas.js"></script>
+    <script src="js/config/webgpu-config.js"></script>
     <script src="js/modules/worker-pool.js"></script>
     <script src="js/modules/helpers.js"></script>
+    <script src="js/modules/idb-history.js"></script>
     <script src="js/modules/alerts.js"></script>
     <script src="js/modules/sort-options-loader.js"></script>
     <script src="js/modules/advanced-sort.js"></script>
     <script src="js/modules/tab-renderers.js"></script>
     <script src="js/modules/info-tab.js"></script>
     <script src="js/modules/update-table.js"></script>
+    <script src="js/modules/settings-panel.js"></script>
     <script src="websocket-example.js"></script>
     <script src="js/modules/ws-client.js"></script>
     <script>

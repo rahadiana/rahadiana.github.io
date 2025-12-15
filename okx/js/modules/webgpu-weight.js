@@ -72,8 +72,8 @@ fn main(@builtin(local_invocation_id) local_id : vec3<u32>, @builtin(workgroup_i
                                 const mulModule = device.createShaderModule({ code: mulShader });
                                 const sumModule = device.createShaderModule({ code: sumShader });
 
-                                const mulPipeline = device.createComputePipeline({ compute: { module: mulModule, entryPoint: 'main' } });
-                                const sumPipeline = device.createComputePipeline({ compute: { module: sumModule, entryPoint: 'main' } });
+                                const mulPipeline = device.createComputePipeline({ layout: 'auto', compute: { module: mulModule, entryPoint: 'main' } });
+                                const sumPipeline = device.createComputePipeline({ layout: 'auto', compute: { module: sumModule, entryPoint: 'main' } });
 
                                 _gpuState.adapter = adapter;
                                 _gpuState.device = device;
@@ -146,9 +146,7 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
 `;
 
         const module = device.createShaderModule({code: shaderCode});
-        const pipeline = device.createComputePipeline({
-            compute: { module, entryPoint: 'main' }
-        });
+        const pipeline = device.createComputePipeline({ layout: 'auto', compute: { module, entryPoint: 'main' } });
 
         const bindGroup = device.createBindGroup({
             layout: pipeline.getBindGroupLayout(0),
@@ -307,6 +305,19 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
 
         let s = 0.0;
         for (let i = 0; i < partials.length; i++) s += partials[i];
+        // If GPU returned an all-zero result (possible on some drivers/compat paths),
+        // fall back to CPU reduction to ensure correctness.
+        if (s === 0 && input.length > 0) {
+            try {
+                const cpu = cpuSum(input);
+                if (Math.abs(cpu) > 1e-12) {
+                    console.warn('[WebGPUWeight] GPU reduction returned zero; falling back to CPU sum');
+                    return cpu;
+                }
+            } catch (e) {
+                // ignore and return s
+            }
+        }
         return s;
     }
 

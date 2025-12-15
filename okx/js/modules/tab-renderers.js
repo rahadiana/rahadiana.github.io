@@ -465,6 +465,7 @@
 
             const volBuy = pickNumber('volBuy2h', 'sum_min_120_buy', 'vol_buy_2JAM', 'count_VOL_minute_120_buy');
             const volSell = pickNumber('volSell2h', 'sum_min_120_sell', 'vol_sell_2JAM', 'count_VOL_minute_120_sell');
+            const volTotal = volBuy + volSell;
             const volRatio = volSell > 0 ? (volBuy / volSell) * 100 : (volBuy > 0 ? null : 0);
             const volRatioDisplay = formatVolRatioLocal(volRatio);
             const stressClass = stressIndex >= 70 ? 'alert-danger' : stressIndex >= 50 ? 'alert-warning' : 'alert-success';

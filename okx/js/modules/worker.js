@@ -100,7 +100,11 @@ self.onmessage = function(e) {
                 if (payload && typeof payload.emitLegacy !== 'undefined') {
                     EMIT_LEGACY = !!payload.emitLegacy;
                 }
-                result = { ok: true, emitLegacy: EMIT_LEGACY };
+                // Accept webgpu config broadcasts from main thread
+                if (payload && payload.webgpu) {
+                    try { globalThis.WEBGPU_CONFIG = payload.webgpu; } catch (e) { /* ignore */ }
+                }
+                result = { ok: true, emitLegacy: EMIT_LEGACY, webgpu: globalThis.WEBGPU_CONFIG || null };
                 break;
 
             default:

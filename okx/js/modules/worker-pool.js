@@ -573,7 +573,11 @@
 
             // Send initial config to workers (emit legacy keys enabled/disabled)
             for (const w of this.workers) {
-                try { w.postMessage({ type: 'config', payload: { emitLegacy: !!this.emitLegacy } }); } catch (e) { /* ignore */ }
+                try {
+                    const payload = { emitLegacy: !!this.emitLegacy };
+                    try { if (typeof window !== 'undefined' && window.WEBGPU_CONFIG) payload.webgpu = window.WEBGPU_CONFIG; } catch (e) {}
+                    w.postMessage({ type: 'config', payload });
+                } catch (e) { /* ignore */ }
             }
             
             this.initialized = true;
@@ -652,7 +656,11 @@
                         newWorker.onerror = (ev) => this._handleError(newWorker, ev);
                         const idx = this.workers.findIndex(w => w === worker || w.id === worker.id);
                         if (idx >= 0) this.workers[idx] = newWorker; else this.workers.push(newWorker);
-                        try { newWorker.postMessage({ type: 'config', payload: { emitLegacy: !!this.emitLegacy } }); } catch (e) { /* ignore */ }
+                        try {
+                            const payload = { emitLegacy: !!this.emitLegacy };
+                            try { if (typeof window !== 'undefined' && window.WEBGPU_CONFIG) payload.webgpu = window.WEBGPU_CONFIG; } catch (e) {}
+                            newWorker.postMessage({ type: 'config', payload });
+                        } catch (e) { /* ignore */ }
                         console.log(`[WorkerPool] Respawned worker ${newWorker.id}`);
                     } catch (respawnErr) {
                         console.error('[WorkerPool] Failed to respawn worker', respawnErr);
@@ -794,8 +802,33 @@
         setEmitLegacy(flag) {
             this.emitLegacy = !!flag;
             for (const w of this.workers) {
-                try { w.postMessage({ type: 'config', payload: { emitLegacy: this.emitLegacy } }); } catch (e) { /* ignore */ }
+                try {
+                    const payload = { emitLegacy: this.emitLegacy };
+                    try { if (typeof window !== 'undefined' && window.WEBGPU_CONFIG) payload.webgpu = window.WEBGPU_CONFIG; } catch (e) {}
+                    w.postMessage({ type: 'config', payload });
+                } catch (e) { /* ignore */ }
             }
+        }
+
+        // Set WebGPU configuration and broadcast to all workers
+        setWebGPUConfig(cfg) {
+            try {
+                // Merge with existing global config if present
+                const existing = window.WEBGPU_CONFIG || {};
+                const merged = Object.assign({}, existing, cfg || {});
+                window.WEBGPU_CONFIG = merged;
+                for (const w of this.workers) {
+                    try { w.postMessage({ type: 'config', payload: { webgpu: merged, emitLegacy: !!this.emitLegacy } }); } catch (e) { /* ignore */ }
+                }
+                return merged;
+            } catch (e) {
+                console.error('[WorkerPool] setWebGPUConfig failed', e);
+                throw e;
+            }
+        }
+
+        getWebGPUConfig() {
+            return window.WEBGPU_CONFIG || null;
         }
     }
 
