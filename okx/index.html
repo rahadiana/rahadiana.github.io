@@ -951,23 +951,68 @@
     <script type="module">
         import AnalyticsCore from './dist/analytics-core.esm.js';
         globalThis.AnalyticsCore = AnalyticsCore;
+        try { document.dispatchEvent(new CustomEvent('AnalyticsCore:loaded')); } catch (e) { /* ignore */ }
     </script>
-    <script nomodule src="dist/analytics-core.umd.js"></script>
-    <script src="js/formulas/math-formulas.js"></script>
-    <script src="js/formulas/analytics-formulas.js"></script>
-    <script src="js/formulas/smart-formulas.js"></script>
-    <script src="js/modules/worker-pool.js"></script>
-    <script src="js/modules/helpers.js"></script>
-    <script src="js/modules/storage-utils.js"></script>
-    <script src="js/modules/idb-history.js"></script>
-    <script src="js/modules/alerts.js"></script>
-    <script src="js/modules/sort-options-loader.js"></script>
-    <script src="js/modules/advanced-sort.js"></script>
-    <script src="js/modules/tab-renderers.js"></script>
-    <script src="js/modules/info-tab.js"></script>
-    <script src="js/modules/update-table.js"></script>
-    <script src="websocket-example.js"></script>
-    <script src="js/modules/ws-client.js"></script>
+    <script>
+        // Load remaining app scripts only after AnalyticsCore is available (or after timeout)
+        (function () {
+            const scripts = [
+                { src: 'dist/analytics-core.umd.js', nomodule: true },
+                { src: 'js/formulas/math-formulas.js' },
+                { src: 'js/formulas/analytics-formulas.js' },
+                { src: 'js/formulas/smart-formulas.js' },
+                { src: 'js/modules/worker-pool.js' },
+                { src: 'js/modules/helpers.js' },
+                { src: 'js/modules/storage-utils.js' },
+                { src: 'js/modules/idb-history.js' },
+                { src: 'js/modules/alerts.js' },
+                { src: 'js/modules/sort-options-loader.js' },
+                { src: 'js/modules/advanced-sort.js' },
+                { src: 'js/modules/tab-renderers.js' },
+                { src: 'js/modules/info-tab.js' },
+                { src: 'js/modules/update-table.js' },
+                { src: 'websocket-example.js' },
+                { src: 'js/modules/ws-client.js' }
+            ];
+
+            function loadScriptEntry(entry) {
+                return new Promise((resolve, reject) => {
+                    const s = document.createElement('script');
+                    s.src = entry.src;
+                    if (entry.nomodule) s.noModule = true;
+                    s.onload = () => resolve(entry.src);
+                    s.onerror = (e) => reject(new Error('Failed to load ' + entry.src));
+                    document.body.appendChild(s);
+                });
+            }
+
+            async function loadAllSequentially() {
+                for (const e of scripts) {
+                    try {
+                        await loadScriptEntry(e);
+                    } catch (err) {
+                        console.warn('Deferred loader: error loading', e.src, err);
+                    }
+                }
+            }
+
+            const START_TIMEOUT = 3000;
+            let started = false;
+
+            function startLoader() {
+                if (started) return; started = true;
+                loadAllSequentially().catch(() => { /* swallow */ });
+            }
+
+            if (window.AnalyticsCore) {
+                startLoader();
+            } else {
+                // Prefer event, but fall back to timeout to avoid locking if event never fires
+                document.addEventListener('AnalyticsCore:loaded', startLoader, { once: true });
+                setTimeout(startLoader, START_TIMEOUT);
+            }
+        })();
+    </script>
     <script>
         // Debug: ensure select is clickable
         document.addEventListener('DOMContentLoaded', function () {

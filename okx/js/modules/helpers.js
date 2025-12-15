@@ -180,3 +180,21 @@ function getPercentValue(metrics, keyCandidates) {
 window.ensurePercent = ensurePercent;
 window.ensureFraction = ensureFraction;
 window.getPercentValue = getPercentValue;
+
+// When AnalyticsCore becomes available asynchronously, re-run smart-metrics for cached data
+document.addEventListener('AnalyticsCore:loaded', function () {
+    try {
+        if (typeof AnalyticsCore === 'undefined' || !window.coinDataMap) return;
+        for (const coin in window.coinDataMap) {
+            try {
+                const d = window.coinDataMap[coin];
+                if (!d) continue;
+                if (AnalyticsCore && typeof AnalyticsCore.computeAllSmartMetrics === 'function') {
+                    d.analytics = AnalyticsCore.computeAllSmartMetrics(d);
+                    d._analytics = d.analytics;
+                }
+            } catch (e) { /* ignore per-coin errors */ }
+        }
+        if (typeof scheduleUpdateTable === 'function') scheduleUpdateTable();
+    } catch (e) { /* swallow listener errors */ }
+});
