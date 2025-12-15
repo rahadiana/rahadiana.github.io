@@ -9,9 +9,18 @@
 
     function getAnalyticsCore() {
         if (typeof globalThis !== 'undefined' && globalThis.AnalyticsCore) return globalThis.AnalyticsCore;
+        // Delay the warning slightly to avoid spurious logs during normal module loading.
+        // If the core still isn't present after the timeout, warn once.
         if (!globalThis.__ANALYTICS_CORE_WARNED) {
-            globalThis.__ANALYTICS_CORE_WARNED = true;
-            console.warn('[formulas] AnalyticsCore not loaded — using fallbacks');
+            if (!globalThis.__ANALYTICS_CORE_WARN_TIMEOUT) {
+                globalThis.__ANALYTICS_CORE_WARN_TIMEOUT = setTimeout(() => {
+                    if (!globalThis.AnalyticsCore && !globalThis.__ANALYTICS_CORE_WARNED) {
+                        globalThis.__ANALYTICS_CORE_WARNED = true;
+                        console.warn('[formulas] AnalyticsCore not loaded — using fallbacks');
+                    }
+                    globalThis.__ANALYTICS_CORE_WARN_TIMEOUT = null;
+                }, 1000);
+            }
         }
         return null;
     }
@@ -23,6 +32,10 @@
             const iv = setInterval(() => {
                 if (typeof globalThis !== 'undefined' && globalThis.AnalyticsCore) {
                     clearInterval(iv);
+                    if (globalThis.__ANALYTICS_CORE_WARN_TIMEOUT) {
+                        clearTimeout(globalThis.__ANALYTICS_CORE_WARN_TIMEOUT);
+                        globalThis.__ANALYTICS_CORE_WARN_TIMEOUT = null;
+                    }
                     return resolve(globalThis.AnalyticsCore);
                 }
                 if (Date.now() - start > timeoutMs) {
