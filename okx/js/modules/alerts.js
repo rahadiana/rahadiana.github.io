@@ -9,20 +9,20 @@ var hiddenAlertBuffer = window._hiddenAlertBuffer || (window._hiddenAlertBuffer 
 
 // load persisted compact preferences
 try {
-    const savedCompact = localStorage.getItem('okx_compact_alerts');
-    if (savedCompact !== null && compactAlertsToggle) compactAlertsToggle.checked = (savedCompact === 'true');
-    const savedMax = localStorage.getItem('okx_max_alert_banners');
+    const savedCompact = (typeof window.safeLocalStorageGet === 'function') ? window.safeLocalStorageGet('okx_compact_alerts', null) : localStorage.getItem('okx_compact_alerts');
+    if (savedCompact !== null && compactAlertsToggle) compactAlertsToggle.checked = (String(savedCompact) === 'true');
+    const savedMax = (typeof window.safeLocalStorageGet === 'function') ? window.safeLocalStorageGet('okx_max_alert_banners', null) : localStorage.getItem('okx_max_alert_banners');
     if (savedMax !== null && maxAlertBannersInput) maxAlertBannersInput.value = Number(savedMax) || 3;
 } catch (e) { /* ignore */ }
 
 // Wire compact alert controls
-try {
-    if (compactAlertsToggle) compactAlertsToggle.addEventListener('change', (ev) => {
-        try { localStorage.setItem('okx_compact_alerts', ev.target.checked ? 'true' : 'false'); } catch (e) { }
-    });
-    if (maxAlertBannersInput) maxAlertBannersInput.addEventListener('input', (ev) => {
-        try { localStorage.setItem('okx_max_alert_banners', String(parseInt(ev.target.value, 10) || 0)); } catch (e) { }
-    });
+    try {
+        if (compactAlertsToggle) compactAlertsToggle.addEventListener('change', (ev) => {
+            try { if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet('okx_compact_alerts', ev.target.checked ? 'true' : 'false'); else localStorage.setItem('okx_compact_alerts', ev.target.checked ? 'true' : 'false'); } catch (e) { }
+        });
+        if (maxAlertBannersInput) maxAlertBannersInput.addEventListener('input', (ev) => {
+            try { if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet('okx_max_alert_banners', String(parseInt(ev.target.value, 10) || 0)); else localStorage.setItem('okx_max_alert_banners', String(parseInt(ev.target.value, 10) || 0)); } catch (e) { }
+        });
     if (showHiddenAlertsBtn) showHiddenAlertsBtn.addEventListener('click', () => {
         try {
             const modalBody = document.getElementById('hiddenAlertsModalBody');
@@ -48,7 +48,7 @@ try {
 const ALERT_ENABLED_KEY = 'okx_calc_alerts_enabled';
 let storedAlertEnabled = false;
 try {
-    storedAlertEnabled = localStorage.getItem(ALERT_ENABLED_KEY) === 'true';
+    storedAlertEnabled = (typeof window.safeLocalStorageGet === 'function' ? window.safeLocalStorageGet(ALERT_ENABLED_KEY, 'false') : localStorage.getItem(ALERT_ENABLED_KEY)) === 'true';
 } catch (e) { storedAlertEnabled = false; }
 const alertState = {
     enabled: storedAlertEnabled,
@@ -64,7 +64,7 @@ function syncAlertNotesVisibility() {
 }
 const lastAlertAt = {}; // per-coin throttle
 // Whether to persist per-coin history to localStorage (default: enabled)
-var persistHistoryEnabled = (localStorage.getItem('okx_calc_persist') !== 'false');
+var persistHistoryEnabled = ((typeof window.safeLocalStorageGet === 'function') ? window.safeLocalStorageGet('okx_calc_persist', 'true') : localStorage.getItem('okx_calc_persist')) !== 'false';
 function setPersistHistoryEnabled(val) {
     persistHistoryEnabled = !!val;
     window.persistHistoryEnabled = persistHistoryEnabled;
@@ -170,13 +170,13 @@ try {
         alertState.enabled = !!eToggle.checked;
         eToggle.addEventListener('change', (ev) => {
             alertState.enabled = !!ev.target.checked;
-            try { localStorage.setItem(ALERT_ENABLED_KEY, alertState.enabled ? 'true' : 'false'); } catch (e) { }
+            try { if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet(ALERT_ENABLED_KEY, alertState.enabled ? 'true' : 'false'); else localStorage.setItem(ALERT_ENABLED_KEY, alertState.enabled ? 'true' : 'false'); } catch (e) { }
             syncAlertNotesVisibility();
         });
     }
     if (sToggle) { alertState.sound = !!sToggle.checked; sToggle.addEventListener('change', (ev) => alertState.sound = !!ev.target.checked); }
-    if (wInput) { wInput.addEventListener('input', (ev) => alertState.webhook = ev.target.value); if (localStorage.getItem('okx_calc_webhook')) { wInput.value = localStorage.getItem('okx_calc_webhook'); alertState.webhook = wInput.value; } }
-    if (wTest) wTest.addEventListener('click', () => { showAlertBanner('Webhook test', 'Sending test payload...', 'info', 3000); sendAlertWebhook('TEST', { test: true }); try { localStorage.setItem('okx_calc_webhook', (wInput && wInput.value) || ''); } catch (e) { } });
+    if (wInput) { wInput.addEventListener('input', (ev) => alertState.webhook = ev.target.value); try { const saved = (typeof window.safeLocalStorageGet === 'function') ? window.safeLocalStorageGet('okx_calc_webhook', '') : localStorage.getItem('okx_calc_webhook'); if (saved) { wInput.value = saved; alertState.webhook = wInput.value; } } catch (e) { } }
+    if (wTest) wTest.addEventListener('click', () => { showAlertBanner('Webhook test', 'Sending test payload...', 'info', 3000); sendAlertWebhook('TEST', { test: true }); try { if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet('okx_calc_webhook', (wInput && wInput.value) || ''); else localStorage.setItem('okx_calc_webhook', (wInput && wInput.value) || ''); } catch (e) { } });
     // Defensive: ensure toggles and labels accept pointer events (fixes cases where overlays/CSS block clicks)
     try {
         if (eToggle) {
@@ -206,7 +206,7 @@ try {
             alt.checked = persistHistoryEnabled;
             alt.addEventListener('change', (ev) => {
                 setPersistHistoryEnabled(ev.target.checked);
-                try { if (main) { main.checked = persistHistoryEnabled; } localStorage.setItem('okx_calc_persist', persistHistoryEnabled ? 'true' : 'false'); } catch (e) { }
+                try { if (main) { main.checked = persistHistoryEnabled; } if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet('okx_calc_persist', persistHistoryEnabled ? 'true' : 'false'); else localStorage.setItem('okx_calc_persist', persistHistoryEnabled ? 'true' : 'false'); } catch (e) { }
             });
         }
         if (main && alt) {
@@ -246,15 +246,15 @@ const PRICE_MOVE_TFS = [
 
 for (const tf of PRICE_MOVE_TFS) {
     DEFAULT_ALERT_RULES.push({ id: `price_drop_${tf.key}`, name: `Price Drop ${tf.key}`, metric: tf.key, op: '<', threshold: tf.drop, severity: 'danger', enabled: true, message: `Price dropped more than ${Math.abs(tf.drop)}% vs ${tf.key}` });
-    DEFAULT_ALERT_RULES.push({ id: `price_up_${tf.key}`, name: `Price Up ${tf.key}`, metric: tf.key, op: '>', threshold: tf.up, severity: 'warning', enabled: true, message: `Price rose more than ${tf.up}% vs ${tf.key}` });
+    DEFAULT_ALERT_RULES.push({ id: `price_up_${tf.key}`, name: `Price Up ${tf.key}`, metric: tf.key, op: '>', threshold: tf.up, severity: 'warning', enabled: true, message: `Price raise more than ${tf.up}% vs ${tf.key}` });
 }
 
 function loadAlertRules() {
     try {
-        const arr = JSON.parse(localStorage.getItem(ALERT_RULES_KEY) || 'null');
+        const arr = (typeof window.safeLocalStorageGet === 'function') ? window.safeLocalStorageGet(ALERT_RULES_KEY, null) : JSON.parse(localStorage.getItem(ALERT_RULES_KEY) || 'null');
         if (!arr || !Array.isArray(arr) || arr.length === 0) {
             // seed defaults
-            try { localStorage.setItem(ALERT_RULES_KEY, JSON.stringify(DEFAULT_ALERT_RULES)); } catch (e) { }
+            try { if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet(ALERT_RULES_KEY, JSON.stringify(DEFAULT_ALERT_RULES)); else localStorage.setItem(ALERT_RULES_KEY, JSON.stringify(DEFAULT_ALERT_RULES)); } catch (e) { }
             return DEFAULT_ALERT_RULES.slice();
         }
         return arr;
@@ -262,7 +262,7 @@ function loadAlertRules() {
 }
 
 function saveAlertRules(arr) {
-    try { localStorage.setItem(ALERT_RULES_KEY, JSON.stringify(arr || [])); } catch (e) { console.warn('saveAlertRules failed', e); }
+    try { if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet(ALERT_RULES_KEY, JSON.stringify(arr || [])); else localStorage.setItem(ALERT_RULES_KEY, JSON.stringify(arr || [])); } catch (e) { console.warn('saveAlertRules failed', e); }
 }
 
 function renderAlertRules() {
@@ -373,7 +373,16 @@ function evaluateAlertRulesForData(data) {
                 lastAlertRuleAt[key] = now;
                 // trigger alert
                 const title = `${data.coin} — Alert: ${r.name}`;
-                const msg = `${r.message || ''} (value: ${Math.round(Number(val) * 100) / 100})`;
+                // Use centralized vol-ratio formatter when available for clearer messages
+                let displayVal;
+                try {
+                    if (typeof window.formatVolRatio === 'function' && /vol_ratio/i.test(String(r.metric))) {
+                        displayVal = window.formatVolRatio(val);
+                    } else {
+                        displayVal = (Number.isFinite(Number(val))) ? (Math.round(Number(val) * 100) / 100) : String(val);
+                    }
+                } catch (e) { displayVal = (Number.isFinite(Number(val))) ? (Math.round(Number(val) * 100) / 100) : String(val); }
+                const msg = `${r.message || ''} (value: ${displayVal})`;
                 showAlertBanner(title, msg, r.severity === 'danger' ? 'danger' : 'warning', 8000);
                 addAlertToTab(data.coin, msg, r.severity === 'danger' ? 'danger' : 'warning', now);
                 // optional webhook
@@ -385,13 +394,13 @@ function evaluateAlertRulesForData(data) {
 
 function loadAlertsFromStore() {
     try {
-        const arr = JSON.parse(localStorage.getItem(ALERTS_KEY) || '[]');
+        const arr = (typeof window.safeLocalStorageGet === 'function') ? window.safeLocalStorageGet(ALERTS_KEY, []) : JSON.parse(localStorage.getItem(ALERTS_KEY) || '[]');
         return Array.isArray(arr) ? arr : [];
     } catch (e) { return []; }
 }
 
 function saveAlertsToStore(arr) {
-    try { localStorage.setItem(ALERTS_KEY, JSON.stringify(arr || [])); } catch (e) { }
+    try { if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet(ALERTS_KEY, JSON.stringify(arr || [])); else localStorage.setItem(ALERTS_KEY, JSON.stringify(arr || [])); } catch (e) { }
 }
 
 function formatTs(ts) {
@@ -530,12 +539,18 @@ let _pendingSave = false;
 
 function getStoreCache() {
     if (!_storeCacheLoaded) {
-        try {
-            _storeCache = JSON.parse(localStorage.getItem(PERSIST_KEY) || '{}');
-        } catch (e) {
-            _storeCache = {};
-        }
+        // optimistic non-blocking load: prefer IndexedDB async load, but return empty cache immediately
         _storeCacheLoaded = true;
+        _storeCache = {};
+        try {
+            if (window.idbHistory && typeof window.idbHistory.loadAllHistories === 'function') {
+                window.idbHistory.loadAllHistories().then(store => {
+                    try { _storeCache = store || {}; window._preloadedHistory = Object.assign({}, window._preloadedHistory || {}, _storeCache); } catch (e) { _storeCache = _storeCache || {}; }
+                }).catch(e => { _storeCache = _storeCache || {}; });
+            } else {
+                try { _storeCache = (typeof window.safeLocalStorageGet === 'function') ? window.safeLocalStorageGet(PERSIST_KEY, {}) : JSON.parse(localStorage.getItem(PERSIST_KEY) || '{}'); } catch (e) { _storeCache = {}; }
+            }
+        } catch (e) { _storeCache = {}; }
     }
     return _storeCache || {};
 }
@@ -608,41 +623,56 @@ function savePersistedHistory(coin, arr) {
         const store = getStoreCache();
         store[coin] = arr.slice(-MAX_HISTORY);
         _storeCache = store;
+        // Also persist asynchronously to IndexedDB when available
+        try {
+            if (window.idbHistory && typeof window.idbHistory.saveCoinHistory === 'function') {
+                // fire-and-forget
+                window.idbHistory.saveCoinHistory(coin, _storeCache[coin]).catch(err => console.warn('idb save failed', err));
+            }
+        } catch (e) { /* ignore */ }
         
-        // Schedule async save to localStorage (non-blocking)
-        if (!_pendingSave) {
-            _pendingSave = true;
-            const saveToStorage = () => {
-                _pendingSave = false;
-                try {
-                    localStorage.setItem(PERSIST_KEY, JSON.stringify(_storeCache));
-                } catch (quotaErr) {
-                    if (quotaErr.name === 'QuotaExceededError') {
-                        console.warn('Storage quota exceeded, pruning history...');
-                        for (let level = 1; level <= 3; level++) {
-                            try {
-                                _storeCache = pruneStorageForQuota(_storeCache, level);
-                                localStorage.setItem(PERSIST_KEY, JSON.stringify(_storeCache));
-                                console.log(`Storage pruned at level ${level}`);
-                                return;
-                            } catch (e2) {
-                                if (level === 3) {
-                                    console.warn('Heavy prune failed, clearing all history');
-                                    localStorage.removeItem(PERSIST_KEY);
-                                    _storeCache = {};
+        // Schedule async save to IndexedDB (non-blocking)
+        try {
+            if (window.idbHistory && typeof window.idbHistory.saveCoinHistory === 'function') {
+                // fire-and-forget per-coin save
+                try { window.idbHistory.saveCoinHistory(coin, _storeCache[coin]).catch(err => console.warn('idb save failed', err)); } catch (e) { }
+            } else {
+                // fallback to localStorage if IndexedDB not available
+                if (!_pendingSave) {
+                    _pendingSave = true;
+                    const saveToStorage = () => {
+                        _pendingSave = false;
+                        try {
+                            if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet(PERSIST_KEY, JSON.stringify(_storeCache)); else localStorage.setItem(PERSIST_KEY, JSON.stringify(_storeCache));
+                        } catch (quotaErr) {
+                            if (quotaErr.name === 'QuotaExceededError') {
+                                console.warn('Storage quota exceeded, pruning history...');
+                                for (let level = 1; level <= 3; level++) {
+                                    try {
+                                        _storeCache = pruneStorageForQuota(_storeCache, level);
+                                        if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet(PERSIST_KEY, JSON.stringify(_storeCache)); else localStorage.setItem(PERSIST_KEY, JSON.stringify(_storeCache));
+                                        console.log(`Storage pruned at level ${level}`);
+                                        return;
+                                    } catch (e2) {
+                                        if (level === 3) {
+                                            console.warn('Heavy prune failed, clearing all history');
+                                            localStorage.removeItem(PERSIST_KEY);
+                                            _storeCache = {};
+                                        }
+                                    }
                                 }
                             }
                         }
+                    };
+                    // Use requestIdleCallback if available, else setTimeout
+                    if (typeof requestIdleCallback === 'function') {
+                        requestIdleCallback(saveToStorage, { timeout: 2000 });
+                    } else {
+                        setTimeout(saveToStorage, 100);
                     }
                 }
-            };
-            // Use requestIdleCallback if available, else setTimeout
-            if (typeof requestIdleCallback === 'function') {
-                requestIdleCallback(saveToStorage, { timeout: 2000 });
-            } else {
-                setTimeout(saveToStorage, 100);
             }
-        }
+        } catch (e) { /* ignore */ }
     } catch (e) { console.warn('savePersistedHistory error', e); }
 }
 
@@ -657,7 +687,7 @@ try {
         // Wire change handler
         t.addEventListener('change', (ev) => {
             setPersistHistoryEnabled(ev.target.checked);
-            try { localStorage.setItem('okx_calc_persist', persistHistoryEnabled ? 'true' : 'false'); } catch (e) { }
+            try { if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet('okx_calc_persist', persistHistoryEnabled ? 'true' : 'false'); else localStorage.setItem('okx_calc_persist', persistHistoryEnabled ? 'true' : 'false'); } catch (e) { }
         });
         // Also make the label clickable (some layouts may overlay the checkbox)
         try {
@@ -677,14 +707,24 @@ try {
     const clearBtn = document.getElementById('clearStorageBtn');
     if (clearBtn) {
         clearBtn.addEventListener('click', () => {
-            try {
-                localStorage.removeItem(PERSIST_KEY);
-                window._preloadedHistory = {};
-                _storeCache = {};
-                _storeCacheLoaded = true;
-                console.log('History storage cleared');
-                alert('✅ History storage cleared! Data akan mulai fresh.');
-            } catch (e) { console.warn('Clear storage failed', e); }
+                try {
+                    if (window.idbHistory && typeof window.idbHistory.clearAllHistories === 'function') {
+                        window.idbHistory.clearAllHistories().then(() => {
+                            window._preloadedHistory = {};
+                            _storeCache = {};
+                            _storeCacheLoaded = true;
+                            console.log('History storage cleared (IndexedDB)');
+                            alert('✅ History storage cleared! Data akan mulai fresh.');
+                        }).catch(err => { console.warn('Clear IDB failed', err); alert('Clear failed'); });
+                    } else {
+                        localStorage.removeItem(PERSIST_KEY);
+                        window._preloadedHistory = {};
+                        _storeCache = {};
+                        _storeCacheLoaded = true;
+                        console.log('History storage cleared');
+                        alert('✅ History storage cleared! Data akan mulai fresh.');
+                    }
+                } catch (e) { console.warn('Clear storage failed', e); }
         });
     }
 } catch (e) { console.warn('wiring clear storage failed', e); }
@@ -702,3 +742,16 @@ window.hiddenAlertBuffer = hiddenAlertBuffer;
 window.persistHistoryEnabled = persistHistoryEnabled;
 window.MAX_HISTORY = MAX_HISTORY;
 window.lastAlertAt = lastAlertAt;
+
+// Cleanup Bootstrap popovers on unload to prevent memory leaks
+try {
+    window.addEventListener('beforeunload', () => {
+        try {
+            if (window.bootstrap && window.bootstrap.Popover) {
+                document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
+                    try { const p = bootstrap.Popover.getInstance(el); if (p) p.dispose(); } catch (e) { }
+                });
+            }
+        } catch (e) { /* ignore */ }
+    });
+} catch (e) { /* ignore */ }

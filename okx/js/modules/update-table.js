@@ -15,6 +15,8 @@
     let priceMovesBody;
     let sortBySelect, recTimeframeSelect;
     let useAtrRecs, tpMinInput, tpMaxInput, slMaxInput, confSensitivity;
+    let spikeModeSelect;
+    let showAdvancedToggle;
 
     function cacheDOMRefs() {
         if (summaryBody) return; // already cached
@@ -35,6 +37,103 @@
         tpMaxInput = document.getElementById('tpMax');
         slMaxInput = document.getElementById('slMax');
         confSensitivity = document.getElementById('confSensitivity');
+        spikeModeSelect = document.getElementById('spikeModeSelect');
+        showAdvancedToggle = document.getElementById('showAdvancedMetricsToggle');
+        try {
+            if (spikeModeSelect) {
+                try {
+                    const stored = (typeof localStorage !== 'undefined') ? localStorage.getItem('okx_spikeMode') : null;
+                    if (stored) spikeModeSelect.value = stored;
+                } catch (e) { }
+                spikeModeSelect.addEventListener('change', (ev) => {
+                    try {
+                        const v = String(ev.target.value || 'all');
+                        if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet('okx_spikeMode', v);
+                        else if (typeof localStorage !== 'undefined') localStorage.setItem('okx_spikeMode', v);
+                    } catch (e) { }
+                });
+            }
+        } catch (e) { }
+
+        try {
+            if (showAdvancedToggle) {
+                try {
+                    const stored = (typeof localStorage !== 'undefined') ? localStorage.getItem('okx_showAdvancedMetrics') : null;
+                    const checked = (stored === null) ? '1' : stored;
+                    showAdvancedToggle.checked = checked === '1';
+                    toggleAdvancedMetrics(showAdvancedToggle.checked);
+                } catch (e) { }
+                showAdvancedToggle.addEventListener('change', (ev) => {
+                    try {
+                        const v = ev.target.checked ? '1' : '0';
+                        if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet('okx_showAdvancedMetrics', v);
+                        else if (typeof localStorage !== 'undefined') localStorage.setItem('okx_showAdvancedMetrics', v);
+                        toggleAdvancedMetrics(ev.target.checked);
+                    } catch (e) { }
+                });
+            }
+        } catch (e) { }
+    }
+
+    function toggleAdvancedMetrics(show) {
+        try {
+            const tbl = document.getElementById('summaryTable');
+            if (!tbl) return;
+            if (show) tbl.classList.remove('hide-advanced');
+            else tbl.classList.add('hide-advanced');
+            try {
+                // ensure tbody cells align with header visibility
+                syncAdvancedColumnVisibility(tbl, Boolean(show));
+            } catch (e) { }
+        } catch (e) { }
+    }
+
+    // Sync hiding/showing advanced metric TDs by calculating their column indices
+    function syncAdvancedColumnVisibility(tableEl, show) {
+        try {
+            if (!tableEl || !tableEl.tHead || !tableEl.tBodies) return;
+            const firstRow = tableEl.tHead.rows[0];
+            const secondRow = tableEl.tHead.rows[1];
+            if (!firstRow || !secondRow) return;
+
+            // locate the advanced-group cell in the first header row to compute offset
+            let offset = 0;
+            let found = false;
+            for (let i = 0; i < firstRow.cells.length; i++) {
+                const cell = firstRow.cells[i];
+                if (cell.classList && cell.classList.contains('advanced-group')) { found = true; break; }
+                const cs = Number(cell.colSpan) || 1;
+                offset += cs;
+            }
+            if (!found) return; // nothing to sync
+
+            // compute the column indices for each advanced subheader
+            const advIndices = [];
+            let cur = offset;
+            for (let j = 0; j < secondRow.cells.length; j++) {
+                const c = secondRow.cells[j];
+                const span = Number(c.colSpan) || 1;
+                for (let s = 0; s < span; s++) {
+                    advIndices.push(cur);
+                    cur++;
+                }
+            }
+
+            // For each tbody row, hide/show the TD at those indices
+            for (let bi = 0; bi < tableEl.tBodies.length; bi++) {
+                const body = tableEl.tBodies[bi];
+                for (let r = 0; r < body.rows.length; r++) {
+                    const row = body.rows[r];
+                    for (const idx of advIndices) {
+                        try {
+                            const cell = row.cells[idx];
+                            if (!cell) continue;
+                            cell.style.display = show ? '' : 'none';
+                        } catch (e) { /* ignore per-cell errors */ }
+                    }
+                }
+            }
+        } catch (e) { /* swallow */ }
     }
 
     function renderPriceMovesRow(body, coin, data) {
@@ -125,6 +224,21 @@
         const n = Number(val);
         return Number.isFinite(n) ? `${(n * 100).toFixed(digits)}%` : '-';
     };
+
+    // Standardized volume ratio formatter: delegate to global helper if available
+    function formatVolRatio(ratio) {
+        try {
+            if (typeof window.formatVolRatio === 'function') return window.formatVolRatio(ratio);
+            if (window.METRICS && typeof window.METRICS.formatVolRatio === 'function') return window.METRICS.formatVolRatio(ratio);
+        } catch (e) {
+            // fall through to local formatting
+        }
+        if (ratio === null || ratio === undefined) return '∞';
+        const n = Number(ratio);
+        if (!Number.isFinite(n)) return '-';
+        if (n > 9999) return '∞'; // treat extremely large values as infinite
+        return Math.round(n) + '%';
+    }
 
     // ===================== Durability Helpers =====================
     function getVolDurabilityMetric(data, timeframeKey, fallbackKeys = []) {
@@ -322,6 +436,16 @@
                     'volBuy24h', 'volSell24h'
                 );
 
+            // Phase-2 sortable metrics
+            case 'vpin':
+                try { return (data && data.analytics && data.analytics.vpin && Number.isFinite(data.analytics.vpin.value)) ? Number(data.analytics.vpin.value) : (data && data.analytics && data.analytics.vpin ? Number(data.analytics.vpin) : 0); } catch (e) { return 0; }
+            case 'hurst':
+                try { return (data && data.analytics && data.analytics.hurst && Number.isFinite(data.analytics.hurst.value)) ? Number(data.analytics.hurst.value) : (data && data.analytics && data.analytics.hurst ? Number(data.analytics.hurst) : 0); } catch (e) { return 0; }
+            case 'poc':
+                try { return (data && data.analytics && data.analytics.volumeProfile && Number.isFinite(data.analytics.volumeProfile.poc)) ? Number(data.analytics.volumeProfile.poc) : 0; } catch (e) { return 0; }
+            case 'depth_imbalance':
+                try { return (data && data.analytics && data.analytics.depthImbalance && Number.isFinite(data.analytics.depthImbalance.value)) ? Number(data.analytics.depthImbalance.value) : 0; } catch (e) { return 0; }
+
             // Volume timeframes
             case 'vol_buy_1h':
                 return parseFloat(data.count_VOL_minute_60_buy) || 0;
@@ -495,7 +619,16 @@
         if (freqRatioBody) freqRatioBody.innerHTML = '';
         // DON'T clear smartBody here - handled by async renderer to prevent flicker
 
-        const spikeRows = [];
+        let spikeRows = [];
+        // Restore last spike rows from localStorage if available (helps after page refresh)
+        try {
+            if ((!window._lastSpikeRows || !window._lastSpikeRows.length) && typeof localStorage !== 'undefined') {
+                const raw = localStorage.getItem('okx_lastSpikeRows');
+                if (raw) {
+                    try { window._lastSpikeRows = JSON.parse(raw); } catch (e) { window._lastSpikeRows = window._lastSpikeRows || []; }
+                }
+            }
+        } catch (e) { /* ignore storage errors */ }
         const filterText = typeof getActiveFilterValue === 'function' ? getActiveFilterValue() : '';
         const sortBy = sortBySelect ? sortBySelect.value : 'vol_ratio';
         const sortOrder = typeof getSortOrderValue === 'function' ? getSortOrderValue() : 'desc';
@@ -582,9 +715,70 @@
         try {
             const scount = Array.isArray(sortedCoins) ? sortedCoins.length : 0;
             if (scount <= 1 || scount < (window.rowLimit || 5)) {
-                console.debug('[updateTable] debug sortedCoins:', { count: scount, rowLimit: (window.rowLimit !== undefined ? window.rowLimit : 5), filterText });
+                // console.debug('[updateTable] debug sortedCoins:', { count: scount, rowLimit: (window.rowLimit !== undefined ? window.rowLimit : 5), filterText });
             }
         } catch (e) { /* swallow */ }
+
+        // Pre-scan all coins for spikes so the Spike tab reflects incoming data immediately
+        try {
+            spikeRows = [];
+            for (const [coinKey, d] of Object.entries(coinDataMap || {})) {
+                try {
+                    const data = d || {};
+                    const currentPrice = parseFloat(data.last) || 0;
+                    const highPrice = parseFloat(data.high) || currentPrice;
+                    const lowPrice = parseFloat(data.low) || currentPrice;
+                    const priceRange = highPrice - lowPrice;
+                    const pricePosition = priceRange > 0 ? Math.round(((currentPrice - lowPrice) / priceRange) * 100) : 50;
+                    detectSpikes(data, coinKey, spikeRows, pricePosition);
+                } catch (e) { /* ignore per-coin errors */ }
+            }
+            // If user has an active coin filter while on the Spike tab, apply it here
+            try {
+                const activeNav = document.querySelector('#dataTabs .nav-link.active');
+                const activeId = activeNav ? activeNav.id : null;
+                const ft = (typeof filterText === 'string') ? filterText.trim().toLowerCase() : '';
+                if (activeId === 'spike-tab' && ft) {
+                    spikeRows = spikeRows.filter(s => s && s.coin && String(s.coin).toLowerCase().includes(ft));
+                }
+            } catch (e) { /* ignore filter application errors */ }
+        } catch (e) { console.warn('pre-scan spikes error', e); }
+
+        // update visible last-spike-scan indicator so users can see when pre-scan ran
+        try {
+            const el = document.getElementById('lastSpikeScan');
+            if (el) el.textContent = 'Last spike: ' + new Date().toLocaleTimeString();
+        } catch (e) { /* ignore DOM errors */ }
+
+        // Push detected spikes into Event Watch and optionally trigger Alerts
+        try {
+            const eventWatchBuffer = window._eventWatchBuffer || (window._eventWatchBuffer = []);
+            if (!window._lastSpikeAlertAt) window._lastSpikeAlertAt = {};
+            const nowTs = Date.now();
+            for (const s of spikeRows) {
+                try {
+                    const key = `${s.coin}:${s.timeframe}:${s.side}:${Math.round((s.ratio||0)*100)}`;
+                    // throttle identical spike notifications for 30s
+                    if (window._lastSpikeAlertAt[key] && (nowTs - window._lastSpikeAlertAt[key] < 30 * 1000)) continue;
+                    window._lastSpikeAlertAt[key] = nowTs;
+
+                    // Add to event buffer
+                    try {
+                        eventWatchBuffer.push({ ts: nowTs, coin: s.coin, type: 'spike', description: `${s.side} ${s.timeframe} vol ${s.vol} (avg ${s.avg}) ratio ${s.ratio.toFixed(2)}x`, spike: s });
+                        if (eventWatchBuffer.length > 200) eventWatchBuffer.splice(0, eventWatchBuffer.length - 200);
+                    } catch (e) { /* ignore buffer errors */ }
+
+                    // Trigger UI alert/banner and persist to Alerts tab when alerts are enabled
+                    try {
+                        const title = `${s.coin} — Spike`;
+                        const msg = `${s.side} ${s.timeframe} spike: ${s.ratio.toFixed(2)}x (vol ${s.vol})`;
+                        if (typeof showAlertBanner === 'function') showAlertBanner(title, msg, 'warning', 8000);
+                        if (typeof addAlertToTab === 'function') addAlertToTab(s.coin, msg, 'warning', nowTs);
+                        if (typeof sendAlertWebhook === 'function') sendAlertWebhook(s.coin, { spike: s, ts: nowTs });
+                    } catch (e) { /* ignore alert trigger errors */ }
+                } catch (e) { /* ignore per-spike errors */ }
+            }
+        } catch (e) { /* ignore event/alert wiring errors */ }
 
         // Render rows
         for (const [coinKey, data] of sortedCoins) {
@@ -632,8 +826,7 @@
                 } catch (e) { console.warn('volRatio row insert failed for', coin, e); }
             }
 
-            // Detect spikes
-            detectSpikes(data, coin, spikeRows, pricePosition);
+            // Spike detection handled by pre-scan to ensure Spike tab updates regardless of rowLimit
 
             
 
@@ -711,10 +904,26 @@
             }
         }
 
-        // Render spike table
+        // If current detection produced no spikes, fall back to recently seen spikes
+        try {
+            if ((!spikeRows || spikeRows.length === 0) && Array.isArray(window._lastSpikeRows) && window._lastSpikeRows.length > 0) {
+                // console.debug('[updateTable] no spikes detected; using cached _lastSpikeRows as fallback');
+                spikeRows = window._lastSpikeRows.slice(0, Math.max(5, (rowLimit || 5)));
+            }
+        } catch (e) { /* ignore fallback errors */ }
+
+        // Spike tab follows the global `rowLimit` control
         renderSpikeTable(spikeBody, spikeRows, rowLimit);
 
-        try { window._lastSpikeRows = spikeRows.slice(0, 50); } catch (e) { }
+        try {
+            window._lastSpikeRows = spikeRows.slice(0, 50);
+            // Persist to localStorage so page refresh can restore spike list
+            const payload = JSON.stringify(window._lastSpikeRows);
+            if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet('okx_lastSpikeRows', payload);
+            else localStorage.setItem('okx_lastSpikeRows', payload);
+        } catch (e) { /* ignore persistence errors */ }
+
+        // No separate spike limit persistence — Spike uses global Limit Rows
 
         // Update other tabs
         try { if (typeof renderInfoTab === 'function') renderInfoTab(); } catch (e) { console.warn('renderInfoTab failed', e); }
@@ -733,13 +942,13 @@
                 const examples = [];
                 const map = coinDataMap || window.coinDataMap || {};
                 const mapKeys = Object.keys(map || {});
-                console.debug('[priceMoves] coinDataMap size:', mapKeys.length, 'sample keys:', mapKeys.slice(0, 10));
+                // console.debug('[priceMoves] coinDataMap size:', mapKeys.length, 'sample keys:', mapKeys.slice(0, 10));
                 // Print sample field keys for the first few coins to inspect payload shape
                 for (let i = 0; i < Math.min(5, mapKeys.length); i++) {
                     try {
                         const k = mapKeys[i];
                         const d = map[k] || {};
-                        console.debug('[priceMoves] sample coin fields for', k, Object.keys(d).slice(0, 40));
+                        // console.debug('[priceMoves] sample coin fields for', k, Object.keys(d).slice(0, 40));
                     } catch (e) { /* ignore */ }
                 }
                 for (const [coinKey, data] of Object.entries(map)) {
@@ -760,7 +969,7 @@
                         }
                     } catch (e) { /* swallow per-row errors */ }
                 }
-                console.debug('[priceMoves] populated rows:', found, 'examples:', examples);
+                // console.debug('[priceMoves] populated rows:', found, 'examples:', examples);
                 if (found === 0) {
                     try {
                         const r = priceMovesBody.insertRow();
@@ -825,7 +1034,7 @@
 
         const makeCell = (idx, buy, sell) => {
             const pct = makeRatio(buy, sell);
-            const text = (pct === null) ? '∞' : pct + '%';
+            const text = formatVolRatio(pct);
             const cell = vr.insertCell(idx);
             cell.textContent = text;
             if (pct === null || pct > 200) {
@@ -860,17 +1069,18 @@
 
     function detectSpikes(data, coin, spikeRows, pricePosition) {
         try {
+            const selectedMode = (spikeModeSelect && spikeModeSelect.value) ? String(spikeModeSelect.value) : 'all';
             const spikeThreshold = 2.0;
             const timeframes = [
-                { label: '1m', volKeys: ['count_VOL_minute1_buy', 'vol_buy_1MENIT', 'vol_buy_1min'], avgKeys: ['avg_VOLCOIN_buy_1MENIT'] },
-                { label: '5m', volKeys: ['count_VOL_minute_5_buy', 'vol_buy_5MENIT', 'vol_buy_5min'], avgKeys: ['avg_VOLCOIN_buy_5MENIT'] },
-                { label: '10m', volKeys: ['count_VOL_minute_10_buy', 'vol_buy_10MENIT', 'vol_buy_10min'], avgKeys: ['avg_VOLCOIN_buy_10MENIT'] },
-                { label: '15m', volKeys: ['vol_buy_15MENIT'], avgKeys: ['avg_VOLCOIN_buy_15MENIT'] },
-                { label: '20m', volKeys: ['vol_buy_20MENIT'], avgKeys: ['avg_VOLCOIN_buy_20MENIT'] },
-                { label: '30m', volKeys: ['vol_buy_30MENIT'], avgKeys: ['avg_VOLCOIN_buy_30MENIT'] },
-                { label: '60m', volKeys: ['count_VOL_minute_60_buy', 'vol_buy_1JAM', 'vol_buy_60MENIT'], avgKeys: ['avg_VOLCOIN_buy_1JAM'] },
-                { label: '120m', volKeys: ['count_VOL_minute_120_buy', 'vol_buy_2JAM', 'vol_buy_120MENIT'], avgKeys: ['avg_VOLCOIN_buy_2JAM'] },
-                { label: '24h', volKeys: ['count_VOL_minute_1440_buy', 'vol_buy_24JAM', 'vol_buy_24h'], avgKeys: ['avg_VOLCOIN_buy_24JAM'] }
+                { label: '1m', buyVolKeys: ['count_VOL_minute1_buy', 'vol_buy_1MENIT', 'vol_buy_1min'], buyAvgKeys: ['avg_VOLCOIN_buy_1MENIT'], sellVolKeys: ['count_VOL_minute1_sell','vol_sell_1MENIT','vol_sell_1min'], sellAvgKeys: ['avg_VOLCOIN_sell_1MENIT'] },
+                { label: '5m', buyVolKeys: ['count_VOL_minute_5_buy', 'vol_buy_5MENIT', 'vol_buy_5min'], buyAvgKeys: ['avg_VOLCOIN_buy_5MENIT'], sellVolKeys: ['count_VOL_minute_5_sell','vol_sell_5MENIT','vol_sell_5min'], sellAvgKeys: ['avg_VOLCOIN_sell_5MENIT'] },
+                { label: '10m', buyVolKeys: ['count_VOL_minute_10_buy', 'vol_buy_10MENIT', 'vol_buy_10min'], buyAvgKeys: ['avg_VOLCOIN_buy_10MENIT'], sellVolKeys: ['count_VOL_minute_10_sell','vol_sell_10MENIT','vol_sell_10min'], sellAvgKeys: ['avg_VOLCOIN_sell_10MENIT'] },
+                { label: '15m', buyVolKeys: ['vol_buy_15MENIT'], buyAvgKeys: ['avg_VOLCOIN_buy_15MENIT'], sellVolKeys: ['vol_sell_15MENIT'], sellAvgKeys: ['avg_VOLCOIN_sell_15MENIT'] },
+                { label: '20m', buyVolKeys: ['vol_buy_20MENIT'], buyAvgKeys: ['avg_VOLCOIN_buy_20MENIT'], sellVolKeys: ['vol_sell_20MENIT'], sellAvgKeys: ['avg_VOLCOIN_sell_20MENIT'] },
+                { label: '30m', buyVolKeys: ['vol_buy_30MENIT'], buyAvgKeys: ['avg_VOLCOIN_buy_30MENIT'], sellVolKeys: ['vol_sell_30MENIT'], sellAvgKeys: ['avg_VOLCOIN_sell_30MENIT'] },
+                { label: '60m', buyVolKeys: ['count_VOL_minute_60_buy', 'vol_buy_1JAM', 'vol_buy_60MENIT'], buyAvgKeys: ['avg_VOLCOIN_buy_1JAM'], sellVolKeys: ['count_VOL_minute_60_sell','vol_sell_1JAM','vol_sell_60MENIT'], sellAvgKeys: ['avg_VOLCOIN_sell_1JAM'] },
+                { label: '120m', buyVolKeys: ['count_VOL_minute_120_buy', 'vol_buy_2JAM', 'vol_buy_120MENIT'], buyAvgKeys: ['avg_VOLCOIN_buy_2JAM'], sellVolKeys: ['count_VOL_minute_120_sell','vol_sell_2JAM','vol_sell_120MENIT'], sellAvgKeys: ['avg_VOLCOIN_sell_2JAM'] },
+                { label: '24h', buyVolKeys: ['count_VOL_minute_1440_buy', 'vol_buy_24JAM', 'vol_buy_24h'], buyAvgKeys: ['avg_VOLCOIN_buy_24JAM'], sellVolKeys: ['count_VOL_minute_1440_sell','vol_sell_24JAM','vol_sell_24h'], sellAvgKeys: ['avg_VOLCOIN_sell_24JAM'] }
             ];
 
             const priceChange = parseFloat(data.percent_change) || 0;
@@ -883,22 +1093,73 @@
             const recClassName = recResult ? (recResult.className || 'recommendation-hold') : 'recommendation-hold';
 
             for (const tf of timeframes) {
-                const vol = getNumeric(data, ...tf.volKeys);
-                const avg = getNumeric(data, ...tf.avgKeys);
-                if (avg > 0 && vol / avg >= spikeThreshold) {
-                    spikeRows.push({ 
-                        coin, 
-                        timeframe: tf.label, 
-                        vol, 
-                        avg, 
-                        ratio: vol / avg, 
-                        price_change: priceChange, 
-                        recommendation,
-                        recConfidence,
-                        recClassName,
-                        update_time: data.update_time || data.update_time_VOLCOIN || 0 
-                    });
+                // buy-side
+                const buyVol = getNumeric(data, ...(tf.buyVolKeys || []));
+                const buyAvg = getNumeric(data, ...(tf.buyAvgKeys || []));
+                const buyRatio = buyAvg > 0 ? (buyVol / buyAvg) : 0;
+                const buyRatioPct = buyAvg > 0 ? ((buyRatio - 1) * 100) : 0;
+                if (buyAvg > 0 && (buyRatio >= spikeThreshold || buyRatioPct >= 1.0)) {
+                    if (selectedMode === 'all' || selectedMode === 'buy-only') {
+                        spikeRows.push({
+                            coin,
+                            timeframe: tf.label,
+                            side: 'BUY',
+                            vol: buyVol,
+                            avg: buyAvg,
+                            ratio: buyRatio,
+                            price_change: priceChange,
+                            recommendation: 'LONG',
+                            recConfidence,
+                            recClassName: 'recommendation-buy',
+                            update_time: data.update_time || data.update_time_VOLCOIN || 0
+                        });
+                    }
                 }
+                // sell-side
+                const sellVol = getNumeric(data, ...(tf.sellVolKeys || []));
+                const sellAvg = getNumeric(data, ...(tf.sellAvgKeys || []));
+                const sellRatio = sellAvg > 0 ? (sellVol / sellAvg) : 0;
+                const sellRatioPct = sellAvg > 0 ? ((sellRatio - 1) * 100) : 0;
+                if (sellAvg > 0 && (sellRatio >= spikeThreshold || sellRatioPct >= 1.0)) {
+                    if (selectedMode === 'all' || selectedMode === 'sell-only') {
+                        spikeRows.push({
+                            coin,
+                            timeframe: tf.label,
+                            side: 'SELL',
+                            vol: sellVol,
+                            avg: sellAvg,
+                            ratio: sellRatio,
+                            price_change: priceChange,
+                            recommendation: 'SHORT',
+                            recConfidence,
+                            recClassName: 'recommendation-sell',
+                            update_time: data.update_time || data.update_time_VOLCOIN || 0
+                        });
+                    }
+                }
+                // total volume spike (optionally detect very large total relative to avg)
+                try {
+                    const totVol = (buyVol || 0) + (sellVol || 0);
+                    const totAvg = (buyAvg || 0) + (sellAvg || 0);
+                    const totRatio = totAvg > 0 ? (totVol / totAvg) : 0;
+                    if (totAvg > 0 && totRatio >= spikeThreshold * 1.5) {
+                        if (selectedMode === 'all' || selectedMode === 'total') {
+                            spikeRows.push({
+                                coin,
+                                timeframe: tf.label,
+                                side: 'TOTAL',
+                                vol: totVol,
+                                avg: totAvg,
+                                ratio: totRatio,
+                                price_change: priceChange,
+                                recommendation: (buyVol > sellVol) ? 'LONG' : (sellVol > buyVol ? 'SHORT' : 'HOLD'),
+                                recConfidence,
+                                recClassName: (buyVol > sellVol) ? 'recommendation-buy' : (sellVol > buyVol ? 'recommendation-sell' : 'recommendation-hold'),
+                                update_time: data.update_time || data.update_time_VOLCOIN || 0
+                            });
+                        }
+                    }
+                } catch (e) { /* ignore total checks */ }
             }
         } catch (e) { console.error('Spike detection error', e); }
     }
@@ -938,7 +1199,9 @@
 
         const volumeRatio2h = volSell2h > 0 ? (volBuy2h / volSell2h) * 100 : (volBuy2h > 0 ? null : 0);
         const vrCell = row.insertCell(6);
-        vrCell.textContent = volumeRatio2h === null ? '∞' : Math.round(volumeRatio2h) + '%';
+        try {
+            vrCell.textContent = formatVolRatio(volumeRatio2h);
+        } catch (e) { vrCell.textContent = formatVolRatio(volumeRatio2h); }
         vrCell.className = (volumeRatio2h === null || volumeRatio2h > 200) ? 'text-success fw-bold' : volumeRatio2h < 50 ? 'text-danger fw-bold' : 'text-warning fw-bold';
 
         row.insertCell(7).textContent = volBuy2h;
@@ -958,9 +1221,151 @@
         row.insertCell(10).textContent = volBuy24h;
         row.insertCell(11).textContent = volSell24h;
 
+        // Tier-1 metrics: Kyle's Lambda, VWAP Bands position, CVD, RVOL
+        const metrics = (typeof getUnifiedSmartMetrics === 'function') ? getUnifiedSmartMetrics(data) : (data && (data.analytics || data._analytics)) ? (data.analytics || data._analytics) : {};
+
+        // Kyle's Lambda (prefer structured object with .value)
+        let kyleVal = null;
+        try {
+            if (metrics && metrics.kyleLambda && typeof metrics.kyleLambda === 'object' && metrics.kyleLambda.value !== undefined) kyleVal = Number(metrics.kyleLambda.value);
+            else if (metrics && metrics.kyleLambda !== undefined) kyleVal = Number(metrics.kyleLambda);
+        } catch (e) { kyleVal = null; }
+        const kCell = row.insertCell();
+        kCell.classList.add('advanced-metric');
+        kCell.textContent = Number.isFinite(Number(kyleVal)) ? fmtSmart(kyleVal, 4) : '-';
+        if (Number.isFinite(kyleVal)) kCell.className += ' ' + (kyleVal >= 0.05 ? 'text-danger fw-bold' : kyleVal <= 0.01 ? 'text-success' : 'text-warning');
+        try {
+            if (metrics && metrics.tier1 && Number.isFinite(metrics.tier1.kyle)) {
+                const s = document.createElement('div');
+                s.className = 'small text-muted';
+                s.textContent = `(${metrics.tier1.kyle}%)`;
+                kCell.appendChild(s);
+            }
+        } catch (e) { }
+
+        // VWAP Bands / position
+        let vwapPos = null;
+        try {
+            if (metrics && metrics.vwapBands && metrics.vwapBands.position) vwapPos = metrics.vwapBands.position;
+            else if (metrics && metrics.vwapPosition !== undefined) vwapPos = metrics.vwapPosition;
+        } catch (e) { vwapPos = null; }
+        const vCell = row.insertCell();
+        vCell.classList.add('advanced-metric');
+        vCell.textContent = vwapPos ? String(vwapPos) : (metrics && metrics.vwapBands && metrics.vwapBands.currentPosition ? metrics.vwapBands.currentPosition : '-');
+        try {
+            if (metrics && metrics.tier1 && Number.isFinite(metrics.tier1.vwap)) {
+                const s = document.createElement('div'); s.className = 'small text-muted'; s.textContent = `(${metrics.tier1.vwap}% )`;
+                vCell.appendChild(s);
+            }
+        } catch (e) { }
+
+        // CVD (show numeric and/or trend)
+        let cvdVal = null;
+        try { if (metrics && metrics.cvd && metrics.cvd.value !== undefined) cvdVal = Number(metrics.cvd.value); else if (metrics && metrics.cvd !== undefined) cvdVal = Number(metrics.cvd); } catch (e) { cvdVal = null; }
+        const cvdCell = row.insertCell();
+        cvdCell.classList.add('advanced-metric');
+        if (Number.isFinite(cvdVal)) { cvdCell.textContent = fmtNum(cvdVal, 0); cvdCell.className = cvdVal > 0 ? 'text-success' : (cvdVal < 0 ? 'text-danger' : 'text-muted'); }
+        else cvdCell.textContent = (metrics && metrics.cvd && metrics.cvd.trend) ? metrics.cvd.trend : '-';
+        try { if (metrics && metrics.tier1 && Number.isFinite(metrics.tier1.cvd)) { const s = document.createElement('div'); s.className='small text-muted'; s.textContent = `(${metrics.tier1.cvd}% )`; cvdCell.appendChild(s); } } catch(e){}
+
+        // RVOL (relative volume) — show multiplier (e.g., 1.23x)
+        let rvolVal = null;
+        try { if (metrics && metrics.rvol && metrics.rvol.value !== undefined) rvolVal = Number(metrics.rvol.value); else if (metrics && metrics.rvol !== undefined) rvolVal = Number(metrics.rvol); } catch (e) { rvolVal = null; }
+        const rCell = row.insertCell();
+        rCell.classList.add('advanced-metric');
+        rCell.textContent = Number.isFinite(rvolVal) ? `${Number(rvolVal).toFixed(2)}x` : '-';
+        if (Number.isFinite(rvolVal)) rCell.className = rvolVal >= 1.5 ? 'text-danger fw-bold' : rvolVal <= 0.8 ? 'text-muted' : 'text-warning';
+        try { if (metrics && metrics.tier1 && Number.isFinite(metrics.tier1.rvol)) { const s = document.createElement('div'); s.className='small text-muted'; s.textContent = `(${metrics.tier1.rvol}% )`; rCell.appendChild(s); } } catch(e){}
+        // Phase-2: VPIN, Hurst, POC, Depth Imbalance (polished with normalized badges)
+        try {
+            const makeMuted = (text) => { const d = document.createElement('div'); d.className = 'small text-muted'; d.textContent = text; return d; };
+
+            // Prepare fallback computation helper using AnalyticsCore when available
+            const tryPhase2Fallbacks = (data) => {
+                const out = {};
+                try {
+                    const core = (typeof window !== 'undefined' && window.AnalyticsCore) ? window.AnalyticsCore : null;
+                    const hist = Array.isArray(data._history) ? data._history : (Array.isArray(data.history) ? data.history : []);
+                    if (core) {
+                        if ((!data.vpin && !data.vpinValid) && hist && hist.length >= 3 && typeof core.computeVPIN === 'function') {
+                            try { out.vpin = core.computeVPIN(hist, { lookbackBars: Math.min(50, hist.length), minSamples: 3 }); } catch(e) { }
+                        }
+                        if ((!data.hurst && !data.hurstValid) && hist && hist.length >= 20 && typeof core.computeHurstExponent === 'function') {
+                            try { out.hurst = core.computeHurstExponent(hist, { minSamples: Math.max(20, Math.min(50, hist.length)) }); } catch(e) { }
+                        }
+                        if ((!data.volumeProfile || !data.volumeProfile.poc) && hist && hist.length >= 2 && typeof core.computeVolumeProfilePOC === 'function') {
+                            try { out.volumeProfile = core.computeVolumeProfilePOC(hist, { bins: 16 }); } catch(e) { }
+                        }
+                        if ((!data.depthImbalance || !data.depthImbalance.value) && hist && hist.length >= 1 && typeof core.computeDepthImbalance === 'function') {
+                            try {
+                                // depth snapshot may be present on last history point
+                                const last = hist[hist.length - 1] || {};
+                                out.depthImbalance = core.computeDepthImbalance(last);
+                            } catch(e) { }
+                        }
+                    }
+                } catch (e) { /* swallow fallback errors */ }
+                return out;
+            };
+
+            const fall = tryPhase2Fallbacks(data || {});
+
+            // VPIN
+            const vpinCell = row.insertCell();
+            vpinCell.classList.add('advanced-metric');
+            const vpinVal = (metrics && metrics.vpin && Number.isFinite(metrics.vpin.value)) ? Number(metrics.vpin.value) : ((metrics && metrics.vpin && Number.isFinite(metrics.vpin)) ? Number(metrics.vpin) : (fall && fall.vpin && typeof fall.vpin.value === 'number' ? Number(fall.vpin.value) : null));
+            if (Number.isFinite(vpinVal)) {
+                vpinCell.textContent = Math.round(vpinVal * 100) + '%';
+                const vpinClass = vpinVal > 0.2 ? 'text-danger' : (vpinVal > 0.1 ? 'text-warning' : 'text-muted');
+                try { vpinCell.classList.add(vpinClass); } catch(e) { vpinCell.className = (vpinCell.className || '') + ' ' + vpinClass; }
+                try { if (metrics.vpin && Number.isFinite(metrics.vpin.normalized)) vpinCell.appendChild(makeMuted('(' + metrics.vpin.normalized + '%)')); else if (fall.vpin && Number.isFinite(fall.vpin.normalized)) vpinCell.appendChild(makeMuted('(' + fall.vpin.normalized + '%)')); } catch(e){}
+            } else if (metrics && metrics.vpin && metrics.vpin.percent) {
+                vpinCell.textContent = Math.round(metrics.vpin.percent) + '%';
+                try { if (metrics.vpin && Number.isFinite(metrics.vpin.normalized)) vpinCell.appendChild(makeMuted('(' + metrics.vpin.normalized + '%)')); } catch(e){}
+            } else vpinCell.textContent = '-';
+
+            // Hurst
+            const hurstCell = row.insertCell();
+            hurstCell.classList.add('advanced-metric');
+            let hurstVal = (metrics && metrics.hurst && Number.isFinite(metrics.hurst.value)) ? Number(metrics.hurst.value) : ((metrics && metrics.hurst && Number.isFinite(metrics.hurst)) ? Number(metrics.hurst) : (fall && fall.hurst && typeof fall.hurst.value === 'number' ? Number(fall.hurst.value) : null));
+            if (Number.isFinite(hurstVal)) {
+                hurstVal = Math.max(0, Math.min(1, hurstVal)); // clamp
+                hurstCell.textContent = hurstVal.toFixed(3);
+                try { hurstCell.classList.add(hurstVal > 0.55 ? 'text-success' : (hurstVal < 0.45 ? 'text-danger' : 'text-muted')); } catch(e) { hurstCell.className = (hurstCell.className || '') + ' ' + (hurstVal > 0.55 ? 'text-success' : (hurstVal < 0.45 ? 'text-danger' : 'text-muted')); }
+                try { if (metrics.hurst && Number.isFinite(metrics.hurst.normalized)) hurstCell.appendChild(makeMuted('(' + metrics.hurst.normalized + '%)')); else if (fall.hurst && Number.isFinite(fall.hurst.normalized)) hurstCell.appendChild(makeMuted('(' + fall.hurst.normalized + '%)')); } catch(e){}
+                try { if (metrics.hurst && metrics.hurst.interpretation) hurstCell.title = metrics.hurst.interpretation; else if (fall.hurst && fall.hurst.interpretation) hurstCell.title = fall.hurst.interpretation; } catch(e){}
+            } else hurstCell.textContent = '-';
+
+            // POC (show value + value area range if available)
+            const pocCell = row.insertCell();
+            pocCell.classList.add('advanced-metric');
+            const poc = (metrics && metrics.volumeProfile && Number.isFinite(metrics.volumeProfile.poc)) ? Number(metrics.volumeProfile.poc) : ((metrics && metrics.volumeProfile && metrics.volumeProfile.poc) ? Number(metrics.volumeProfile.poc) : (fall && fall.volumeProfile && Number.isFinite(fall.volumeProfile.poc) ? Number(fall.volumeProfile.poc) : null));
+            if (Number.isFinite(poc)) {
+                pocCell.textContent = String(Number(poc).toFixed(4));
+                try {
+                    const low = (metrics.volumeProfile && Number.isFinite(metrics.volumeProfile.valueAreaLow)) ? Number(metrics.volumeProfile.valueAreaLow).toFixed(4) : (fall.volumeProfile && Number.isFinite(fall.volumeProfile.valueAreaLow) ? Number(fall.volumeProfile.valueAreaLow).toFixed(4) : null);
+                    const high = (metrics.volumeProfile && Number.isFinite(metrics.volumeProfile.valueAreaHigh)) ? Number(metrics.volumeProfile.valueAreaHigh).toFixed(4) : (fall.volumeProfile && Number.isFinite(fall.volumeProfile.valueAreaHigh) ? Number(fall.volumeProfile.valueAreaHigh).toFixed(4) : null);
+                    if (low !== null && high !== null) pocCell.appendChild(makeMuted('VA: ' + low + '\u2013' + high));
+                } catch (e) {}
+            } else pocCell.textContent = '-';
+
+            // Depth Imbalance
+            const depthCell = row.insertCell();
+            depthCell.classList.add('advanced-metric');
+            const depthVal = (metrics && metrics.depthImbalance && Number.isFinite(metrics.depthImbalance.value)) ? Number(metrics.depthImbalance.value) : ((metrics && metrics.depthImbalance && Number.isFinite(metrics.depthImbalance)) ? Number(metrics.depthImbalance) : null);
+            if (Number.isFinite(depthVal)) {
+                const pct = (depthVal * 100).toFixed(1);
+                depthCell.textContent = (depthVal > 0 ? '+' : '') + pct + '%';
+                try { depthCell.classList.add(depthVal > 0 ? 'text-success' : (depthVal < 0 ? 'text-danger' : 'text-muted')); } catch(e) { depthCell.className = (depthCell.className || '') + ' ' + (depthVal > 0 ? 'text-success' : (depthVal < 0 ? 'text-danger' : 'text-muted')); }
+                try { if (metrics.depthImbalance && Number.isFinite(metrics.depthImbalance.normalized)) depthCell.appendChild(makeMuted('(' + metrics.depthImbalance.normalized + '%)')); } catch(e){}
+            } else depthCell.textContent = '-';
+        } catch (e) { /* ignore phase-2 render errors */ }
+
+        // Update timestamp (append last)
         let ts = data.update_time || data.update_time_VOLCOIN || 0;
         if (ts && ts < 1e12) ts = ts * 1000;
-        row.insertCell(12).textContent = ts ? new Date(ts).toLocaleString() : '-';
+        const upCell = row.insertCell();
+        upCell.textContent = ts ? new Date(ts).toLocaleString() : '-';
     }
 
     function renderRecsRow(body, coin, data, pricePosition, recsRowCount, rowLimit) {
@@ -1049,9 +1454,30 @@
             } catch (e) { }
 
             rr.insertCell(3).textContent = `${recLocal.confidence || 0}%`;
-            rr.insertCell(4).textContent = priceNow || '-';
-            rr.insertCell(5).textContent = tpLocal;
-            rr.insertCell(6).textContent = slLocal;
+            // Multi-timeframe confluence (polished UI)
+            let conflCell = rr.insertCell(4);
+            try {
+                let confl = null;
+                if (typeof calculateMultiTimeframeConfluence === 'function') confl = calculateMultiTimeframeConfluence(data);
+                else if (data && data.analytics && data.analytics.multiTfConfluence) confl = data.analytics.multiTfConfluence;
+                if (confl && (typeof confl.confluence !== 'undefined' || typeof confl.score !== 'undefined')) {
+                    const pct = (typeof confl.confluence !== 'undefined') ? confl.confluence : Math.round(Math.abs((confl.score || 0) * 100));
+                    const consensus = confl.consensus || (confl.score > 0 ? 'BUY' : (confl.score < 0 ? 'SELL' : 'MIXED'));
+                    conflCell.textContent = pct + '%';
+                    conflCell.title = consensus + ' • ' + (confl.breakdown ? confl.breakdown.map(b => `${b.timeframe}:${b.rec}(${Math.round((b.weight||0)*100)}%)`).join(' • ') : '');
+                    if (pct >= 60) conflCell.className = 'text-success fw-bold';
+                    else if (pct >= 40) conflCell.className = 'text-warning fw-bold';
+                    else conflCell.className = 'text-danger fw-bold';
+                    if (consensus === 'BUY') conflCell.style.background = 'rgba(0,255,136,0.06)';
+                    else if (consensus === 'SELL') conflCell.style.background = 'rgba(255,71,87,0.06)';
+                } else {
+                    conflCell.textContent = '-';
+                }
+            } catch (e) { conflCell.textContent = '-'; }
+
+            rr.insertCell(5).textContent = priceNow || '-';
+            rr.insertCell(6).textContent = tpLocal;
+            rr.insertCell(7).textContent = slLocal;
 
             recsRowCount++;
         }
@@ -1081,7 +1507,9 @@
 
         const volRatio2h = vs2h > 0 ? (vb2h / vs2h) * 100 : (vb2h > 0 ? null : 0);
         const cell = row.insertCell(17);
-        cell.textContent = volRatio2h === null ? '∞' : Math.round(volRatio2h) + '%';
+        try {
+            cell.textContent = formatVolRatio(volRatio2h);
+        } catch (e) { cell.textContent = formatVolRatio(volRatio2h); }
         cell.className = (volRatio2h === null || volRatio2h > 200) ? 'text-success fw-bold' : volRatio2h < 50 ? 'text-danger fw-bold' : 'text-warning fw-bold';
 
         row.insertCell(18).textContent = vb24;
@@ -1272,29 +1700,48 @@
     function renderSpikeTable(body, spikeRows, rowLimit) {
         if (!body) return;
         spikeRows.sort((a, b) => b.ratio - a.ratio);
-        const maxSpikes = isFinite(rowLimit) ? rowLimit : spikeRows.length;
+        // For the Spike tab, follow the global rowLimit passed into updateTable()
+        const isSpikePane = (body && body.id === 'spikeBody');
+        const defaultCap = 100;
+        const effectiveLimit = isFinite(rowLimit) ? Number(rowLimit) : defaultCap;
+        const maxSpikes = isSpikePane ? Math.min(spikeRows.length, effectiveLimit) : (isFinite(rowLimit) ? rowLimit : spikeRows.length);
         const showRows = spikeRows.slice(0, maxSpikes);
         for (const s of showRows) {
             const r = body.insertRow();
             r.insertCell(0).textContent = s.coin;
-            r.insertCell(1).textContent = s.timeframe;
-            r.insertCell(2).textContent = s.vol;
-            r.insertCell(3).textContent = s.avg;
-            const ratioCell = r.insertCell(4);
+            // Side (BUY/SELL/TOTAL)
+            const sideCell = r.insertCell(1);
+            sideCell.textContent = s.side || '';
+            sideCell.className = s.side === 'BUY' ? 'text-success fw-bold' : (s.side === 'SELL' ? 'text-danger fw-bold' : 'text-muted');
+            r.insertCell(2).textContent = s.timeframe;
+            r.insertCell(3).textContent = s.vol;
+            r.insertCell(4).textContent = s.avg;
+            const ratioCell = r.insertCell(5);
             ratioCell.textContent = s.ratio.toFixed(2) + 'x';
             ratioCell.className = s.ratio >= 4 ? 'text-success fw-bold' : s.ratio >= 2 ? 'text-warning fw-bold' : '';
             
-            const priceCell = r.insertCell(5);
+            const priceCell = r.insertCell(6);
             const pc = s.price_change || 0;
             priceCell.textContent = (pc > 0 ? '+' : '') + pc.toFixed(2) + '%';
             priceCell.className = pc > 0 ? 'text-success fw-bold' : pc < 0 ? 'text-danger fw-bold' : 'text-muted';
             
-            const recCell = r.insertCell(6);
+            const recCell = r.insertCell(7);
             recCell.textContent = s.recommendation ? `${s.recommendation} (${s.recConfidence}%)` : 'HOLD';
             recCell.className = s.recClassName || 'recommendation-hold';
             
             const ts = s.update_time && s.update_time < 1e12 ? s.update_time * 1000 : s.update_time;
-            r.insertCell(7).textContent = ts ? new Date(ts).toLocaleString() : '-';
+            const upCell = r.insertCell(8);
+            upCell.textContent = ts ? new Date(ts).toLocaleString() : '-';
+
+            // Row styling by recommendation for quick visual cue
+            try {
+                if (s.recommendation && typeof s.recommendation === 'string') {
+                    const rec = String(s.recommendation).toUpperCase();
+                    if (rec.indexOf('LONG') !== -1) r.classList.add('recommendation-buy');
+                    else if (rec.indexOf('SHORT') !== -1) r.classList.add('recommendation-sell');
+                    else r.classList.add('recommendation-hold');
+                }
+            } catch (e) { }
         }
     }
 

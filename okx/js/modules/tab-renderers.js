@@ -20,6 +20,14 @@
         const n = Number(val);
         return Number.isFinite(n) ? Math.round(n).toLocaleString() : '-';
     };
+    // Local delegating wrapper to centralized vol-ratio formatter
+    function formatVolRatioLocal(val) {
+        try {
+            if (typeof window.formatVolRatio === 'function') return window.formatVolRatio(val);
+            if (window.METRICS && typeof window.METRICS.formatVolRatio === 'function') return window.METRICS.formatVolRatio(val);
+        } catch (e) { /* fallthrough to fallback */ }
+        return fmtPct(val, 1);
+    }
     
     // ===================== Helpers (delegate to AnalyticsCore) =====================
     function computeATR(history, periods = 14) {
@@ -107,6 +115,61 @@
             const timeframe = tfSelect.value || '120m';
             const metrics = (typeof getUnifiedSmartMetrics === 'function') ? getUnifiedSmartMetrics(data) : (data && (data.analytics || data._analytics)) ? (data.analytics || data._analytics) : {};
             const analytics = metrics;
+            // Prepare safe displays for RVOL to avoid showing 'NaNx' when analytics.rvol is an object without .value
+            let rvolDisplay = '-';
+            try {
+                if (analytics && analytics.rvol) {
+                    if (analytics.rvol.value !== undefined) {
+                        const v = Number(analytics.rvol.value);
+                        if (Number.isFinite(v)) rvolDisplay = `${v.toFixed(2)}x${analytics.rvol.provisional ? '*' : ''}`;
+                    } else if (typeof analytics.rvol === 'number' && Number.isFinite(analytics.rvol)) {
+                        rvolDisplay = `${analytics.rvol.toFixed(2)}x`;
+                    }
+                }
+            } catch (e) { rvolDisplay = '-'; }
+            // If certain advanced metrics are missing, try to compute them on-demand from AnalyticsCore using available history
+            try {
+                const core = (typeof globalThis !== 'undefined' && globalThis.AnalyticsCore) ? globalThis.AnalyticsCore : (typeof AnalyticsCore !== 'undefined' ? AnalyticsCore : null);
+                const history = Array.isArray(data._history) ? data._history.slice().sort((a,b)=> (a.ts||0)-(b.ts||0)) : (Array.isArray(data.history) ? data.history.slice().sort((a,b)=>(a.ts||0)-(b.ts||0)) : []);
+                if (core) {
+                    if ((!analytics || !analytics.kyleLambda || analytics.kyleLambda.valid === false) && typeof core.computeKyleLambda === 'function') {
+                        try { analytics.kyleLambda = core.computeKyleLambda(history, { lookbackPeriods: 20, minSamples: 10, smoothingWindow: 5 }); } catch(e){}
+                    }
+                    if ((!analytics || !analytics.vwapBands || analytics.vwapBands.valid === false) && typeof core.computeVWAPBands === 'function') {
+                        try { analytics.vwapBands = core.computeVWAPBands(history, { lookbackPeriods: 120, stdMultiplier: 2.0, adaptiveMultiplier: true }); } catch(e){}
+                    }
+                    if ((!analytics || !analytics.cvd || analytics.cvd.valid === false) && typeof core.computeCVD === 'function') {
+                        try { analytics.cvd = core.computeCVD(history, { window: 'all', normalizationMethod: 'total', smoothingPeriod: 3 }); } catch(e){}
+                    }
+                    if ((!analytics || !analytics.rvol || analytics.rvol.valid === false) && typeof core.computeRVOL === 'function') {
+                        try {
+                            analytics.rvol = core.computeRVOL(history, { baselinePeriods: 14, minSamplesRequired: 10 });
+                        } catch(e){}
+                        // If still invalid but we have a small amount of history, compute a provisional RVOL with lower sample requirement
+                        try {
+                            if (analytics && analytics.rvol && analytics.rvol.valid === false && Array.isArray(history) && history.length >= 3) {
+                                const prov = core.computeRVOL(history, { baselinePeriods: 14, minSamplesRequired: 3 });
+                                if (prov && prov.value !== undefined && Number.isFinite(Number(prov.value))) {
+                                    prov.provisional = true;
+                                    analytics.rvol = prov;
+                                }
+                            }
+                        } catch(e){}
+                    }
+                    if ((!analytics || !analytics.vpin) && typeof core.computeVPIN === 'function') {
+                        try { analytics.vpin = core.computeVPIN(history, { lookbackBars: 50, minSamples: 10 }); } catch(e){}
+                    }
+                    if ((!analytics || !analytics.hurst) && typeof core.computeHurstExponent === 'function') {
+                        try { analytics.hurst = core.computeHurstExponent(history, { minSamples: 50 }); } catch(e){}
+                    }
+                    if ((!analytics || !analytics.volumeProfile) && typeof core.computeVolumeProfilePOC === 'function') {
+                        try { analytics.volumeProfile = core.computeVolumeProfilePOC(history, { bins: 24 }); } catch(e){}
+                    }
+                    if ((!analytics || !analytics.depthImbalance) && typeof core.computeDepthImbalance === 'function') {
+                        try { analytics.depthImbalance = core.computeDepthImbalance((Array.isArray(data._history) ? data._history.slice(-1)[0] : data) || data); } catch(e){}
+                    }
+                }
+            } catch (e) { /* best-effort only */ }
             const price = Number(data.last) || 0;
             const high = Number(data.high) || price;
             const low = Number(data.low) || price;
@@ -114,7 +177,10 @@
             const pricePos = range > 0 ? Math.round(((price - low) / range) * 100) : 50;
             const rec = (typeof calculateRecommendation === 'function') ? calculateRecommendation(data, pricePos, timeframe, false) : null;
             const factors = (rec && rec.factors) ? rec.factors : {};
-            const volRatio = (metrics && metrics.volRatioBuySell_percent !== undefined && metrics.volRatioBuySell_percent !== null) ? fmtPct(metrics.volRatioBuySell_percent, 1) : (analytics.volRatioBuySell_percent !== undefined ? fmtPct(analytics.volRatioBuySell_percent, 1) : '-');
+            const _vrVal = (metrics && metrics.volRatioBuySell_percent !== undefined && metrics.volRatioBuySell_percent !== null) ? metrics.volRatioBuySell_percent : (analytics.volRatioBuySell_percent !== undefined ? analytics.volRatioBuySell_percent : null);
+            const volRatio = (_vrVal !== null && _vrVal !== undefined)
+                ? formatVolRatioLocal(_vrVal)
+                : '-';
             const durability = (metrics && metrics.volDurability2h_percent !== undefined && metrics.volDurability2h_percent !== null) ? fmtPct(metrics.volDurability2h_percent, 1) : (analytics.volDurability2h_percent !== undefined ? fmtPct(analytics.volDurability2h_percent, 1) : '-');
             const freqRatio = (() => {
                 const b = Number(analytics.freqBuy2h) || 0;
@@ -180,6 +246,14 @@
                             <li>Vol Ratio (2h): <strong>${volRatio}</strong></li>
                             <li>Vol Durability (2h): <strong>${durability}</strong></li>
                             <li>Freq Ratio (2h): <strong>${freqRatio}</strong></li>
+                            <li>λ (Kyle): <strong>${(analytics && (analytics.kyleLambda && analytics.kyleLambda.value !== undefined)) ? fmtNum(analytics.kyleLambda.value,4) : (analytics && analytics.kyleLambda !== undefined ? fmtNum(analytics.kyleLambda,4) : '-')}</strong>${(analytics && analytics.tier1 && analytics.tier1.kyle) ? ` <small class="text-muted">(${analytics.tier1.kyle}%)</small>` : ''}</li>
+                            <li>VWAP: <strong>${(analytics && analytics.vwapBands && analytics.vwapBands.position) ? analytics.vwapBands.position : (analytics && analytics.vwapPosition !== undefined ? analytics.vwapPosition : '-')}</strong>${(analytics && analytics.tier1 && analytics.tier1.vwap) ? ` <small class="text-muted">(${analytics.tier1.vwap}%)</small>` : ''}</li>
+                            <li>CVD: <strong>${(analytics && analytics.cvd && analytics.cvd.trend) ? analytics.cvd.trend : ((analytics && analytics.cvd && analytics.cvd.value !== undefined) ? fmtNum(analytics.cvd.value,0) : '-')}</strong>${(analytics && analytics.tier1 && analytics.tier1.cvd) ? ` <small class="text-muted">(${analytics.tier1.cvd}%)</small>` : ''}</li>
+                            <li>RVOL: <strong>${rvolDisplay}</strong>${(analytics && analytics.tier1 && Number.isFinite(Number(analytics.tier1.rvol))) ? ` <small class="text-muted">(${analytics.tier1.rvol}%)</small>` : ''}</li>
+                            <li>VPIN: <strong>${(analytics && analytics.vpin && analytics.vpin.percent) ? analytics.vpin.percent.toFixed(1) + '%' : ((analytics && analytics.vpin && analytics.vpin.value) ? Math.round(analytics.vpin.value*100) + '%' : '-')}</strong>${(analytics && analytics.vpin && Number.isFinite(analytics.vpin.normalized)) ? ` <small class="text-muted">(${analytics.vpin.normalized}%)</small>` : ''}</li>
+                            <li>Hurst: <strong>${(analytics && analytics.hurst && analytics.hurst.value !== undefined) ? Number(analytics.hurst.value).toFixed(3) : '-'}</strong>${(analytics && analytics.hurst && Number.isFinite(analytics.hurst.normalized)) ? ` <small class="text-muted">(${analytics.hurst.normalized}%)</small>` : ''}</li>
+                            <li>POC: <strong>${(analytics && analytics.volumeProfile && analytics.volumeProfile.poc) ? Number(analytics.volumeProfile.poc).toFixed(4) : '-'}</strong>${(analytics && analytics.volumeProfile && Number.isFinite(analytics.volumeProfile.valueAreaLow) && Number.isFinite(analytics.volumeProfile.valueAreaHigh)) ? ` <small class="text-muted">(VA ${Number(analytics.volumeProfile.valueAreaLow).toFixed(4)}–${Number(analytics.volumeProfile.valueAreaHigh).toFixed(4)})</small>` : ''}</li>
+                            <li>Depth Imb: <strong>${(analytics && analytics.depthImbalance && analytics.depthImbalance.value !== undefined) ? ((analytics.depthImbalance.value>0?'+':'') + (analytics.depthImbalance.value*100).toFixed(1) + '%') : '-'}</strong>${(analytics && analytics.depthImbalance && Number.isFinite(analytics.depthImbalance.normalized)) ? ` <small class="text-muted">(${analytics.depthImbalance.normalized}%)</small>` : ''}</li>
                             <li>Risk Score: <strong>${analytics && analytics.riskScore !== undefined ? analytics.riskScore + '%' : '-'}</strong></li>
                         </ul>
                         <div class="small text-muted">Insights: <strong>${insights}</strong></div>
@@ -372,14 +446,27 @@
             const atr = typeof computeATR === 'function' ? computeATR(history, 14) : 0;
             const riskScore = Number(data.risk_score || analytics.riskScore) || 0;
             const stressIndex = Math.round(Math.min(100, (Math.abs(tailRisk) * 1.5) + (realizedVol * 0.8) + (riskScore * 0.5)));
-            const freqBuy = Number(analytics.freqBuy2h) || 0;
-            const freqSell = Number(analytics.freqSell2h) || 0;
+            // Robust fallbacks for analytics fields -> raw WS field names
+            const pickNumber = (...keys) => {
+                for (const k of keys) {
+                    try {
+                        const v = (analytics && analytics[k] !== undefined && analytics[k] !== null) ? analytics[k] : (data && data[k] !== undefined ? data[k] : undefined);
+                        const n = Number(v);
+                        if (Number.isFinite(n)) return n;
+                    } catch (e) { }
+                }
+                return 0;
+            };
+
+            const freqBuy = pickNumber('freqBuy2h', 'count_FREQ_minute_120_buy', 'freq_buy_2JAM', 'freq_buy_120MENIT');
+            const freqSell = pickNumber('freqSell2h', 'count_FREQ_minute_120_sell', 'freq_sell_2JAM', 'freq_sell_120MENIT');
             const freqTotal = freqBuy + freqSell;
             const freqRatio = freqTotal > 0 ? (freqBuy / freqTotal) * 100 : 0;
-            const volBuy = Number(analytics.volBuy2h) || 0;
-            const volSell = Number(analytics.volSell2h) || 0;
+
+            const volBuy = pickNumber('volBuy2h', 'sum_min_120_buy', 'vol_buy_2JAM', 'count_VOL_minute_120_buy');
+            const volSell = pickNumber('volSell2h', 'sum_min_120_sell', 'vol_sell_2JAM', 'count_VOL_minute_120_sell');
             const volRatio = volSell > 0 ? (volBuy / volSell) * 100 : (volBuy > 0 ? null : 0);
-            const volRatioDisplay = volRatio === null ? '∞' : Math.round(volRatio) + '%';
+            const volRatioDisplay = formatVolRatioLocal(volRatio);
             const stressClass = stressIndex >= 70 ? 'alert-danger' : stressIndex >= 50 ? 'alert-warning' : 'alert-success';
             pane.innerHTML = `
                 <div class="row g-3">
@@ -399,7 +486,7 @@
                             <li>Vol Ratio (2h): <strong>${volRatioDisplay}</strong></li>
                             <li>Freq Ratio (2h): <strong>${fmtPct(freqRatio, 1)}</strong></li>
                             <li>Risk Score: <strong>${riskScore}%</strong></li>
-                            <li>Liquidity Proxy: <strong>${fmtNum(analytics.liquidity_avg_trade_value || 0, 2)}</strong></li>
+                            <li>Liquidity Proxy: <strong>${fmtNum((analytics && analytics.liquidity_avg_trade_value) || data.liquidity_avg_trade_value || (volTotal && freqTotal ? (volTotal / Math.max(1,freqTotal)) : 0), 2)}</strong></li>
                             <li>Sharp Insights: <strong>${(analytics.sharpInsights && analytics.sharpInsights[0]) || 'None'}</strong></li>
                         </ul>
                         <div class="${stressClass} mt-2 py-2 px-3 small">
@@ -449,7 +536,18 @@
                 }).join('')
                 : '<div class="text-muted small">No recent events.</div>';
             const spikeHtml = spikeRows.length
-                ? spikeRows.map(s => `<div class="mb-1">${s.coin} ${s.timeframe}: <strong>${s.ratio.toFixed(2)}x</strong></div>`).join('')
+                ? spikeRows.map(s => {
+                    try {
+                        const coin = esc(s.coin || '');
+                        const tf = esc(s.timeframe || '');
+                        const side = esc(s.side || '');
+                        const rec = esc(s.recommendation || '');
+                        const conf = (s.recConfidence || s.recConfidence === 0) ? String(s.recConfidence) : '';
+                        const ratio = (s && typeof s.ratio === 'number') ? s.ratio.toFixed(2) + 'x' : (s && s.ratio ? String(s.ratio) : '-');
+                        const recClass = rec && /LONG|BUY/i.test(rec) ? 'text-success' : (rec && /SHORT|SELL/i.test(rec) ? 'text-danger' : 'text-muted');
+                        return `<div class="mb-1">${coin} ${tf} <small class="text-muted">(${side})</small>: <strong>${ratio}</strong> <span class="${recClass}" style="margin-left:8px;">${rec}${conf ? ' ('+conf+'%)' : ''}</span></div>`;
+                    } catch (e) { return `<div class="mb-1">${esc(String(s.coin||''))} ${esc(String(s.timeframe||''))}: <strong>${esc(String((s&&s.ratio)||'-'))}</strong></div>`; }
+                }).join('')
                 : '<div class="text-muted small">No spike data.</div>';
             pane.innerHTML = `
                 <div class="row g-3">

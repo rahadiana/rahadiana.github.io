@@ -274,6 +274,7 @@
     function resetAdvancedSortState() {
         advancedSortState = defaultAdvancedSortState();
         advancedSortDraft = null;
+        if (window) window.advancedSortState = advancedSortState;
         updateAdvancedSortStatusUI();
     }
 
@@ -367,9 +368,14 @@
                     .slice(0, MAX_ADV_SORT_CRITERIA)
                     .map((c) => ({ metric: c.metric, order: c.order === 'asc' ? 'asc' : 'desc' }));
                 const filters = buildFiltersFromInputs();
-                advancedSortState.criteria = sanitizedCriteria;
-                advancedSortState.filters = filters;
-                advancedSortState.enabled = Boolean(sanitizedCriteria.length) || Boolean(filters.flow || filters.durability || filters.priceWindow);
+                const enabled = Boolean(sanitizedCriteria.length) || Boolean(filters.flow || filters.durability || filters.priceWindow);
+                // Immutable update: replace the entire state object
+                advancedSortState = {
+                    enabled: enabled,
+                    criteria: sanitizedCriteria,
+                    filters: filters
+                };
+                if (window) window.advancedSortState = advancedSortState;
                 updateAdvancedSortStatusUI();
                 if (typeof window.scheduleUpdateTable === 'function') window.scheduleUpdateTable();
                 try {
