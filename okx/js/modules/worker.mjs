@@ -154,6 +154,9 @@
           if (tier1 && Object.prototype.hasOwnProperty.call(tier1, k) && typeof tier1[k] === 'number') {
             tier1[k] = { normalized: tier1[k] };
           }
+          if (tier1 && Object.prototype.hasOwnProperty.call(tier1, k) && tier1[k] && typeof tier1[k] === 'object' && typeof tier1[k].normalized === 'undefined') {
+            if (typeof tier1[k].value === 'number') tier1[k].normalized = tier1[k].value;
+          }
         }
       } catch (e) { /* ignore */ }
     }

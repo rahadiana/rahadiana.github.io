@@ -19,6 +19,16 @@
                 }
         };
 
+        // Lightweight telemetry (module-scoped, exposed via WebGPUWeight.getTelemetry())
+        const _telemetry = {
+            gpuCalls: 0,
+            cpuFallbacks: 0,
+            lastPath: null, // 'gpu' or 'cpu'
+            lastError: null,
+            lastDeviceInfo: null,
+            lastUsedAt: null
+        };
+
         async function initGPU() {
                 if (_gpuState.initPromise) return _gpuState.initPromise;
                 _gpuState.initPromise = (async () => {
@@ -79,8 +89,10 @@ fn main(@builtin(local_invocation_id) local_id : vec3<u32>, @builtin(workgroup_i
                                 _gpuState.device = device;
                                 _gpuState.pipelines.mul = mulPipeline;
                                 _gpuState.pipelines.sumPartial = sumPipeline;
+                                try { _telemetry.lastDeviceInfo = { name: adapter.name || null }; } catch(e){}
                                 return _gpuState;
                         } catch (e) {
+                                try { _telemetry.lastError = String(e && e.message ? e.message : e); } catch(err){}
                                 return null;
                         }
                 })();
@@ -100,12 +112,34 @@ fn main(@builtin(local_invocation_id) local_id : vec3<u32>, @builtin(workgroup_i
         // Check global config: if WebGPU disabled globally or for this function, fallback to CPU
         const cfg = global.WEBGPU_CONFIG || { enabled: true, enabledFunctions: {} };
         if (!cfg.enabled || cfg.enabledFunctions && cfg.enabledFunctions.computeMultiply === false) {
+            _telemetry.cpuFallbacks++;
+            _telemetry.lastPath = 'cpu';
+            _telemetry.lastUsedAt = Date.now();
             return cpuMultiply(input, scalar);
         }
-        if (!global.navigator || !global.navigator.gpu) return cpuMultiply(input, scalar);
+        if (!global.navigator || !global.navigator.gpu) {
+            _telemetry.cpuFallbacks++;
+            _telemetry.lastPath = 'cpu';
+            _telemetry.lastUsedAt = Date.now();
+            return cpuMultiply(input, scalar);
+        }
 
-        const adapter = await global.navigator.gpu.requestAdapter();
-        if (!adapter) return cpuMultiply(input, scalar);
+        let adapter;
+        try {
+            adapter = await global.navigator.gpu.requestAdapter();
+            if (!adapter) {
+                _telemetry.cpuFallbacks++;
+                _telemetry.lastPath = 'cpu';
+                _telemetry.lastUsedAt = Date.now();
+                return cpuMultiply(input, scalar);
+            }
+        } catch (e) {
+            _telemetry.lastError = String(e && e.message ? e.message : e);
+            _telemetry.cpuFallbacks++;
+            _telemetry.lastPath = 'cpu';
+            _telemetry.lastUsedAt = Date.now();
+            return cpuMultiply(input, scalar);
+        }
         const device = await adapter.requestDevice();
 
         const bufSize = input.byteLength;
@@ -147,6 +181,9 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
 
         const module = device.createShaderModule({code: shaderCode});
         const pipeline = device.createComputePipeline({ layout: 'auto', compute: { module, entryPoint: 'main' } });
+        _telemetry.gpuCalls++;
+        _telemetry.lastPath = 'gpu';
+        _telemetry.lastUsedAt = Date.now();
 
         const bindGroup = device.createBindGroup({
             layout: pipeline.getBindGroupLayout(0),
@@ -186,6 +223,9 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
 
         const cfg = global.WEBGPU_CONFIG || { enabled: true, enabledFunctions: {} };
         if (!cfg.enabled || cfg.enabledFunctions && cfg.enabledFunctions.computeElementwiseMul === false) {
+            _telemetry.cpuFallbacks++;
+            _telemetry.lastPath = 'cpu';
+            _telemetry.lastUsedAt = Date.now();
             const out = new Float32Array(len);
             for (let i = 0; i < len; i++) out[i] = a[i] * b[i];
             return out;
@@ -194,6 +234,9 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
         // Try to use cached GPU pipelines
         const state = await initGPU();
         if (!state || !state.device || !state.pipelines.mul) {
+            _telemetry.cpuFallbacks++;
+            _telemetry.lastPath = 'cpu';
+            _telemetry.lastUsedAt = Date.now();
             const out = new Float32Array(len);
             for (let i = 0; i < len; i++) out[i] = a[i] * b[i];
             return out;
@@ -230,6 +273,9 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
         const copy = readBuf.getMappedRange();
         const result = new Float32Array(copy.slice(0));
         readBuf.unmap();
+        _telemetry.gpuCalls++;
+        _telemetry.lastPath = 'gpu';
+        _telemetry.lastUsedAt = Date.now();
         return result;
     }
 
@@ -252,14 +298,25 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
 
         const cfg = global.WEBGPU_CONFIG || { enabled: true, enabledFunctions: {} };
         if (!cfg.enabled || cfg.enabledFunctions && cfg.enabledFunctions.computeSum === false) {
+            _telemetry.cpuFallbacks++;
+            _telemetry.lastPath = 'cpu';
+            _telemetry.lastUsedAt = Date.now();
             return cpuSum(input);
         }
-        if (!global.navigator || !global.navigator.gpu) return cpuSum(input);
+        if (!global.navigator || !global.navigator.gpu) {
+            _telemetry.cpuFallbacks++;
+            _telemetry.lastPath = 'cpu';
+            _telemetry.lastUsedAt = Date.now();
+            return cpuSum(input);
+        }
 
         // Use cached GPU reduction pipeline to compute partial sums per workgroup,
         // read back the partial sums and finalize the sum on CPU. Falls back to CPU.
         const state = await initGPU();
         if (!state || !state.device || !state.pipelines.sumPartial) {
+            _telemetry.cpuFallbacks++;
+            _telemetry.lastPath = 'cpu';
+            _telemetry.lastUsedAt = Date.now();
             // fallback: map via computeMultiply path
             const out = await computeMultiply(input, 1.0);
             return cpuSum(out);
@@ -312,6 +369,10 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
                 const cpu = cpuSum(input);
                 if (Math.abs(cpu) > 1e-12) {
                     console.warn('[WebGPUWeight] GPU reduction returned zero; falling back to CPU sum');
+                    _telemetry.lastError = 'gpu_zero_result_fallback';
+                    _telemetry.cpuFallbacks++;
+                    _telemetry.lastPath = 'cpu';
+                    _telemetry.lastUsedAt = Date.now();
                     return cpu;
                 }
             } catch (e) {
@@ -327,6 +388,36 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
         computeSum,
         computeElementwiseMul,
         computeDot
+    };
+
+    // Expose telemetry accessors
+    global.WebGPUWeight.getTelemetry = function() {
+        try {
+            return {
+                gpuCalls: _telemetry.gpuCalls,
+                cpuFallbacks: _telemetry.cpuFallbacks,
+                lastPath: _telemetry.lastPath,
+                lastError: _telemetry.lastError,
+                lastDeviceInfo: _telemetry.lastDeviceInfo,
+                lastUsedAt: _telemetry.lastUsedAt
+            };
+        } catch (e) {
+            return null;
+        }
+    };
+
+    global.WebGPUWeight.resetTelemetry = function() {
+        try {
+            _telemetry.gpuCalls = 0;
+            _telemetry.cpuFallbacks = 0;
+            _telemetry.lastPath = null;
+            _telemetry.lastError = null;
+            _telemetry.lastUsedAt = null;
+            // intentionally keep lastDeviceInfo to aid debugging across sessions
+            return true;
+        } catch (e) {
+            return false;
+        }
     };
 
 })(typeof self !== 'undefined' ? self : this);

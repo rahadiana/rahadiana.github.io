@@ -10,6 +10,12 @@
 (function() {
     'use strict';
 
+    // Module-scoped cache for WebGPU config to avoid scattering direct writes to window
+    let _localWEBGPUConfig = (function(){ try { return (typeof window !== 'undefined' && window.WEBGPU_CONFIG) ? window.WEBGPU_CONFIG : undefined } catch(e){ return undefined } })();
+    const getGlobalWebGPUConfig = function() {
+        return _localWEBGPUConfig;
+    };
+
     // Worker implementation moved to js/modules/worker.js to allow importing the single-source AnalyticsCore
     function computeKyleLambda(history, opts = {}) {
         const lookback = opts.lookbackPeriods || 20;
@@ -575,7 +581,8 @@
             for (const w of this.workers) {
                 try {
                     const payload = { emitLegacy: !!this.emitLegacy };
-                    try { if (typeof window !== 'undefined' && window.WEBGPU_CONFIG) payload.webgpu = window.WEBGPU_CONFIG; } catch (e) {}
+                    const webgpuCfg = getGlobalWebGPUConfig();
+                    if (webgpuCfg) payload.webgpu = webgpuCfg;
                     w.postMessage({ type: 'config', payload });
                 } catch (e) { /* ignore */ }
             }
@@ -813,10 +820,10 @@
         // Set WebGPU configuration and broadcast to all workers
         setWebGPUConfig(cfg) {
             try {
-                // Merge with existing global config if present
-                const existing = window.WEBGPU_CONFIG || {};
-                const merged = Object.assign({}, existing, cfg || {});
-                window.WEBGPU_CONFIG = merged;
+                const merged = Object.assign({}, _localWEBGPUConfig || {}, cfg || {});
+                _localWEBGPUConfig = merged;
+                // Attempt to mirror to global for backward compatibility, but don't rely on it
+                try { if (typeof window !== 'undefined') window.WEBGPU_CONFIG = merged; } catch (e) {}
                 for (const w of this.workers) {
                     try { w.postMessage({ type: 'config', payload: { webgpu: merged, emitLegacy: !!this.emitLegacy } }); } catch (e) { /* ignore */ }
                 }
@@ -828,7 +835,7 @@
         }
 
         getWebGPUConfig() {
-            return window.WEBGPU_CONFIG || null;
+            return _localWEBGPUConfig || null;
         }
     }
 
@@ -842,8 +849,7 @@
         workerPool.init();
     }
 
-    // Expose globally
-    window.workerPool = workerPool;
-    window.WorkerPool = WorkerPool;
+    // Expose via shim for compatibility; avoid writing into `window.*` here
+    try { if (window.__okxShim && typeof window.__okxShim.setWorkerPool === 'function') window.__okxShim.setWorkerPool(workerPool); } catch (e) { }
 
 })();

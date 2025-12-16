@@ -30,6 +30,14 @@
     function getCore() {
         return typeof AnalyticsCore !== 'undefined' ? AnalyticsCore : null;
     }
+
+    // Safe accessor for WorkerPool via shim with fallback to window
+    function getWorkerPool() {
+        try {
+            if (window && window.__okxShim && typeof window.__okxShim.getWorkerPool === 'function') return window.__okxShim.getWorkerPool();
+            return (window && window.workerPool) ? window.workerPool : null;
+        } catch (e) { return null; }
+    }
     
     function meanStd(arr) {
         const core = getCore();
@@ -137,10 +145,11 @@
         if (!docs) return '';
         
         // Features section
+        const wp = getWorkerPool();
         // Determine runtime implementation of key features (heuristic checks)
         const impl = {
             websocket: !!window.ws,
-            workerPool: !!window.workerPool && typeof window.workerPool.computeAnalyticsBatch === 'function',
+            workerPool: !!wp && typeof wp.computeAnalyticsBatch === 'function',
             analyticsCore: (typeof AnalyticsCore !== 'undefined') || (typeof getUnifiedSmartMetrics === 'function'),
             alerts: typeof loadAlertsFromStore === 'function',
             persistence: (() => { try { return Object.keys(localStorage).some(k => k.toLowerCase().includes('okx_calc') || k.toLowerCase().includes('okx')); } catch (e) { return false; } })(),
@@ -316,7 +325,7 @@
                 container.insertBefore(pane, container.firstElementChild);
             }
 
-            const coinDataMap = window.coinDataMap || {};
+            const coinDataMap = (window.__okxShim && typeof window.__okxShim.getCoinDataMap === 'function') ? window.__okxShim.getCoinDataMap() : (window.coinDataMap || {});
             const PERSIST_KEY = window.PERSIST_KEY || 'okx_calc_persist_history';
 
             const wsStateMap = { 0: 'CONNECTING', 1: 'OPEN', 2: 'CLOSING', 3: 'CLOSED' };
@@ -566,7 +575,8 @@
             const persistHistoryEnabled = window.persistHistoryEnabled !== undefined ? window.persistHistoryEnabled : false;
 
             // Worker Pool Stats
-            const wpStats = window.workerPool ? window.workerPool.getStats() : null;
+            const wpObj = getWorkerPool();
+            const wpStats = wpObj ? (typeof wpObj.getStats === 'function' ? wpObj.getStats() : null) : null;
             const wpStatus = wpStats 
                 ? `${wpStats.workers} workers (${wpStats.busy} busy, ${wpStats.queued} queued)` 
                 : 'Not initialized';

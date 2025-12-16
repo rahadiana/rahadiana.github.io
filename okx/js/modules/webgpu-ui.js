@@ -44,8 +44,8 @@
 
     // initialise from config if available
     try {
-      const cfg = (window.getWEBGPUConfig && window.getWEBGPUConfig()) || window.WEBGPU_CONFIG || { enabled: true };
-      checkbox.checked = !!cfg.enabled;
+      const cfg = (window.__okxShim && typeof window.__okxShim.getWEBGPUConfig === 'function') ? window.__okxShim.getWEBGPUConfig() : ((window.getWEBGPUConfig && typeof window.getWEBGPUConfig === 'function') ? window.getWEBGPUConfig() : (window.WEBGPU_CONFIG || null));
+      checkbox.checked = !!(cfg && cfg.enabled);
       hint.textContent = checkbox.checked ? 'enabled' : 'disabled';
     } catch (e) { checkbox.checked = true; }
 
@@ -71,17 +71,24 @@
         const chosen = sel.value === 'module' ? 'module' : 'classic';
         try { localStorage.setItem(MODE_KEY, chosen); } catch (e) {}
         // restart workerPool with preference
-        try {
+          try {
           const preferClassic = chosen === 'classic';
-          if (window.workerPool && typeof window.WorkerPool === 'function') {
-            const emitLegacy = window.workerPool.emitLegacy;
-            window.workerPool.terminate();
-            window.workerPool = new window.WorkerPool();
-            window.workerPool.preferClassic = preferClassic;
-            if (typeof window.workerPool.setEmitLegacy === 'function') window.workerPool.setEmitLegacy(emitLegacy);
-            window.workerPool.init();
-            console.log('[Worker UI] restarted workerPool, preferClassic=', preferClassic);
-          }
+          try {
+            const wp = (window.__okxShim && typeof window.__okxShim.getWorkerPool === 'function') ? window.__okxShim.getWorkerPool() : (window.workerPool || null);
+            if (wp && typeof window.WorkerPool === 'function') {
+              const emitLegacy = wp.emitLegacy;
+              try { wp.terminate(); } catch (e) {}
+              let newPool = null;
+              try { newPool = new window.WorkerPool(); } catch (e) { newPool = null; }
+              if (newPool) {
+                try { newPool.preferClassic = preferClassic; } catch (e) {}
+                try { if (typeof newPool.setEmitLegacy === 'function') newPool.setEmitLegacy(emitLegacy); } catch (e) {}
+                try { newPool.init(); } catch (e) {}
+                try { if (window.__okxShim && typeof window.__okxShim.setWorkerPool === 'function') window.__okxShim.setWorkerPool(newPool); else window.workerPool = newPool; } catch (e) { try { window.workerPool = newPool; } catch (ex) { } }
+                console.log('[Worker UI] restarted workerPool, preferClassic=', preferClassic);
+              }
+            }
+          } catch (e) { console.warn('[Worker UI] failed to restart workerPool', e); }
         } catch (e) { console.warn('[Worker UI] failed to restart workerPool', e); }
       });
     } catch (e) { /* ignore UI failure */ }
@@ -90,7 +97,10 @@
       const enabled = checkbox.checked;
       try {
         if (window.setWEBGPUConfig) window.setWEBGPUConfig({ enabled }, true);
-        else if (window.workerPool && window.workerPool.setWebGPUConfig) window.workerPool.setWebGPUConfig({ enabled });
+        else {
+          const wp2 = (window.__okxShim && typeof window.__okxShim.getWorkerPool === 'function') ? window.__okxShim.getWorkerPool() : (window.workerPool || null);
+          if (wp2 && typeof wp2.setWebGPUConfig === 'function') wp2.setWebGPUConfig({ enabled });
+        }
         hint.textContent = enabled ? 'enabled' : 'disabled';
         console.log('[WebGPU UI] set enabled=', enabled);
       } catch (e) { console.warn('[WebGPU UI] failed to update', e); }

@@ -78,7 +78,7 @@
     // ===================== Signal Lab Tab =====================
     function renderSignalLab() {
         try {
-            const coinDataMap = window.coinDataMap || {};
+            const coinDataMap = (window.__okxShim && typeof window.__okxShim.getCoinDataMap === 'function') ? window.__okxShim.getCoinDataMap() : (window.coinDataMap || {});
             const pane = document.getElementById('signalLabPane');
             const coinSelect = document.getElementById('signalLabCoinSelect');
             const tfSelect = document.getElementById('signalLabTfSelect');
@@ -265,7 +265,7 @@
     // ===================== Backtest Tab =====================
     function renderBacktestTab() {
         try {
-            const coinDataMap = window.coinDataMap || {};
+            const coinDataMap = (window.__okxShim && typeof window.__okxShim.getCoinDataMap === 'function') ? window.__okxShim.getCoinDataMap() : (window.coinDataMap || {});
             const pane = document.getElementById('backtestPane');
             const coinSelect = document.getElementById('backtestCoinSelect');
             const sampleEl = document.getElementById('backtestSampleCount');
@@ -380,7 +380,7 @@
     // ===================== Risk Monitor Tab =====================
     function renderRiskMonitorTab() {
         try {
-            const coinDataMap = window.coinDataMap || {};
+            const coinDataMap = (window.__okxShim && typeof window.__okxShim.getCoinDataMap === 'function') ? window.__okxShim.getCoinDataMap() : (window.coinDataMap || {});
             const pane = document.getElementById('riskPane');
             const coinSelect = document.getElementById('riskCoinSelect');
             const lookbackSelect = document.getElementById('riskLookbackSelect');

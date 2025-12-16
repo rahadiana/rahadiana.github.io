@@ -63,7 +63,7 @@
     // initialize global config from localStorage (if present) and expose helpers
     const stored = loadFromStorage();
     const initial = mergeDefaults(stored);
-    global.WEBGPU_CONFIG = initial;
+    try { if (global && global.__okxShim && typeof global.__okxShim.setWEBGPUConfig === 'function') global.__okxShim.setWEBGPUConfig(initial); else global.WEBGPU_CONFIG = initial; } catch (e) { try { global.WEBGPU_CONFIG = initial; } catch (ex) {} }
 
     // Expose helper to update config and optionally persist
     global.setWEBGPUConfig = function(cfg, persist = true) {
@@ -75,8 +75,13 @@
             }
             global.WEBGPU_CONFIG = merged;
             if (persist) saveToStorage(merged);
-            // broadcast to workerPool if available
-            try { if (global.window && window.workerPool && typeof window.workerPool.setWebGPUConfig === 'function') window.workerPool.setWebGPUConfig(merged); } catch (e) {}
+            // broadcast to workerPool if available (use shim-backed getter)
+            try {
+                const wp = (global.__okxShim && typeof global.__okxShim.getWorkerPool === 'function') ? global.__okxShim.getWorkerPool() : (global.window && global.window.workerPool ? global.window.workerPool : null);
+                if (wp && typeof wp.setWebGPUConfig === 'function') wp.setWebGPUConfig(merged);
+                // mirror config into shim/window
+                try { if (global.__okxShim && typeof global.__okxShim.setWEBGPUConfig === 'function') global.__okxShim.setWEBGPUConfig(merged); else global.WEBGPU_CONFIG = merged; } catch (e) { try { global.WEBGPU_CONFIG = merged; } catch (ex) {} }
+            } catch (e) {}
             return merged;
         } catch (e) {
             console.warn('[WebGPUConfig] setWEBGPUConfig failed', e);

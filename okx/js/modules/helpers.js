@@ -184,10 +184,12 @@ window.getPercentValue = getPercentValue;
 // When AnalyticsCore becomes available asynchronously, re-run smart-metrics for cached data
 document.addEventListener('AnalyticsCore:loaded', function () {
     try {
-        if (typeof AnalyticsCore === 'undefined' || !window.coinDataMap) return;
-        for (const coin in window.coinDataMap) {
+        if (typeof AnalyticsCore === 'undefined') return;
+        const coinMap = (window.__okxShim && typeof window.__okxShim.getCoinDataMap === 'function') ? window.__okxShim.getCoinDataMap() : (window.coinDataMap || {});
+        if (!coinMap || Object.keys(coinMap).length === 0) return;
+        for (const coin in coinMap) {
             try {
-                const d = window.coinDataMap[coin];
+                const d = coinMap[coin];
                 if (!d) continue;
                 if (AnalyticsCore && typeof AnalyticsCore.computeAllSmartMetrics === 'function') {
                     d.analytics = AnalyticsCore.computeAllSmartMetrics(d);
@@ -195,6 +197,8 @@ document.addEventListener('AnalyticsCore:loaded', function () {
                 }
             } catch (e) { /* ignore per-coin errors */ }
         }
-        if (typeof scheduleUpdateTable === 'function') scheduleUpdateTable();
+        try { const sched = (window.__okxShim && typeof window.__okxShim.getScheduleUpdateTable === 'function') ? window.__okxShim.getScheduleUpdateTable() : (typeof scheduleUpdateTable === 'function' ? scheduleUpdateTable : null); if (typeof sched === 'function') sched(); } catch (e) { }
+        // ensure shim is updated; avoid writing into `window.coinDataMap` here
+        try { if (window.__okxShim && typeof window.__okxShim.setCoinDataMap === 'function') window.__okxShim.setCoinDataMap(coinMap); } catch (e) { }
     } catch (e) { /* swallow listener errors */ }
 });

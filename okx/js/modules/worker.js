@@ -144,6 +144,18 @@ function computeFullAnalytics(data) {
                 Object.assign(tier1, { kyle, vwap, cvd, rvol });
             }
         } catch (e) { /* ignore */ }
+        // Ensure tier1 numeric scores are normalized into objects with `.normalized` for parity
+        try {
+            for (const k of ['kyle', 'vwap', 'cvd', 'rvol']) {
+                if (tier1 && Object.prototype.hasOwnProperty.call(tier1, k) && typeof tier1[k] === 'number') {
+                    tier1[k] = { normalized: tier1[k] };
+                }
+                // If it's an object but missing `.normalized`, and contains a numeric value field, normalize it
+                if (tier1 && Object.prototype.hasOwnProperty.call(tier1, k) && tier1[k] && typeof tier1[k] === 'object' && typeof tier1[k].normalized === 'undefined') {
+                    if (typeof tier1[k].value === 'number') tier1[k].normalized = tier1[k].value;
+                }
+            }
+        } catch (e) { /* ignore */ }
     }
 
     const vpin = (globalThis.AnalyticsCore && globalThis.AnalyticsCore.computeVPIN) ? globalThis.AnalyticsCore.computeVPIN(hist, { lookbackBars: 50, minSamples: 10 }) : null;

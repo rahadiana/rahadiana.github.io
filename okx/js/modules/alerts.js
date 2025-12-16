@@ -5,7 +5,7 @@
 const compactAlertsToggle = document.getElementById('compactAlertsToggle');
 const maxAlertBannersInput = document.getElementById('maxAlertBanners');
 const showHiddenAlertsBtn = document.getElementById('showHiddenAlertsBtn');
-var hiddenAlertBuffer = window._hiddenAlertBuffer || (window._hiddenAlertBuffer = []);
+var hiddenAlertBuffer = (window.__okxShim && typeof window.__okxShim.getHiddenAlertBuffer === 'function') ? window.__okxShim.getHiddenAlertBuffer() : (window._hiddenAlertBuffer || (window._hiddenAlertBuffer = []));
 
 // load persisted compact preferences
 try {
@@ -68,6 +68,7 @@ var persistHistoryEnabled = ((typeof window.safeLocalStorageGet === 'function') 
 function setPersistHistoryEnabled(val) {
     persistHistoryEnabled = !!val;
     window.persistHistoryEnabled = persistHistoryEnabled;
+    try { if (window.__okxShim && typeof window.__okxShim.setPersistHistoryEnabled === 'function') window.__okxShim.setPersistHistoryEnabled(persistHistoryEnabled); } catch (e) { }
 }
 
 // create banner container
@@ -742,6 +743,9 @@ window.hiddenAlertBuffer = hiddenAlertBuffer;
 window.persistHistoryEnabled = persistHistoryEnabled;
 window.MAX_HISTORY = MAX_HISTORY;
 window.lastAlertAt = lastAlertAt;
+try { if (window.__okxShim && typeof window.__okxShim.setAlertHelpers === 'function') {
+    window.__okxShim.setAlertHelpers({ showAlertBanner, sendAlertWebhook, addAlertToTab, renderAlertsList, renderAlertRules, evaluateAlertRulesForData, loadPersistedHistory, savePersistedHistory, hiddenAlertBuffer, persistHistoryEnabled, MAX_HISTORY, lastAlertAt });
+} } catch (e) { }
 
 // Cleanup Bootstrap popovers on unload to prevent memory leaks
 try {

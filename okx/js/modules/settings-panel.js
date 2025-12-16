@@ -3,6 +3,14 @@
   const MODE_KEY = 'okx_worker_mode_v1';
   const CFG_KEY = 'okx_webgpu_config_v1';
 
+  // Safe accessor for WorkerPool via shim with fallback to window
+  function getWorkerPool() {
+    try {
+      if (window && window.__okxShim && typeof window.__okxShim.getWorkerPool === 'function') return window.__okxShim.getWorkerPool();
+      return (window && window.workerPool) ? window.workerPool : null;
+    } catch (e) { return null; }
+  }
+
   function removeFloatingUI() {
     try {
       const cb = document.getElementById('webgpuToggle');
@@ -87,7 +95,7 @@
 
     // initialize values
     try{
-      const cfg = (window.getWEBGPUConfig && window.getWEBGPUConfig()) || window.WEBGPU_CONFIG || { enabled: true };
+      const cfg = (window.__okxShim && typeof window.__okxShim.getWEBGPUConfig === 'function') ? window.__okxShim.getWEBGPUConfig() : ((window.getWEBGPUConfig && window.getWEBGPUConfig()) || window.WEBGPU_CONFIG || { enabled: true });
       checkbox.checked = !!cfg.enabled;
     }catch(e){ checkbox.checked = true; }
 
@@ -115,7 +123,12 @@
 
     // handlers
     checkbox.addEventListener('change', ()=>{
-      try{ if (window.setWEBGPUConfig) window.setWEBGPUConfig({ enabled: !!checkbox.checked }, true); else if (window.workerPool && window.workerPool.setWebGPUConfig) window.workerPool.setWebGPUConfig({ enabled: !!checkbox.checked });
+      try{
+        if (window.setWEBGPUConfig) window.setWEBGPUConfig({ enabled: !!checkbox.checked }, true);
+        else {
+          const wp = getWorkerPool();
+          if (wp && typeof wp.setWebGPUConfig === 'function') wp.setWebGPUConfig({ enabled: !!checkbox.checked });
+        }
       }catch(e){ console.warn('setWEBGPUConfig failed',e); }
     });
 
@@ -125,13 +138,18 @@
       // restart worker pool
       try{
         const preferClassic = chosen === 'classic';
-        if (window.workerPool && typeof window.WorkerPool === 'function') {
-          const emitLegacy = window.workerPool.emitLegacy;
-          window.workerPool.terminate();
-          window.workerPool = new window.WorkerPool();
-          window.workerPool.preferClassic = preferClassic;
-          if (typeof window.workerPool.setEmitLegacy === 'function') window.workerPool.setEmitLegacy(emitLegacy);
-          window.workerPool.init();
+        const wp = getWorkerPool();
+        if (wp && typeof window.WorkerPool === 'function') {
+          const emitLegacy = wp.emitLegacy;
+          try { wp.terminate(); } catch (e) {}
+          let newPool = null;
+          try { newPool = new window.WorkerPool(); } catch (e) { newPool = null; }
+          if (newPool) {
+            try { newPool.preferClassic = preferClassic; } catch (e) {}
+            try { if (typeof newPool.setEmitLegacy === 'function') newPool.setEmitLegacy(emitLegacy); } catch (e) {}
+            try { newPool.init(); } catch (e) {}
+            try { if (window.__okxShim && typeof window.__okxShim.setWorkerPool === 'function') window.__okxShim.setWorkerPool(newPool); else window.workerPool = newPool; } catch (e) { try { window.workerPool = newPool; } catch (ex) {} }
+          }
         }
       }catch(e){ console.warn('restart workerPool failed',e); }
     });

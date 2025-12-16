@@ -40,7 +40,7 @@
         spikeModeSelect = document.getElementById('spikeModeSelect');
         showAdvancedToggle = document.getElementById('showAdvancedMetricsToggle');
         try {
-            if (spikeModeSelect) {
+                if (spikeModeSelect) {
                 try {
                     const stored = (typeof localStorage !== 'undefined') ? localStorage.getItem('okx_spikeMode') : null;
                     if (stored) spikeModeSelect.value = stored;
@@ -48,8 +48,10 @@
                 spikeModeSelect.addEventListener('change', (ev) => {
                     try {
                         const v = String(ev.target.value || 'all');
-                        if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet('okx_spikeMode', v);
-                        else if (typeof localStorage !== 'undefined') localStorage.setItem('okx_spikeMode', v);
+                            try {
+                                if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet('okx_spikeMode', v);
+                                else if (typeof localStorage !== 'undefined') localStorage.setItem('okx_spikeMode', v);
+                            } catch (e) { }
                     } catch (e) { }
                 });
             }
@@ -57,20 +59,22 @@
 
         try {
             if (showAdvancedToggle) {
-                try {
-                    const stored = (typeof localStorage !== 'undefined') ? localStorage.getItem('okx_showAdvancedMetrics') : null;
-                    const checked = (stored === null) ? '1' : stored;
-                    showAdvancedToggle.checked = checked === '1';
-                    toggleAdvancedMetrics(showAdvancedToggle.checked);
-                } catch (e) { }
-                showAdvancedToggle.addEventListener('change', (ev) => {
                     try {
-                        const v = ev.target.checked ? '1' : '0';
-                        if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet('okx_showAdvancedMetrics', v);
-                        else if (typeof localStorage !== 'undefined') localStorage.setItem('okx_showAdvancedMetrics', v);
-                        toggleAdvancedMetrics(ev.target.checked);
+                        const stored = (typeof localStorage !== 'undefined') ? localStorage.getItem('okx_showAdvancedMetrics') : null;
+                        const checked = (stored === null) ? '1' : stored;
+                        showAdvancedToggle.checked = checked === '1';
+                        toggleAdvancedMetrics(showAdvancedToggle.checked);
                     } catch (e) { }
-                });
+                    showAdvancedToggle.addEventListener('change', (ev) => {
+                        try {
+                            const v = ev.target.checked ? '1' : '0';
+                            try {
+                                if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet('okx_showAdvancedMetrics', v);
+                                else if (typeof localStorage !== 'undefined') localStorage.setItem('okx_showAdvancedMetrics', v);
+                            } catch (e) { }
+                            toggleAdvancedMetrics(ev.target.checked);
+                        } catch (e) { }
+                    });
             }
         } catch (e) { }
     }
@@ -596,7 +600,7 @@
     // ===================== Main Update Table Function =====================
     function updateTable() {
         cacheDOMRefs();
-        const coinDataMap = window.coinDataMap || {};
+        const coinDataMap = (window.__okxShim && typeof window.__okxShim.getCoinDataMap === 'function') ? window.__okxShim.getCoinDataMap() : (window.coinDataMap || {});
 
         // Clear all table bodies
         if (summaryBody) summaryBody.innerHTML = '';
@@ -632,7 +636,7 @@
         const filterText = typeof getActiveFilterValue === 'function' ? getActiveFilterValue() : '';
         const sortBy = sortBySelect ? sortBySelect.value : 'vol_ratio';
         const sortOrder = typeof getSortOrderValue === 'function' ? getSortOrderValue() : 'desc';
-        const rowLimit = window.rowLimit !== undefined ? window.rowLimit : 5;
+        const rowLimit = (window.__okxShim && typeof window.__okxShim.getScheduleUpdateTable === 'function') ? ((window.__okxShim.getScheduleUpdateTable() && window.__okxShim.getScheduleUpdateTable().rowLimit) || window.rowLimit || 5) : (window.rowLimit !== undefined ? window.rowLimit : 5);
 
         let rowCount = 0;
         let recsRowCount = 0;
@@ -882,7 +886,9 @@
         }
 
         // Microstructure Tab - use Worker Pool for multicore processing
-        if (microBody && window.workerPool) {
+        const _wp = (window.__okxShim && typeof window.__okxShim.getWorkerPool === 'function') ? window.__okxShim.getWorkerPool() : (window.workerPool || null);
+        if (microBody && _wp) {
+            try { if (!window.workerPool) window.workerPool = _wp; } catch (e) { }
             renderMicroTabAsync(microBody, sortedCoins, rowLimit);
         } else if (microBody) {
             // Fallback to sync if no worker pool
@@ -940,7 +946,7 @@
                 priceMovesBody.innerHTML = '';
                 let found = 0;
                 const examples = [];
-                const map = coinDataMap || window.coinDataMap || {};
+                const map = coinDataMap || ((window.__okxShim && typeof window.__okxShim.getCoinDataMap === 'function') ? window.__okxShim.getCoinDataMap() : (window.coinDataMap || {})) || {};
                 const mapKeys = Object.keys(map || {});
                 // console.debug('[priceMoves] coinDataMap size:', mapKeys.length, 'sample keys:', mapKeys.slice(0, 10));
                 // Print sample field keys for the first few coins to inspect payload shape
@@ -1874,6 +1880,7 @@
     // ===================== Microstructure Tab Async Renderer =====================
     let microRenderPending = false;
     let lastMicroRenderTime = 0;
+    let lastMicroLimit = null;
     const MICRO_RENDER_THROTTLE = 1000; // Don't re-render more than once per second
     
     async function renderMicroTabAsync(body, sorted, limit) {
@@ -1884,7 +1891,8 @@
             return;
         }
         
-        if (microRenderPending) return;
+        // If a render is in-flight, only skip if the requested limit is the same
+        if (microRenderPending && limit === lastMicroLimit) return;
         microRenderPending = true;
         lastMicroRenderTime = now;
         
@@ -1903,8 +1911,15 @@
                 }
             }
             
-            // Send to worker pool for parallel processing
-            const results = await window.workerPool.computeAnalyticsBatch(batchData);
+            // Send to worker pool for parallel processing (use shim-backed workerPool)
+            const _wp = (window.__okxShim && typeof window.__okxShim.getWorkerPool === 'function') ? window.__okxShim.getWorkerPool() : (window.workerPool || null);
+            let results = null;
+            if (_wp && typeof _wp.computeAnalyticsBatch === 'function') {
+                try { results = await _wp.computeAnalyticsBatch(batchData); } catch (e) { results = null; }
+            } else {
+                // fallback: synchronous compute on main thread
+                try { results = await (typeof computeAnalyticsBatch === 'function' ? computeAnalyticsBatch(batchData) : null); } catch (e) { results = null; }
+            }
             
             // Only clear and render if this is still the most recent request
             if (lastMicroRenderTime === now) {
@@ -1917,6 +1932,7 @@
                         renderMicroRowFromWorker(body, coin, metrics.micro);
                     }
                 }
+                lastMicroLimit = limit;
             }
         } catch (err) {
             console.warn('[MicroTab] Worker error, fallback to sync:', err);

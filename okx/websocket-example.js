@@ -32,7 +32,7 @@ try {
         // debounce is in js/modules/helpers.js
 
         // Real-time mode: when enabled, reduce debounce and avoid dropping updates
-        window.REALTIME_MODE = (typeof window.REALTIME_MODE === 'boolean') ? window.REALTIME_MODE : true;
+        let REALTIME_MODE = (typeof window !== 'undefined' && typeof window.REALTIME_MODE === 'boolean') ? window.REALTIME_MODE : true;
         // Schedule updates to the table (debounced). Use shorter debounce in REALTIME_MODE.
         const scheduleUpdateTable = debounce(function () {
             try { 
@@ -45,9 +45,13 @@ try {
                 }
             }
             catch (e) { console.error('[scheduleUpdateTable] error:', e); }
-        }, window.REALTIME_MODE ? 50 : 300);
+        }, REALTIME_MODE ? 50 : 300);
         // Expose globally so other modules can schedule updates
         try { window.scheduleUpdateTable = scheduleUpdateTable; } catch (e) { }
+        try { window.REALTIME_MODE = REALTIME_MODE; } catch (e) { }
+
+        // Local shim reference (if available) to centralize global accesses
+        const __okxShim = (typeof window !== 'undefined' && window.__okxShim) ? window.__okxShim : null;
         
         // Throttle per-coin updates to avoid processing same coin too frequently
         const lastCoinUpdate = {};
@@ -62,7 +66,7 @@ try {
             _msgRatePerSec = _msgCount;
             _msgCount = 0;
             // Adaptive throttle based on message rate
-            if (!window.REALTIME_MODE) {
+            if (!REALTIME_MODE) {
                 if (_msgRatePerSec > 500) {
                     adaptiveThrottleMs = COIN_THROTTLE_MS_MAX;
                 } else if (_msgRatePerSec > 200) {
@@ -77,7 +81,7 @@ try {
         }, 1000);
         
         function getAdaptiveThrottle() {
-            return window.REALTIME_MODE ? 0 : adaptiveThrottleMs;
+            return REALTIME_MODE ? 0 : adaptiveThrottleMs;
         }
         
         let activeFilterTab = 'summary';
@@ -564,9 +568,9 @@ try {
             } catch (e) { console.error('showInsightTab error', e); window.__displayError(e); }
         };
 
-        // Object to store data by coin - MUST be on window immediately for update-table.js
+        // Object to store data by coin - prefer shim; update-table.js may still read window.coinDataMap via shim mirror
         const coinDataMap = {};
-        window.coinDataMap = coinDataMap; // Expose immediately!
+        try { if (window.__okxShim && typeof window.__okxShim.setCoinDataMap === 'function') window.__okxShim.setCoinDataMap(coinDataMap); } catch (e) { }
         
         // ===================== PRELOAD HISTORY ONLY (NOT DATA) =====================
         // Preload history arrays from IndexedDB for analytics continuity (async)
@@ -707,7 +711,7 @@ try {
                     for (const k of copyKeys) { if (raw[k] !== undefined) minimal[k] = raw[k]; else if (raw[k.toLowerCase()] !== undefined) minimal[k] = raw[k.toLowerCase()]; }
                     if (Object.keys(minimal).length) {
                         coinDataMap[coin] = Object.assign({}, existing, minimal);
-                        window.coinDataMap = coinDataMap;
+                        try { if (window.__okxShim && typeof window.__okxShim.setCoinDataMap === 'function') window.__okxShim.setCoinDataMap(coinDataMap); } catch (e) { }
                     }
                     // still schedule a table refresh (debounced) so UI updates soon
                     try { scheduleUpdateTable(); } catch (e) { }
@@ -781,20 +785,25 @@ try {
                 data.risk_score = ((data.analytics || data._analytics) && (data.analytics || data._analytics).riskScore) || data.risk_score || 0;
                 // Offload heavier analytics to worker pool when available and replace later
                 try {
-                    if (window.workerPool && typeof window.workerPool.computeAnalyticsBatch === 'function') {
+                    const workerPool = (__okxShim && __okxShim.getWorkerPool ? __okxShim.getWorkerPool() : (window.workerPool || null));
+                    if (workerPool && typeof workerPool.computeAnalyticsBatch === 'function') {
                         // create a shallow copy with only needed serializable fields to avoid sending DOM nodes
                         const payload = Object.assign({}, data);
                         // fire-and-forget; when worker returns, update data and re-render
-                        window.workerPool.computeAnalyticsBatch([payload]).then(res => {
+                        workerPool.computeAnalyticsBatch([payload]).then(res => {
                             try {
                                 if (Array.isArray(res) && res[0]) {
                                     data._analytics = res[0];
                                     try { data.analytics = data._analytics; } catch (e) { }
                                     // Ensure coinDataMap gets updated and UI refreshed
-                                    if (window.coinDataMap && window.coinDataMap[coin]) {
-                                        window.coinDataMap[coin] = data;
-                                        try { if (typeof scheduleUpdateTable === 'function') scheduleUpdateTable(); } catch (e) { }
-                                    }
+                                    try {
+                                        const _map = (window.__okxShim && typeof window.__okxShim.getCoinDataMap === 'function') ? window.__okxShim.getCoinDataMap() : (window.coinDataMap || {});
+                                        if (_map && _map[coin]) {
+                                            _map[coin] = data;
+                                            try { if (window.__okxShim && typeof window.__okxShim.setCoinDataMap === 'function') window.__okxShim.setCoinDataMap(_map); else window.coinDataMap = _map; } catch (e) { try { window.coinDataMap = _map; } catch (ex) {} }
+                                            try { if (typeof scheduleUpdateTable === 'function') scheduleUpdateTable(); } catch (e) { }
+                                        }
+                                    } catch (e) { /* ignore coin map apply errors */ }
                                 }
                             } catch (e) { console.warn('worker analytics apply failed', e); }
                         }).catch(err => {
@@ -1051,7 +1060,7 @@ try {
 
             // Store sanitized data by coin
             coinDataMap[coin] = data;
-            window.coinDataMap = coinDataMap; // keep window in sync
+                        try { if (window.__okxShim && typeof window.__okxShim.setCoinDataMap === 'function') window.__okxShim.setCoinDataMap(coinDataMap); } catch (e) { }
             try {
                 //  console.info('[onWsMessage] stored coinDataMap for', coin, 'fields:', Object.keys(data).length); 
                 } catch (e) { }
@@ -1089,7 +1098,7 @@ try {
         // renderInfoTab is in js/modules/info-tab.js
 
         // Expose globals needed by modules
-        window.coinDataMap = coinDataMap;
+        try { if (window.__okxShim && typeof window.__okxShim.setCoinDataMap === 'function') window.__okxShim.setCoinDataMap(coinDataMap); else window.coinDataMap = coinDataMap; } catch (e) { try { window.coinDataMap = coinDataMap; } catch (ex) {} }
         window.getSortOrderValue = getSortOrderValue;
         window.getActiveFilterValue = getActiveFilterValue;
         window.rowLimit = rowLimit;
