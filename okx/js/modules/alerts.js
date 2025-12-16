@@ -310,6 +310,10 @@ function renderAlertRules() {
 const ALERT_RULE_COOLDOWN_MS = 60 * 1000; // 60s per rule
 const lastAlertRuleAt = {};
 
+// Funding squeeze specific cooldown (15 minutes)
+const FUNDING_SQUEEZE_COOLDOWN_MS = 15 * 60 * 1000;
+const lastFundingSqueezeAt = {};
+
 function evaluateAlertRulesForData(data) {
     try {
         if (!data || !data.coin) return;
@@ -390,7 +394,50 @@ function evaluateAlertRulesForData(data) {
                 try { sendAlertWebhook(data.coin, { rule: r, value: val, ts: now }); } catch (e) { }
             } catch (e) { console.warn('evaluate rule failed', e); }
         }
+        // After evaluating configured rules, run compact funding squeeze detector
+        try { evaluateFundingSqueezeForData(data); } catch (e) { /* non-fatal */ }
     } catch (e) { console.warn('evaluateAlertRulesForData failed', e); }
+}
+
+/**
+ * Detect funding squeeze conditions and trigger a single high-priority alert.
+ * Non-blocking webhook and banner; uses separate cooldown to avoid flooding.
+ */
+function evaluateFundingSqueezeForData(data) {
+    try {
+        if (!data || !data.coin) return;
+        const coin = data.coin;
+        const now = Date.now();
+        const last = lastFundingSqueezeAt[coin] || 0;
+        if (now - last < FUNDING_SQUEEZE_COOLDOWN_MS) return; // still cooling down
+
+        const funding = getNumeric(data, 'funding_settFundingRate', 'funding_settfundingrate', 'funding_Rate', 'funding_rate', 'funding_interestRate') || 0;
+        const premium = getNumeric(data, 'funding_premium', 'fundingpremium') || 0;
+
+        // compute 15m percent move: prefer past price field, fallback to provided percent if present
+        let price15mPct = null;
+        try {
+            const past = getNumeric(data, 'price_move_15MENIT');
+            const cur = getNumeric(data, 'last');
+            if (past && cur && Number.isFinite(past) && past !== 0) price15mPct = ((cur - past) / past) * 100;
+            else if (data.price_move_15MENIT !== undefined && data.price_move_15MENIT !== null) price15mPct = Number(data.price_move_15MENIT);
+        } catch (e) { price15mPct = null; }
+
+        // Trigger conditions: funding & premium extreme and price moving against the funding payer
+        if (Math.abs(funding) >= 0.0007 && Math.abs(premium) >= 0.0005 && price15mPct !== null && (price15mPct * Math.sign(funding) < 0)) {
+            // mark last trigger
+            lastFundingSqueezeAt[coin] = now;
+            const fundingPct = (funding * 100).toFixed(3) + '%';
+            const premiumPct = (premium * 100).toFixed(3) + '%';
+            const p15 = Number.isFinite(price15mPct) ? `${price15mPct >= 0 ? '+' : ''}${price15mPct.toFixed(2)}%` : '-';
+            const title = `⚠️ FUNDING SQUEEZE WARNING`;
+            const msg = `${coin}\nFunding: ${fundingPct} • Premium: ${premiumPct}\nPrice 15m: ${p15}\nPossible squeeze — trade with caution.`;
+            try { showAlertBanner(title, msg, 'warning', 15000); } catch (e) { }
+            try { addAlertToTab(coin, msg, 'warning', now); } catch (e) { }
+            // send webhook non-blocking
+            try { if (typeof sendAlertWebhook === 'function') sendAlertWebhook(coin, { type: 'FUNDING_SQUEEZE', coin, funding, premium, price_15m: price15mPct, ts: now }); } catch (e) { }
+        }
+    } catch (e) { console.warn('evaluateFundingSqueezeForData failed', e); }
 }
 
 function loadAlertsFromStore() {

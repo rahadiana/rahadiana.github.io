@@ -394,6 +394,20 @@ function calculateRecommendation(data, pricePosition, timeframe, applyState = fa
     rawScore += W.divergence * divergenceNorm;
 
     rawScore = rawScore * (1 - 0.5 * riskPenalty);
+    // --- Funding influence: prefer LONG when funding is negative (shorts paying) ---
+    try {
+        const fundingPremium = getNumeric(data, 'funding_premium', 'funding_premium');
+        const fundingSett = getNumeric(data, 'funding_settFundingRate', 'funding_settfundingrate');
+        const fundingRate = getNumeric(data, 'funding_Rate', 'funding_rate', 'funding_interestRate');
+        let fundingVal = 0;
+        if (Math.abs(fundingPremium) > 0) fundingVal = fundingPremium;
+        else if (Math.abs(fundingSett) > 0) fundingVal = fundingSett;
+        else if (Math.abs(fundingRate) > 0) fundingVal = fundingRate;
+        // Normalize: treat ~0.1% (0.001) as full-scale
+        const fundingFactor = Math.max(-1, Math.min(1, (-fundingVal) / 0.001));
+        const FUNDING_WEIGHT = 0.25; // influence weight (tunable)
+        rawScore += FUNDING_WEIGHT * fundingFactor;
+    } catch (e) { /* ignore funding errors */ }
     const score = Math.max(-1, Math.min(1, rawScore));
     const confidence = Math.round(Math.abs(score) * 100);
 
@@ -450,3 +464,16 @@ function calculateRecommendation(data, pricePosition, timeframe, applyState = fa
     const finalClassName = finalRecommendation === 'BUY' ? 'recommendation-buy' : (finalRecommendation === 'SELL' ? 'recommendation-sell' : 'recommendation-hold');
     return { recommendation: finalRecommendation, confidence, className: finalClassName, score, factors };
 }
+
+/**
+ * Funding-aware position recommendation mapper.
+ * Returns `LONG` / `SHORT` / `NEUTRAL` and includes original score + confidence.
+ */
+function calculatePositionRecommendation(data, pricePosition, timeframe, applyState = false) {
+    const rec = calculateRecommendation(data, pricePosition, timeframe, applyState);
+    const map = { 'BUY': 'LONG', 'SELL': 'SHORT', 'HOLD': 'NEUTRAL' };
+    const posRec = map[rec.recommendation] || 'NEUTRAL';
+    return { recommendation: posRec, confidence: rec.confidence, className: rec.className, score: rec.score, raw: rec };
+}
+
+try { if (typeof window !== 'undefined') window.calculatePositionRecommendation = calculatePositionRecommendation; } catch (e) { }

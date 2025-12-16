@@ -19,7 +19,8 @@
             micro: document.getElementById('coinFilter_micro'),
             frequency: document.getElementById('coinFilter_frequency'),
             freqRatio: document.getElementById('coinFilter_freqRatio'),
-            smart: document.getElementById('coinFilter_smart')
+            smart: document.getElementById('coinFilter_smart'),
+            funding: document.getElementById('coinFilter_funding')
         };
 // If ws-client buffered messages, flush them now that handler exists
 try {
@@ -142,6 +143,23 @@ try {
             }
         } catch (e) { console.warn('wiring per-tab filters failed', e); }
 
+        // Populate coin autocomplete datalist when coin map updates
+        function updateCoinDatalist() {
+            try {
+                const dl = document.getElementById('coinOptions');
+                if (!dl) return;
+                const map = (window.__okxShim && typeof window.__okxShim.getCoinDataMap === 'function') ? window.__okxShim.getCoinDataMap() : (window.coinDataMap || {});
+                const keys = Object.keys(map || {}).sort((a,b) => a.localeCompare(b));
+                // reuse existing nodes if possible
+                dl.innerHTML = '';
+                for (const k of keys) {
+                    const opt = document.createElement('option');
+                    opt.value = k;
+                    dl.appendChild(opt);
+                }
+            } catch (e) { /* ignore */ }
+        }
+
         // Tab click handlers to switch active filter
         try {
             const tabMap = {
@@ -151,7 +169,8 @@ try {
                 'spike-tab': 'spikes',
                 'recs-tab': 'recs',
                 'alerts-tab': 'alerts',
-                'insight-tab': 'summary',
+                    'insight-tab': 'summary',
+                    'funding-tab': 'funding',
                 'info-tab': 'summary',
                 'micro-tab': 'micro',
                 'freq-tab': 'frequency',
@@ -504,51 +523,164 @@ try {
 
                 const topSpikeHtml = spikes.length > 0 ? `<div class="mb-2"><strong>Top Spike:</strong> ${spikes[0].k} — ${spikes[0].ratio.toFixed(2)}x (buy ${spikes[0].buy} vs avg ${spikes[0].avg})</div>` : '<div class="mb-2 text-muted">No significant spikes (vol >= 2x avg)</div>';
 
+                // Build a sectioned insight view covering requested areas (summary, volume, vol ratio, microstructure, funding, alerts, recs, signal lab, backtest, risk, spikes, frequency, freq ratio, price moves, smart)
+                const fundingHtml = `
+                    <div><strong>Funding premium:</strong> ${data.funding_premium !== undefined ? Number(data.funding_premium).toFixed(6) : (data.funding_Rate !== undefined ? Number(data.funding_Rate).toFixed(6) : '-')}<br>
+                    <strong>Sett rate:</strong> ${data.funding_settFundingRate !== undefined ? Number(data.funding_settFundingRate).toFixed(6) : '-'}<br>
+                    <strong>Next funding:</strong> <span class="insight-next-funding-time">${data.funding_nextFundingTime ? new Date(Number(data.funding_nextFundingTime)).toLocaleString() : '-'}</span> <small class="text-muted">(<span class="insight-funding-countdown" data-next="${data.funding_nextFundingTime ? Number(data.funding_nextFundingTime) : ''}">${data.funding_nextFundingTime ? (function(){const d=Number(data.funding_nextFundingTime)-Date.now(); if(!d||isNaN(d)) return '-'; const s=Math.max(0,Math.floor(d/1000)); const hh=Math.floor(s/3600); const mm=Math.floor((s%3600)/60); const ss=s%60; return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`})() : '-'}</span>)</small></div>
+                `;
+
+                // alerts: try to find recent eventWatchBuffer items for this coin
+                const recentAlerts = (window.eventWatchBuffer || []).filter(a => a.coin === coin).slice(-5).map(a => ({ts: a.ts, messages: a.messages || []}));
+                const recentAlertsHtml = recentAlerts.length ? recentAlerts.map(a => `<div class="small text-muted">${new Date(a.ts).toLocaleString()}: ${a.messages.join(' • ')}</div>`).join('') : '<div class="small text-muted">No recent alerts</div>';
+
                 pane.innerHTML = `
-                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                <div><h4 class="mb-0">🔍 ${coin} — Insight</h4><small class="text-muted">Last update: ${data.update_time || data.update_time_VOLCOIN || '-'}</small></div>
-                                <div class="text-end"><small>Price: ${data.last || 0} • Change: ${data.percent_change || 0}%</small><div class="mt-1"><strong>Recommendation:</strong> ${rec.recommendation || 'N/A'} (${rec.confidence || 0}%)</div></div>
-                            </div>
-                            <div class="mb-3">${drawSparkline(hist, 760, 100)}</div>
-                            <div class="row mb-3">
-                                <div class="col-md-4">
-                                    <h6>Metrics</h6>
-                                    <p><strong>Risk:</strong> ${risk}%</p>
-                                    <p><strong>Price Pos:</strong> ${pricePos}%</p>
-                                    <p><strong>Vol Buy (2h):</strong> ${getNumeric(data, 'count_VOL_minute_120_buy', 'vol_buy_2JAM') || 0}</p>
-                                    <p><strong>Vol Sell (2h):</strong> ${getNumeric(data, 'count_VOL_minute_120_sell', 'vol_sell_2JAM') || 0}</p>
-                                    <p><strong>Buy z-score (2h):</strong> ${_metrics && _metrics.zScoreBuy2h !== undefined ? _metrics.zScoreBuy2h : 'N/A'}</p>
-                                    <p><strong>Sell z-score (2h):</strong> ${_metrics && _metrics.zScoreSell2h !== undefined ? _metrics.zScoreSell2h : 'N/A'}</p>
-                                    <p><strong>Persistence (last3 buys > mean+std):</strong> ${_metrics && _metrics.persistenceBuy3 !== undefined ? _metrics.persistenceBuy3 : '-'}</p>
-                                    ${_metrics && _metrics.divergence ? `<p><strong>Divergence:</strong> <span class="${_metrics.divergence.className || 'text-warning'}" title="Divergence = flowBias - priceDir*0.5 (flowBias from volDurability2h_percent; priceDir from percent_change)">${_metrics.divergence.interpretation || ''}${(_metrics.divergence.value !== undefined ? ` (${Number(_metrics.divergence.value).toFixed(3)})` : '')}</span></p>` : ''}
-                                    ${_metrics && _metrics.sharpInsights ? `<p><strong>Insight:</strong><br/>${_metrics.sharpInsights.map(s => `- ${s}`).join('<br/>')}</p>` : ''}
-                                </div>
-                                <div class="col-md-4">
-                                    <h6>Recommendation Breakdown</h6>
-                                    <p>Score: ${rec.score !== undefined ? rec.score.toFixed(2) : '0.00'} • Confidence: ${rec.confidence || 0}%</p>
-                                    <div class="progress mb-2" style="height:10px"><div class="progress-bar bg-success" role="progressbar" style="width:${rec.score > 0 ? rec.confidence : 0}%"></div><div class="progress-bar bg-danger" role="progressbar" style="width:${rec.score < 0 ? rec.confidence : 0}%"></div></div>
-                                    ${topSpikeHtml}
-                                </div>
-                                <div class="col-md-4">
-                                    <h6>Components</h6>
-                                    <ul>
-                                        <li>Imbalance: ${Number(comp.imbalance || 0).toFixed(2)}</li>
-                                        <li>Deviation: ${Number(comp.deviation || 0).toFixed(2)}</li>
-                                        <li>Price Move: ${Number(comp.priceMove || 0).toFixed(2)}</li>
-                                        <li>Liquidity: ${Number(comp.liquidity || 0).toFixed(2)}</li>
-                                    </ul>
-                                </div>
-                            </div>
-                            <div class="mb-3"><h6>Timeframe Comparison</h6>${tfTable}</div>
-                            <div class="mb-3"><h6>Raw Data</h6><div class="d-flex gap-2"><button class="btn btn-outline-primary btn-sm" id="insightCopyJson">Copy JSON</button><button class="btn btn-outline-secondary btn-sm" id="insightExportJsonPane">Export JSON</button><button class="btn btn-outline-success btn-sm" id="insightExportCsvPane">Export CSV</button></div><pre id="insightRaw" style="max-height:200px;overflow:auto;margin-top:8px;background:#0b1220;padding:8px;border-radius:6px;color:#9ca3af;">${JSON.stringify(data, null, 2)}</pre></div>
-                        `;
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div><h4 class="mb-0">🔍 ${coin} — Insight</h4><small class="text-muted">Last update: ${data.update_time || data.update_time_VOLCOIN || '-'}</small></div>
+                        <div class="text-end"><small>Price: ${data.last || 0} • Change: ${data.percent_change || 0}%${(data.funding_premium !== undefined || data.funding_Rate !== undefined) ? ' • Funding: ' + (data.funding_premium !== undefined ? Number(data.funding_premium).toFixed(6) : Number(data.funding_Rate).toFixed(6)) : ''}${data.funding_nextFundingTime ? ' • Next: ' + new Date(Number(data.funding_nextFundingTime)).toLocaleString() : ''}</small><div class="mt-1"><strong>Recommendation:</strong> ${rec.recommendation || 'N/A'} (${rec.confidence || 0}%)</div></div>
+                    </div>
+                    <div class="mb-3">${drawSparkline(hist, 760, 100)}</div>
+
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <h6>📊 Summary</h6>
+                            <p><strong>Price:</strong> ${data.last || '-'} • <strong>Change:</strong> ${data.percent_change || '-'}%</p>
+                            <p><strong>High / Low:</strong> ${data.high || '-'} / ${data.low || '-'}</p>
+                            <p><strong>Update:</strong> ${data.update_time || '-'}</p>
+                            <p><strong>Risk:</strong> ${risk}%</p>
+                        </div>
+
+                        <div class="col-md-4">
+                            <h6>📊 Volume</h6>
+                            <p><strong>Vol Buy (2h):</strong> ${getNumeric(data, 'count_VOL_minute_120_buy', 'vol_buy_2JAM') || 0}</p>
+                            <p><strong>Vol Sell (2h):</strong> ${getNumeric(data, 'count_VOL_minute_120_sell', 'vol_sell_2JAM') || 0}</p>
+                            <p><strong>Total 24h:</strong> ${localGetNumeric(data, 'vol_buy_24JAM') + localGetNumeric(data, 'vol_sell_24JAM') || '-'}</p>
+                        </div>
+
+                        <div class="col-md-4">
+                            <h6>📈 Vol Ratio / Dur</h6>
+                            <p><strong>Vol Ratio (2h):</strong> ${(_metrics && typeof _metrics.volBuy2h !== 'undefined' ? ( (_metrics.volSell2h && _metrics.volSell2h > 0) ? (Number((_metrics.volBuy2h / Math.max(1, _metrics.volSell2h)).toFixed(2)) + 'x') : '-') : '-' )}</p>
+                            <p><strong>Vol Dur (2h % Buy):</strong> ${_metrics && _metrics.volDurability2h_percent !== undefined ? _metrics.volDurability2h_percent + '%' : (data.percent_sum_VOL_minute_120_buy ? data.percent_sum_VOL_minute_120_buy + '%' : '-')}</p>
+                            <p><strong>Buy z-score (2h):</strong> ${_metrics && _metrics.zScoreBuy2h !== undefined ? _metrics.zScoreBuy2h : 'N/A'}</p>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mt-2">
+                        <div class="col-md-4">
+                            <h6>🧠 Microstructure</h6>
+                            <p><strong>Composite Signal:</strong> ${_metrics && _metrics.compositeInstitutionalSignal !== undefined ? Number(_metrics.compositeInstitutionalSignal).toFixed(3) : (data._analytics && data._analytics.compositeInstitutionalSignal !== undefined ? Number(data._analytics.compositeInstitutionalSignal).toFixed(3) : '-')}</p>
+                            <p><strong>Liquidity (avg):</strong> ${_metrics && _metrics.liquidity_avg_trade_value !== undefined ? Number(_metrics.liquidity_avg_trade_value) : (data._analytics && data._analytics.liquidity_avg_trade_value !== undefined ? Number(data._analytics.liquidity_avg_trade_value) : '-')}</p>
+                            <p><strong>Order Flow Stability:</strong> ${_metrics && _metrics.orderFlowStabilityIndex !== undefined ? Number(_metrics.orderFlowStabilityIndex).toFixed(2) : '-'}</p>
+                        </div>
+
+                        <div class="col-md-4">
+                            <h6>💸 Funding</h6>
+                            ${fundingHtml}
+                        </div>
+
+                        <div class="col-md-4">
+                            <h6>🔔 Alerts</h6>
+                            ${recentAlertsHtml}
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mt-3">
+                        <div class="col-md-6">
+                            <h6>🧭 Recommendation</h6>
+                            <p><strong>Rec:</strong> ${rec.recommendation || rec.recommendation || 'N/A'} • <strong>Score:</strong> ${rec.score !== undefined ? rec.score.toFixed(2) : '0.00'} • <strong>Conf:</strong> ${rec.confidence || 0}%</p>
+                            <div class="small text-muted">${topSpikeHtml}</div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <h6>🧪 Signal Lab / Backtest</h6>
+                            <p><strong>Signal Lab:</strong> Open the <a href="#" id="openSignalLabFromInsight">Signal Lab</a> to run multi-factor scenarios.</p>
+                            <p><strong>Backtest:</strong> Summarized historic performance & samples: <span id="insightBacktestSummary">${(data._history && data._history.length) ? data._history.length + ' samples' : 'No history'}</span></p>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mt-3">
+                        <div class="col-md-4">
+                            <h6>⚠️ Risk</h6>
+                            <p><strong>Risk Score:</strong> ${risk}%</p>
+                            <p><strong>ATR14:</strong> ${_metrics && _metrics.atr14 !== undefined ? Number(_metrics.atr14) : '-'}</p>
+                            <p><strong>Liquidity Heat Risk:</strong> ${_metrics && _metrics.liquidityHeatRisk !== undefined ? Number(_metrics.liquidityHeatRisk).toFixed(3) : '-'}</p>
+                        </div>
+
+                        <div class="col-md-4">
+                            <h6>⚡ Spikes</h6>
+                            ${spikes.length ? spikes.map(s => `<div class="small">${s.k} — ${s.ratio.toFixed(2)}x (buy ${s.buy} vs avg ${s.avg})</div>`).join('') : '<div class="small text-muted">No spikes detected</div>'}
+                        </div>
+
+                        <div class="col-md-4">
+                            <h6>📊 Frequency / Freq Ratio</h6>
+                            <p><strong>freqBuy2h:</strong> ${_metrics && _metrics.freqBuy2h !== undefined ? _metrics.freqBuy2h : '-'}</p>
+                            <p><strong>freqSell2h:</strong> ${_metrics && _metrics.freqSell2h !== undefined ? _metrics.freqSell2h : '-'}</p>
+                            <p><strong>Freq Ratio % (2h):</strong> ${_metrics && _metrics.freqRatio2h_percent !== undefined ? Number(_metrics.freqRatio2h_percent).toFixed(2) + '%' : '-'}</p>
+                        </div>
+                    </div>
+
+                    <div class="mt-3"><h6>💹 Price Moves</h6>
+                        <div class="small">1m: ${localGetNumeric(data,'price_move_1MENIT') || '-'} • 5m: ${localGetNumeric(data,'price_move_5MENIT') || '-'} • 15m: ${localGetNumeric(data,'price_move_15MENIT') || '-'} • 2h: ${localGetNumeric(data,'price_move_2JAM') || '-'}</div>
+                    </div>
+
+                        <div class="mt-3"><h6>🧠 Smart</h6>
+                        <div class="small">Composite Institutional: ${_metrics && _metrics.compositeInstitutionalSignal !== undefined ? Number(_metrics.compositeInstitutionalSignal).toFixed(3) : '-'}</div>
+                        <div class="small">Smart Money Divergence: ${_metrics && _metrics.smartMoneyDivergence !== undefined ? Number(_metrics.smartMoneyDivergence).toFixed(3) : '-'}</div>
+                    </div>
+
+                    <div class="mb-3 mt-3"><h6>Raw Data</h6>
+                        <div class="d-flex gap-2"><button class="btn btn-outline-primary btn-sm" id="insightCopyJson">Copy JSON</button><button class="btn btn-outline-secondary btn-sm" id="insightExportJsonPane">Export JSON</button><button class="btn btn-outline-success btn-sm" id="insightExportCsvPane">Export CSV</button></div>
+                        <pre id="insightRaw" style="max-height:200px;overflow:auto;margin-top:8px;background:#0b1220;padding:8px;border-radius:6px;color:#9ca3af;">${JSON.stringify(data, null, 2)}</pre>
+                    </div>
+                `;
+
+                // Start/update a single interval to refresh any insight countdowns (local browser time)
+                try {
+                    if (!window._insightFundingCountdownIntervalSet) {
+                        window._insightFundingCountdownIntervalSet = true;
+                        const updateInsightFundingCountdowns = () => {
+                            try {
+                                const now = Date.now();
+                                const els = document.querySelectorAll('#insightPaneBody .insight-funding-countdown');
+                                els.forEach(el => {
+                                    const ns = Number(el.dataset.next) || 0;
+                                    if (!ns) { el.textContent = '-'; return; }
+                                    const diff = ns - now;
+                                    if (diff <= 0) el.textContent = '00:00:00';
+                                    else {
+                                        const s = Math.floor(diff/1000);
+                                        const hh = Math.floor(s/3600);
+                                        const mm = Math.floor((s%3600)/60);
+                                        const ss = s%60;
+                                        el.textContent = `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
+                                    }
+                                });
+                            } catch (e) { /* swallow */ }
+                        };
+                        updateInsightFundingCountdowns();
+                        window._insightFundingCountdownInterval = setInterval(updateInsightFundingCountdowns, 1000);
+                    }
+                } catch (e) { /* ignore */ }
 
                 document.getElementById('insightCopyJson').onclick = function () {
                     try { navigator.clipboard.writeText(JSON.stringify(data, null, 2)); } catch (e) { window.__displayError('Clipboard copy failed'); }
                 };
                 document.getElementById('insightExportJsonPane').onclick = () => window.exportInsightJSON(coin, data);
                 document.getElementById('insightExportCsvPane').onclick = () => window.exportInsightCSV(coin, data);
+                // wire Signal Lab link to open Signal Lab tab and preselect coin
+                try {
+                    const openSignal = document.getElementById('openSignalLabFromInsight');
+                    if (openSignal) {
+                        openSignal.addEventListener('click', (ev) => {
+                            try { ev.preventDefault(); } catch (e) {}
+                            try { const tab = document.getElementById('signal-tab'); if (tab) tab.click(); } catch (e) {}
+                            try { const sel = document.getElementById('signalLabCoinSelect'); if (sel) { sel.value = coin; sel.dispatchEvent(new Event('change')); } } catch (e) {}
+                        });
+                    }
+                } catch (e) { /* ignore */ }
 
+                // remember currently shown coin so live-updates can refresh it
+                try { window._insightShownCoin = coin; } catch (e) { }
                 // activate the tab
                 try {
                     const tabEl = document.getElementById('insight-tab');
@@ -571,6 +703,7 @@ try {
         // Object to store data by coin - prefer shim; update-table.js may still read window.coinDataMap via shim mirror
         const coinDataMap = {};
         try { if (window.__okxShim && typeof window.__okxShim.setCoinDataMap === 'function') window.__okxShim.setCoinDataMap(coinDataMap); } catch (e) { }
+        try { updateCoinDatalist(); } catch (e) { }
         
         // ===================== PRELOAD HISTORY ONLY (NOT DATA) =====================
         // Preload history arrays from IndexedDB for analytics continuity (async)
@@ -712,6 +845,7 @@ try {
                     if (Object.keys(minimal).length) {
                         coinDataMap[coin] = Object.assign({}, existing, minimal);
                         try { if (window.__okxShim && typeof window.__okxShim.setCoinDataMap === 'function') window.__okxShim.setCoinDataMap(coinDataMap); } catch (e) { }
+                        try { updateCoinDatalist(); } catch (e) { }
                     }
                     // still schedule a table refresh (debounced) so UI updates soon
                     try { scheduleUpdateTable(); } catch (e) { }
@@ -760,6 +894,7 @@ try {
             const autoKeepPatterns = [
                 /^count_freq_/i,
                 /^freq_/i,
+                /^funding_/i,
                 /^avg_freqcoin_/i,
                 /^update_time_(?:freq|vol)_/i,
                 // preserve price-related fields (open, price_1MENIT, price_move_1MENIT, etc.)
@@ -801,7 +936,8 @@ try {
                                         if (_map && _map[coin]) {
                                             _map[coin] = data;
                                             try { if (window.__okxShim && typeof window.__okxShim.setCoinDataMap === 'function') window.__okxShim.setCoinDataMap(_map); else window.coinDataMap = _map; } catch (e) { try { window.coinDataMap = _map; } catch (ex) {} }
-                                            try { if (typeof scheduleUpdateTable === 'function') scheduleUpdateTable(); } catch (e) { }
+                                                try { if (typeof scheduleUpdateTable === 'function') scheduleUpdateTable(); } catch (e) { }
+                                                try { updateCoinDatalist(); } catch (e) { }
                                         }
                                     } catch (e) { /* ignore coin map apply errors */ }
                                 }
@@ -1061,6 +1197,119 @@ try {
             // Store sanitized data by coin
             coinDataMap[coin] = data;
                         try { if (window.__okxShim && typeof window.__okxShim.setCoinDataMap === 'function') window.__okxShim.setCoinDataMap(coinDataMap); } catch (e) { }
+                        try { updateCoinDatalist(); } catch (e) { }
+            try { updateCoinDatalist(); } catch (e) { /* ignore */ }
+            // If the Insight view is currently showing this coin (tab or modal), refresh it so user sees realtime changes
+            try {
+                if (window._insightShownCoin === coin) {
+                    const tabEl = document.getElementById('insight-tab');
+                    const isTabActive = tabEl && tabEl.classList && tabEl.classList.contains('active');
+                    const modalEl = document.getElementById('insightModal');
+                    const isModalShown = modalEl && modalEl.classList && modalEl.classList.contains('show');
+                    if (isTabActive || isModalShown) {
+                        try { showInsightTab(coin, data); } catch (e) { /* ignore render errors */ }
+                    }
+                }
+            } catch (e) { /* swallow */ }
+            // Update Funding tab row (if present)
+            try {
+                const fundingBodyEl = document.getElementById('fundingBody');
+                if (fundingBodyEl) {
+                    let tr = fundingBodyEl.querySelector(`tr[data-coin="${coin}"]`);
+                    // Respect per-tab coin filter and global row limit when updating funding rows
+                    const fmtNum = (v, dp=6) => (v === undefined || v === null) ? '-' : (Number.isFinite(Number(v)) ? Number(Number(v)).toFixed(dp) : String(v));
+                    const ft = (typeof getActiveFilterValue === 'function') ? (getActiveFilterValue() || '').trim().toLowerCase() : '';
+                    const rl = (typeof window.rowLimit !== 'undefined') ? window.rowLimit : 5;
+                    // If a per-tab filter is active and this coin doesn't match, remove existing row and skip
+                    if (ft && !String(coin).toLowerCase().includes(ft)) {
+                        try { if (tr) fundingBodyEl.removeChild(tr); } catch (e) { /* ignore */ }
+                        try {
+                            if (rl !== Infinity) {
+                                const rows = fundingBodyEl.querySelectorAll('tr');
+                                for (let i = rows.length - 1; i >= rl; i--) fundingBodyEl.removeChild(rows[i]);
+                            }
+                        } catch (e) { /* ignore */ }
+                    } else {
+                        const nextTime = data.funding_nextFundingTime ? new Date(Number(data.funding_nextFundingTime)).toLocaleString() : (data.funding_Time ? new Date(Number(data.funding_Time)).toLocaleString() : '-');
+                        const premiumVal = (data.funding_premium !== undefined) ? data.funding_premium : (data.funding_Rate !== undefined ? data.funding_Rate : (data.funding_interestRate !== undefined ? data.funding_interestRate : null));
+                        const premium = premiumVal !== null ? fmtNum(premiumVal, 6) : '-';
+                        const premiumClass = (premiumVal !== null && !Number.isNaN(Number(premiumVal))) ? (Number(premiumVal) < 0 ? 'text-danger' : (Number(premiumVal) > 0 ? 'text-success' : '')) : '';
+                        const sett = data.funding_settFundingRate !== undefined ? fmtNum(data.funding_settFundingRate, 6) : '-';
+                        const minR = data.funding_minFundingRate !== undefined ? fmtNum(data.funding_minFundingRate, 6) : '-';
+                        const impact = (data.funding_impactValue !== undefined) ? String(data.funding_impactValue) : '-';
+                        const priceVal = (data.last !== undefined && data.last !== null) ? Number(data.last) : null;
+                        const priceDisplay = priceVal !== null ? (Number(priceVal).toFixed(2)) : '-';
+                        const changeVal = (data.percent_change !== undefined && data.percent_change !== null) ? Number(data.percent_change) : null;
+                        const changeDisplay = changeVal !== null ? (Number(changeVal).toFixed(2) + '%') : '-';
+                        const changeClass = changeVal === null ? '' : (changeVal > 0 ? 'text-success' : (changeVal < 0 ? 'text-danger' : ''));
+                        const nextTs = data.funding_nextFundingTime ? Number(data.funding_nextFundingTime) : (data.funding_Time ? Number(data.funding_Time) : 0);
+                        const fmtCountdown = (ts) => {
+                            if (!ts || Number.isNaN(ts)) return '-';
+                            const d = ts - Date.now();
+                            if (d <= 0) return '00:00:00';
+                            const s = Math.floor(d/1000);
+                            const hh = Math.floor(s/3600);
+                            const mm = Math.floor((s%3600)/60);
+                            const ss = s%60;
+                            return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
+                        };
+                        const countdownText = fmtCountdown(nextTs);
+                        const cells = `<td>${coin}</td><td>${priceDisplay}</td><td class="${changeClass}">${changeDisplay}</td><td><span class="${premiumClass}">${premium}</span></td><td>${sett}</td><td>${minR}</td><td>${impact}</td><td>${nextTime}</td><td class="funding-countdown" data-next="${nextTs || ''}">${countdownText}</td>`;
+                        try {
+                            const currentRows = fundingBodyEl.querySelectorAll('tr').length || 0;
+                            if (!tr && rl !== Infinity && currentRows >= rl) {
+                                // skip adding new row because limit reached
+                            } else {
+                                if (!tr) {
+                                    tr = document.createElement('tr');
+                                    tr.dataset.coin = coin;
+                                    tr.innerHTML = cells;
+                                    fundingBodyEl.appendChild(tr);
+                                } else {
+                                    tr.innerHTML = cells;
+                                }
+                            }
+                        } catch (e) { /* ignore DOM errors */ }
+                        try {
+                            if (rl !== Infinity) {
+                                const rows = fundingBodyEl.querySelectorAll('tr');
+                                if (rows.length > rl) {
+                                    for (let i = rows.length - 1; i >= rl; i--) {
+                                        try { fundingBodyEl.removeChild(rows[i]); } catch (e) { }
+                                    }
+                                }
+                            }
+                        } catch (e) { /* ignore */ }
+                        // ensure a single interval updates all countdowns
+                        try {
+                            if (!window._fundingCountdownIntervalSet) {
+                                window._fundingCountdownIntervalSet = true;
+                                const updateFundingCountdowns = () => {
+                                    try {
+                                        const now = Date.now();
+                                        const els = document.querySelectorAll('#fundingBody .funding-countdown');
+                                        els.forEach(el => {
+                                            const ns = Number(el.dataset.next) || 0;
+                                            if (!ns) { el.textContent = '-'; return; }
+                                            const diff = ns - now;
+                                            if (diff <= 0) el.textContent = '00:00:00';
+                                            else {
+                                                const s = Math.floor(diff/1000);
+                                                const hh = Math.floor(s/3600);
+                                                const mm = Math.floor((s%3600)/60);
+                                                const ss = s%60;
+                                                el.textContent = `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
+                                            }
+                                        });
+                                    } catch (e) { /* swallow */ }
+                                };
+                                updateFundingCountdowns();
+                                window._fundingCountdownInterval = setInterval(updateFundingCountdowns, 1000);
+                            }
+                        } catch (e) { /* ignore */ }
+                    }
+                }
+            } catch (e) { /* non-fatal */ }
             try {
                 //  console.info('[onWsMessage] stored coinDataMap for', coin, 'fields:', Object.keys(data).length); 
                 } catch (e) { }
@@ -1105,6 +1354,55 @@ try {
         window.PERSIST_KEY = PERSIST_KEY;
         window.persistHistoryEnabled = persistHistoryEnabled;
         window.getAdvancedSortState = function() { return advancedSortState; };
+        // Funding simulator wiring
+        try {
+            const openBtn = document.getElementById('openFundingSimBtn');
+            if (openBtn) openBtn.addEventListener('click', () => {
+                try {
+                    const modalEl = document.getElementById('fundingSimModal');
+                    const bs = new bootstrap.Modal(modalEl);
+                    // prefill from last selected coin if present
+                    const coin = window._lastReceivedCoin || '';
+                    try { if (coin) document.getElementById('simCoin').value = coin; } catch (e) { }
+                    bs.show();
+                } catch (e) { console.warn('openFundingSim failed', e); }
+            });
+
+            // Simulator compute function
+            function computeFundingSim() {
+                try {
+                    const notional = Number(document.getElementById('simNotional').value) || 0;
+                    const lev = Number(document.getElementById('simLeverage').value) || 1;
+                    const side = (document.getElementById('simSide').value || 'LONG').toUpperCase();
+                    const rate = Number(document.getElementById('simFundingRate').value) || 0;
+                    const periodHours = Number(document.getElementById('simPeriodHours').value) || 8;
+                    const periods = Number(document.getElementById('simPeriods').value) || 1;
+                    // Funding P&L per period (USD) = notional * rate * (1 for LONG receives if rate<0?)
+                    // Convention: fundingRate >0 means LONG pays SHORT. So
+                    // LONG P&L = - rate * notional
+                    // SHORT P&L = rate * notional
+                    const sign = (side === 'LONG') ? -1 : 1;
+                    const fPer = sign * rate * notional; // per funding period
+                    const fPerLeverageAdjusted = fPer * lev; // exposure amplified by leverage
+                    // convert to per-day assuming periodHours
+                    const perDay = periodHours > 0 ? (24 / periodHours) * fPer : fPer;
+                    const bePctPerDay = perDay === 0 ? 0 : (perDay / notional) * 100;
+                    document.getElementById('sim_f_per').textContent = (fPerLeverageAdjusted >= 0 ? '+' : '') + Number(fPerLeverageAdjusted).toFixed(4) + ' USD';
+                    document.getElementById('sim_f_day').textContent = (perDay * lev >= 0 ? '+' : '') + Number(perDay * lev).toFixed(4) + ' USD/day';
+                    document.getElementById('sim_be_pct').textContent = Number(bePctPerDay).toFixed(4) + ' %';
+                } catch (e) { console.warn('computeFundingSim failed', e); }
+            }
+
+            // wire inputs
+            ['simNotional','simLeverage','simSide','simFundingRate','simPeriodHours','simPeriods'].forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.addEventListener('input', computeFundingSim);
+                el.addEventListener('change', computeFundingSim);
+            });
+            // compute once initially
+            setTimeout(() => { try { computeFundingSim(); } catch (e) {} }, 400);
+        } catch (e) { console.warn('funding simulator wiring failed', e); }
         
         // Update rowLimit when limitInput changes
         limitInput.addEventListener('change', () => { window.rowLimit = parseInt(limitInput.value, 10) || Infinity; scheduleUpdateTable(); });

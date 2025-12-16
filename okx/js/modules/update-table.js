@@ -1191,10 +1191,44 @@
         posCell.textContent = pricePosition + '%';
         posCell.className = getDurabilityClass(pricePosition);
 
+        // Funding cell (8h): show settFundingRate preferred, fallback to funding_Rate, then funding_premium
+        const fundingCell = row.insertCell(4);
+        try {
+            const sett = getNumeric(data, 'funding_settFundingRate', 'funding_settfundingrate');
+            const rate = getNumeric(data, 'funding_Rate', 'funding_rate');
+            const premium = getNumeric(data, 'funding_premium', 'fundingpremium');
+            let fundingVal = null;
+            if (sett) fundingVal = sett;
+            else if (rate) fundingVal = rate;
+            else if (premium) fundingVal = premium;
+            // display as percent
+            if (fundingVal === null || fundingVal === 0) {
+                fundingCell.textContent = '-';
+                fundingCell.className = 'text-muted';
+            } else {
+                // convert to percent for human view
+                const display = (fundingVal * 100).toFixed(Math.abs(fundingVal) < 0.001 ? 3 : 2) + '%';
+                const positive = Number(fundingVal) > 0;
+                const arrow = positive ? '▲' : '▼';
+                fundingCell.innerHTML = `<span class="${positive ? 'text-danger' : 'text-success'} fw-bold">${arrow} ${display}</span>`;
+            }
+        } catch (e) { fundingCell.textContent = '-'; fundingCell.className = 'text-muted'; }
+
         const selectedTf = (recTimeframeSelect && recTimeframeSelect.value) ? recTimeframeSelect.value : '120m';
         const recommendation = typeof calculateRecommendation === 'function' ? calculateRecommendation(data, pricePosition, selectedTf, true) : null;
-        const recCell = row.insertCell(4);
-        recCell.textContent = recommendation && recommendation.recommendation ? `${recommendation.recommendation} (${recommendation.confidence || 0}%)` : 'HOLD';
+        // funding-aware position mapping (if available)
+        let fundingTailwindBadge = null;
+        try {
+            const posRec = (typeof calculatePositionRecommendation === 'function') ? calculatePositionRecommendation(data, pricePosition, selectedTf, false) : null;
+            const sett = getNumeric(data, 'funding_settFundingRate', 'funding_settfundingrate');
+            const rate = getNumeric(data, 'funding_Rate', 'funding_rate');
+            const premium = getNumeric(data, 'funding_premium', 'fundingpremium');
+            const fundingVal = sett || rate || premium || 0;
+            if (posRec && posRec.recommendation === 'LONG' && Number(fundingVal) < 0) fundingTailwindBadge = '<span class="badge bg-success ms-1 small">Funding tailwind</span>';
+            if (posRec && posRec.recommendation === 'SHORT' && Number(fundingVal) > 0) fundingTailwindBadge = '<span class="badge bg-danger ms-1 small">Funding tailwind</span>';
+        } catch (e) { fundingTailwindBadge = null; }
+        const recCell = row.insertCell(5);
+        recCell.innerHTML = (recommendation && recommendation.recommendation ? `${recommendation.recommendation} (${recommendation.confidence || 0}%)` : 'HOLD') + (fundingTailwindBadge || '');
         recCell.className = recommendation && recommendation.className ? recommendation.className : 'recommendation-hold';
 
         const _metricsSummary = (typeof getUnifiedSmartMetrics === 'function') ? getUnifiedSmartMetrics(data) : (data && (data.analytics || data._analytics)) ? (data.analytics || data._analytics) : {};
@@ -1204,14 +1238,14 @@
         riskCell.className = riskScore >= 67 ? 'text-danger fw-bold' : riskScore >= 40 ? 'text-warning fw-bold' : 'text-success fw-bold';
 
         const volumeRatio2h = volSell2h > 0 ? (volBuy2h / volSell2h) * 100 : (volBuy2h > 0 ? null : 0);
-        const vrCell = row.insertCell(6);
+        const vrCell = row.insertCell(7);
         try {
             vrCell.textContent = formatVolRatio(volumeRatio2h);
         } catch (e) { vrCell.textContent = formatVolRatio(volumeRatio2h); }
         vrCell.className = (volumeRatio2h === null || volumeRatio2h > 200) ? 'text-success fw-bold' : volumeRatio2h < 50 ? 'text-danger fw-bold' : 'text-warning fw-bold';
 
-        row.insertCell(7).textContent = volBuy2h;
-        row.insertCell(8).textContent = volSell2h;
+        row.insertCell(8).textContent = volBuy2h;
+        row.insertCell(9).textContent = volSell2h;
 
         let volDur2h = (typeof getUnifiedSmartMetrics === 'function' && getUnifiedSmartMetrics(data) && getUnifiedSmartMetrics(data).volDurability2h_percent !== null)
             ? Number(getUnifiedSmartMetrics(data).volDurability2h_percent)
@@ -1220,12 +1254,12 @@
             const total2h = (volBuy2h || 0) + (volSell2h || 0);
             volDur2h = total2h > 0 ? Math.round(((volBuy2h || 0) / total2h) * 100) : 0;
         }
-        const volDurCell = row.insertCell(9);
+        const volDurCell = row.insertCell(10);
         volDurCell.textContent = (isNaN(volDur2h) ? 0 : volDur2h) + '%';
         volDurCell.className = getDurabilityClass(volDur2h);
 
-        row.insertCell(10).textContent = volBuy24h;
-        row.insertCell(11).textContent = volSell24h;
+        row.insertCell(11).textContent = volBuy24h;
+        row.insertCell(12).textContent = volSell24h;
 
         // Tier-1 metrics: Kyle's Lambda, VWAP Bands position, CVD, RVOL
         const metrics = (typeof getUnifiedSmartMetrics === 'function') ? getUnifiedSmartMetrics(data) : (data && (data.analytics || data._analytics)) ? (data.analytics || data._analytics) : {};
@@ -1238,6 +1272,9 @@
         } catch (e) { kyleVal = null; }
         const kCell = row.insertCell();
         kCell.classList.add('advanced-metric');
+
+        // Wire the open funding button to focus the Funding tab + set filter
+        // Note: per user request, do not open funding detail from Summary tab (no button/handler).
         kCell.textContent = Number.isFinite(Number(kyleVal)) ? fmtSmart(kyleVal, 4) : '-';
         if (Number.isFinite(kyleVal)) kCell.className += ' ' + (kyleVal >= 0.05 ? 'text-danger fw-bold' : kyleVal <= 0.01 ? 'text-success' : 'text-warning');
         try {
