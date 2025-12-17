@@ -518,6 +518,14 @@
             this.emitLegacy = true; // default: keep emitting legacy flattened keys
             // Prefer classic workers by default to maximize compatibility in older browsers
             this.preferClassic = true;
+            // Optional: prefer a dedicated WASM-backed worker for numeric-heavy tasks
+            this.preferWasm = (typeof window !== 'undefined' && !!window.WORKER_PREFER_WASM) ? !!window.WORKER_PREFER_WASM : true;
+            this.wasmWorker = null;
+            this._wasmRequestId = 0;
+            this._wasmPending = new Map();
+            this._wasmReadyPromise = null;
+            this._wasmReadyResolve = null;
+            this._wasmReadyReject = null;
             // Respawn/backoff policy
             this.maxWorkerRespawn = 2;
             this.initialRespawnDelay = 1000; // ms
@@ -530,54 +538,71 @@
 
         init() {
             if (this.initialized) return this;
-            
+
             const classicScript = 'js/modules/worker.js';
             const moduleScript = 'js/modules/worker.mjs';
-            // Quick non-blocking checks to help diagnose worker load issues (logs HTTP status / content-type)
-            // try {
-            //     fetch(moduleScript, { method: 'GET' }).then(r => console.log('[WorkerPool] moduleScript fetch', moduleScript, r.status, r.headers.get('content-type'))).catch(err => console.warn('[WorkerPool] moduleScript fetch failed', moduleScript, err));
-            // } catch (e) {}
-            // try {
-            //     fetch(classicScript, { method: 'GET' }).then(r => console.log('[WorkerPool] classicScript fetch', classicScript, r.status, r.headers.get('content-type'))).catch(err => console.warn('[WorkerPool] classicScript fetch failed', classicScript, err));
-            // } catch (e) {}
+            const wasmScript = 'js/modules/wasm-worker.js';
+
+            // Spawn regular workers
             for (let i = 0; i < this.size; i++) {
-                let worker;
-                let usedScript = null;
+                let worker = null;
                 try {
-                    if (this.preferClassic) {
-                        worker = new Worker(classicScript);
-                        usedScript = classicScript;
-                    } else {
-                        // Prefer module worker when supported
-                        worker = new Worker(moduleScript, { type: 'module' });
-                        usedScript = moduleScript;
-                    }
+                    if (this.preferClassic) worker = new Worker(classicScript);
+                    else worker = new Worker(moduleScript, { type: 'module' });
                 } catch (e) {
-                    // Fallback to the other script if creation failed
+                    // try the other variant
                     try {
-                        worker = new Worker(this.preferClassic ? moduleScript : classicScript, this.preferClassic ? { type: 'module' } : undefined);
-                        usedScript = this.preferClassic ? moduleScript : classicScript;
+                        if (this.preferClassic) worker = new Worker(moduleScript, { type: 'module' });
+                        else worker = new Worker(classicScript);
                     } catch (ee) {
-                        console.error('[WorkerPool] Failed to spawn worker with either script', ee);
-                        continue;
+                        console.error('[WorkerPool] Failed to spawn worker', ee);
+                        worker = null;
                     }
                 }
-                worker.id = i;
-                // Debug metadata for easier inspection when workers misbehave
-                worker._script = usedScript;
-                worker._spawnTime = Date.now();
-                worker._inited = false;
-                worker._errorCount = 0;
-                worker._retryDelay = this.initialRespawnDelay;
-                // if worker doesn't post an init message within 5s, warn
-                const initTimer = setTimeout(() => {
-                    if (!worker._inited) console.warn(`[WorkerPool] Worker ${worker.id} did not send init message (script: ${usedScript}) within 10s (spawned ${new Date(worker._spawnTime).toISOString()})`);
-                }, 10000);
-                worker._clearInitTimer = () => clearTimeout(initTimer);
-                worker.onmessage = (e) => this._handleMessage(worker, e);
-                worker.onerror = (e) => this._handleError(worker, e);
-                // console.log(`[WorkerPool] Spawned worker ${i} using ${usedScript}`);
-                this.workers.push(worker);
+
+                if (worker) {
+                    worker.id = i;
+                    worker._errorCount = 0;
+                    worker._retryDelay = this.initialRespawnDelay;
+                    worker.onmessage = (ev) => this._handleMessage(worker, ev);
+                    worker.onerror = (ev) => this._handleError(worker, ev);
+                    this.workers.push(worker);
+                }
+            }
+
+            // Initialize dedicated wasm worker (module) if requested
+            if (this.preferWasm) {
+                try {
+                    const w = new Worker(wasmScript, { type: 'module' });
+                    this._wasmReadyPromise = new Promise((res, rej) => { this._wasmReadyResolve = res; this._wasmReadyReject = rej; });
+                    w.onmessage = (ev) => {
+                        const d = ev.data || {};
+                        if (d && d.cmd === 'ready') {
+                            this.wasmWorkerReady = true;
+                            try { if (typeof this._wasmReadyResolve === 'function') this._wasmReadyResolve(true); } catch (e) {}
+                            this._wasmReadyResolve = null; this._wasmReadyReject = null;
+                        }
+                        if (d && d.cmd === 'result' && typeof d.requestId !== 'undefined') {
+                            const p = this._wasmPending.get(d.requestId);
+                            if (p) { p.resolve(d.result); this._wasmPending.delete(d.requestId); }
+                        }
+                        if (d && d.cmd === 'error' && typeof d.requestId !== 'undefined') {
+                            const p = this._wasmPending.get(d.requestId);
+                            if (p) { p.reject(new Error(d.error || 'wasm error')); this._wasmPending.delete(d.requestId); }
+                        }
+                    };
+                    w.onerror = (e) => {
+                        console.warn('[WorkerPool] wasmWorker error', e);
+                        try { if (typeof this._wasmReadyReject === 'function') this._wasmReadyReject(e); } catch (ex) {}
+                        this._wasmReadyResolve = null; this._wasmReadyReject = null;
+                    };
+                    this.wasmWorkerReady = false;
+                    try { w.postMessage({ cmd: 'init', baseUrl: '/wasm-proto/pkg' }); } catch (e) { /* ignore */ }
+                    this.wasmWorker = w;
+                } catch (e) {
+                    console.warn('[WorkerPool] Failed to create wasm worker', e);
+                    this.wasmWorker = null;
+                }
             }
 
             // Send initial config to workers (emit legacy keys enabled/disabled)
@@ -589,10 +614,10 @@
                     w.postMessage({ type: 'config', payload });
                 } catch (e) { /* ignore */ }
             }
-            
+
             this.initialized = true;
             console.log(`[WorkerPool] Initialized with ${this.size} workers (${navigator.hardwareConcurrency} cores available)`);
-            
+
             return this;
         }
 
@@ -708,7 +733,62 @@
                 task.startTime = Date.now();
                 // Clone payload to avoid race conditions where main-thread mutates data
                 let payloadToSend = task.payload;
+                // If this is a large analytics batch, proactively trim per-coin histories
                 try {
+                    if (task && task.type === 'computeAnalyticsBatch' && payloadToSend && payloadToSend.coins && typeof payloadToSend.coins === 'object') {
+                        const TRIM = (typeof window !== 'undefined' && Number(window.WORKER_HISTORY_TRIM)) ? Number(window.WORKER_HISTORY_TRIM) : 120;
+                        const safe = { coins: {} };
+                        let totalTrimmed = 0;
+                        for (const [coin, data] of Object.entries(payloadToSend.coins)) {
+                            try {
+                                if (!data) { safe.coins[coin] = data; continue; }
+                                const copy = Object.assign({}, data);
+                                // truncate _history or history arrays which are the common large offenders
+                                if (Array.isArray(copy._history) && copy._history.length > TRIM) {
+                                    totalTrimmed += (copy._history.length - TRIM);
+                                    copy._history = copy._history.slice(-TRIM);
+                                    copy._history_truncated = true;
+                                }
+                                if (Array.isArray(copy.history) && copy.history.length > TRIM) {
+                                    totalTrimmed += (copy.history.length - TRIM);
+                                    copy.history = copy.history.slice(-TRIM);
+                                    copy.history_truncated = true;
+                                }
+                                // avoid carrying extremely large nested payloads if present
+                                if (copy._analytics && typeof copy._analytics === 'object' && Array.isArray(copy._analytics.history) && copy._analytics.history.length > TRIM) {
+                                    try {
+                                        copy._analytics = Object.assign({}, copy._analytics);
+                                        copy._analytics.history = copy._analytics.history.slice(-TRIM);
+                                        copy._analytics_truncated = true;
+                                    } catch (e) { /* ignore */ }
+                                }
+                                safe.coins[coin] = copy;
+                            } catch (perErr) {
+                                safe.coins[coin] = data; // fallback
+                            }
+                        }
+                        if (totalTrimmed > 0) console.warn(`[WorkerPool] trimmed ${totalTrimmed} history entries across coins for task ${task.id} before sending`);
+                        payloadToSend = safe;
+                    }
+                } catch (e) { /* ignore trimming errors */ }
+                // Instrument payload size for diagnostics
+                try {
+                    try {
+                        const threshold = (typeof window !== 'undefined' && window.WORKER_PAYLOAD_LOG_THRESHOLD) ? Number(window.WORKER_PAYLOAD_LOG_THRESHOLD) : 100 * 1024; // 100KB
+                        let approxBytes = 0;
+                        if (payloadToSend && payloadToSend.coins) {
+                            try { approxBytes = JSON.stringify(payloadToSend).length; } catch (e) { approxBytes = 0; }
+                        } else if (payloadToSend && payloadToSend.data && (payloadToSend.data.buffer || payloadToSend.data.byteLength)) {
+                            approxBytes = payloadToSend.data.byteLength || (payloadToSend.data.buffer ? payloadToSend.data.buffer.byteLength : 0);
+                        } else {
+                            try { approxBytes = JSON.stringify(payloadToSend).length; } catch (e) { approxBytes = 0; }
+                        }
+                        // if (approxBytes > threshold) 
+                        //     console.warn(`[WorkerPool] large payload prepared for task ${task.id} (~${Math.round(approxBytes/1024)} KB). type=${task.type}`);
+                        
+                        // else if (approxBytes > threshold/10) console.debug(`[WorkerPool] payload size for task ${task.id}: ${Math.round(approxBytes/1024)} KB`);
+                    } catch (logE) { /* ignore logging errors */ }
+
                     if (typeof structuredClone === 'function') {
                         payloadToSend = structuredClone(task.payload);
                     } else {
@@ -787,6 +867,156 @@
             return this.execute('computeMicrostructure', { data });
         }
 
+        // Send numeric typed-array work to the dedicated wasm worker (if available)
+        computeWithWasm(typedArray) {
+            return new Promise((resolve, reject) => {
+                if (!this.wasmWorker) return reject(new Error('No wasm worker available'));
+
+                // Small diagnostic helpers: expose short state in console when failing
+                const failWithState = (err) => {
+                    try {
+                        console.warn('[WorkerPool] computeWithWasm failed:', err && err.message ? err.message : err);
+                        console.debug('[WorkerPool] wasmWorkerReady=', !!this.wasmWorkerReady, 'wasmWorker=', this.wasmWorker, '_wasmPending=', this._wasmPending.size);
+                    } catch (e) {}
+                    reject(err instanceof Error ? err : new Error(String(err)));
+                };
+
+                this.waitForWasmReady(10000).then(() => {
+                    const reqId = ++this._wasmRequestId;
+                    // store a timestamp for easier debugging of stuck requests
+                    this._wasmPending.set(reqId, { resolve, reject, ts: Date.now() });
+                    try {
+                        const buf = (typedArray && typedArray.buffer) ? typedArray.buffer : typedArray;
+                        try { console.debug(`[WorkerPool] posting wasm compute req=${reqId} bytes=${buf ? (buf.byteLength||0) : 0}`); } catch (e) {}
+                        this.wasmWorker.postMessage({ cmd: 'compute', data: typedArray, requestId: reqId }, buf ? [buf] : undefined);
+                    } catch (e) {
+                        this._wasmPending.delete(reqId);
+                        failWithState(e);
+                    }
+                }).catch(failWithState);
+            });
+        }
+
+        // Send two typed arrays (prices, vols) to wasm worker to compute VWAP
+        computeVwapWithWasm(prices, vols) {
+            return new Promise((resolve, reject) => {
+                if (!this.wasmWorker) return reject(new Error('No wasm worker available'));
+
+                this.waitForWasmReady(10000).then(() => {
+                    const reqId = ++this._wasmRequestId;
+                    this._wasmPending.set(reqId, { resolve, reject, ts: Date.now() });
+                    try {
+                        const pBuf = (prices && prices.buffer) ? prices.buffer : prices;
+                        const vBuf = (vols && vols.buffer) ? vols.buffer : vols;
+                        this.wasmWorker.postMessage({ cmd: 'compute_vwap', prices, vols, requestId: reqId }, (pBuf && vBuf) ? [pBuf, vBuf] : (pBuf ? [pBuf] : (vBuf ? [vBuf] : undefined)));
+                    } catch (e) {
+                        this._wasmPending.delete(reqId);
+                        reject(e);
+                    }
+                }).catch(reject);
+            });
+        }
+
+        computeVwapOrFallback(prices, vols, timeoutMs = 3000) {
+            const jsFallback = (p, v) => {
+                try {
+                    const pa = (p instanceof Float64Array) ? p : new Float64Array(p);
+                    const va = (v instanceof Float64Array) ? v : new Float64Array(v);
+                    let num = 0; let den = 0;
+                    for (let i = 0; i < Math.min(pa.length, va.length); i++) {
+                        const pv = pa[i]; const vv = va[i];
+                        if (Number.isFinite(pv) && Number.isFinite(vv)) { num += pv * vv; den += vv; }
+                    }
+                    const out = new Float64Array([ den === 0 ? 0 : num / den ]);
+                    return out.buffer;
+                } catch (e) { throw e; }
+            };
+
+            return new Promise((resolve, reject) => {
+                let settled = false;
+                const onFallback = (err) => {
+                    if (settled) return; settled = true;
+                    try { const res = jsFallback(prices, vols); resolve(res); } catch (e) { reject(e); }
+                };
+
+                const timer = setTimeout(() => { if (!settled) { console.warn('[WorkerPool] wasm vwap timeout, falling back'); onFallback(new Error('timeout')); } }, timeoutMs);
+
+                this.computeVwapWithWasm(prices, vols).then((buf) => {
+                    if (settled) return; settled = true; clearTimeout(timer); resolve(buf);
+                }).catch((e) => { if (settled) return; settled = true; clearTimeout(timer); onFallback(e); });
+            });
+        }
+
+        // Try WASM compute, fall back to a provided JS fallback function on error or timeout
+        computeWithWasmOrFallback(typedArray, fallbackFn, timeoutMs = 3000) {
+            return new Promise((resolve, reject) => {
+                const fallback = (err) => {
+                    try {
+                        if (typeof fallbackFn === 'function') {
+                            const res = fallbackFn(typedArray);
+                            // allow fallbackFn to return Promise or value
+                            Promise.resolve(res).then(resolve, reject);
+                        } else {
+                            reject(err || new Error('wasm compute failed and no fallback provided'));
+                        }
+                    } catch (e) { reject(e); }
+                };
+
+                let settled = false;
+                const onErr = (e) => { if (!settled) { settled = true; fallback(e); } };
+
+                // Start wasm compute
+                try {
+                    const wasmP = this.computeWithWasm(typedArray);
+                    const timer = setTimeout(() => {
+                        if (!settled) {
+                            settled = true;
+                            try { console.warn('[WorkerPool] wasm compute timeout, falling back'); } catch (e) {}
+                            // attempt to cancel pending wasm request by clearing pending map entry (best-effort)
+                            try {
+                                for (const [id, p] of this._wasmPending.entries()) {
+                                    if (p && p.ts && Date.now() - p.ts > timeoutMs) this._wasmPending.delete(id);
+                                }
+                            } catch (e) {}
+                            // call fallback
+                            fallback(new Error('wasm compute timeout'));
+                        }
+                    }, timeoutMs);
+
+                    wasmP.then((buf) => {
+                        if (settled) return;
+                        settled = true;
+                        clearTimeout(timer);
+                        resolve(buf);
+                    }).catch((e) => {
+                        if (settled) return;
+                        settled = true;
+                        clearTimeout(timer);
+                        onErr(e);
+                    });
+                } catch (e) { onErr(e); }
+            });
+        }
+
+        // Convenience: try compute_double in WASM, fallback to JS implementation
+        computeDoubleOrFallback(typedArray, timeoutMs = 3000) {
+            const jsFallback = (ta) => {
+                try {
+                    const arr = (ta instanceof Float64Array) ? ta : new Float64Array(ta);
+                    const out = new Float64Array(arr.length);
+                    for (let i = 0; i < arr.length; i++) {
+                        const x = arr[i];
+                        // mirror Rust prototype: sqrt(abs(ln(x))) + x*0.5
+                        const ln = Math.log(x);
+                        const val = Math.sqrt(Math.abs(ln)) + x * 0.5;
+                        out[i] = val;
+                    }
+                    return out.buffer;
+                } catch (e) { throw e; }
+            };
+            return this.computeWithWasmOrFallback(typedArray, jsFallback, timeoutMs);
+        }
+
         ping() {
             return this.execute('ping', {});
         }
@@ -841,6 +1071,57 @@
 
         getWebGPUConfig() {
             return _localWEBGPUConfig || null;
+        }
+
+        // Return a Promise that resolves when wasm worker is ready (or rejects on timeout)
+        waitForWasmReady(timeoutMs = 10000) {
+            if (this.wasmWorkerReady) return Promise.resolve(true);
+            if (this._wasmReadyPromise) {
+                // create timeout wrapper
+                return new Promise((res, rej) => {
+                    const t = setTimeout(() => {
+                        try { if (typeof this._wasmReadyReject === 'function') this._wasmReadyReject(new Error('wasm init timeout')); } catch (e) {}
+                        rej(new Error('wasm init timeout'));
+                    }, timeoutMs);
+                    this._wasmReadyPromise.then((v) => { clearTimeout(t); res(v); }).catch((e) => { clearTimeout(t); rej(e); });
+                });
+            }
+            // no wasm worker created
+            return Promise.reject(new Error('wasm worker not created'));
+        }
+
+        // Recreate and initialize the dedicated wasm worker (useful for debugging/init retries)
+        initWasmWorker(baseUrl = '/wasm-proto/pkg') {
+            try {
+                // terminate previous if present
+                if (this.wasmWorker) {
+                    try { this.wasmWorker.terminate(); } catch (e) {}
+                    this.wasmWorker = null;
+                }
+                this.wasmWorkerReady = false;
+                const script = 'js/modules/wasm-worker.js';
+                const w = new Worker(script);
+                w.onmessage = (ev) => {
+                    try { console.debug('[WorkerPool] wasmWorker->', ev.data); } catch (e) {}
+                    const d = ev.data || {};
+                    if (d && d.cmd === 'ready') this.wasmWorkerReady = true;
+                    if (d && d.cmd === 'result' && typeof d.requestId !== 'undefined') {
+                        const p = this._wasmPending.get(d.requestId);
+                        if (p) { p.resolve(d.result); this._wasmPending.delete(d.requestId); }
+                    }
+                    if (d && d.cmd === 'error' && typeof d.requestId !== 'undefined') {
+                        const p = this._wasmPending.get(d.requestId);
+                        if (p) { p.reject(new Error(d.error || 'wasm error')); this._wasmPending.delete(d.requestId); }
+                    }
+                };
+                w.onerror = (e) => console.warn('[WorkerPool] wasmWorker error', e);
+                this.wasmWorker = w;
+                try { w.postMessage({ cmd: 'init', baseUrl }); } catch (e) { /* ignore */ }
+                return true;
+            } catch (err) {
+                console.warn('[WorkerPool] initWasmWorker failed', err);
+                return false;
+            }
         }
     }
 
