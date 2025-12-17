@@ -119,9 +119,23 @@ try {
         const confSensitivity = document.getElementById('confSensitivity');
 
         // Listen for changes to the limit
+        // Provide a single authoritative getter for row limit used across modules
+        window.getDashboardRowLimit = function () {
+            try {
+                const el = document.getElementById('limitInput');
+                if (!el) return (window.rowLimit !== undefined ? window.rowLimit : 5);
+                const p = parseInt(el.value, 10);
+                return Number.isFinite(p) && p > 0 ? p : 5;
+            } catch (e) { return (window.rowLimit !== undefined ? window.rowLimit : 5); }
+        };
+
         limitInput.addEventListener('input', (event) => {
-            rowLimit = parseInt(event.target.value, 10) || Infinity;
+            const parsed = parseInt(event.target.value, 10);
+            rowLimit = Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
             try { window.rowLimit = rowLimit; } catch (e) { }
+            // Clear micro tab immediately so UI doesn't keep showing old rows
+            try { const mb = document.getElementById('microBody'); if (mb) mb.innerHTML = ''; } catch (e) { }
+            try { window.dispatchEvent(new CustomEvent('rowLimitChanged', { detail: rowLimit })); } catch (e) { }
             scheduleUpdateTable(); // Update table when limit changes (debounced)
         });
 
@@ -918,6 +932,32 @@ try {
                 // Mirror into `analytics` for compatibility
                 try { data.analytics = data._analytics; } catch (e) { /* ignore */ }
                 data.risk_score = ((data.analytics || data._analytics) && (data.analytics || data._analytics).riskScore) || data.risk_score || 0;
+                // Attach lightweight derived metrics (CVD, VWAP, ATR, avg trade size, funding APR/countdown)
+                try {
+                    const mw = (typeof window !== 'undefined' && window.metricsWrapper) ? window.metricsWrapper : (typeof require === 'function' ? require('./js/modules/metrics-wrapper.cjs') : null);
+                    if (mw) {
+                        try {
+                            const hist = Array.isArray(data._history) ? data._history.slice(-120) : [];
+                            const cvd = mw.computeCVD(hist);
+                            const vwapBars = hist.map(h => ({ price: Number(h.price || h.last || 0), volume: Number((h.volBuy2h || 0) + (h.volSell2h || 0) || h.vol || 0) }));
+                            const vwap = mw.computeVWAP(vwapBars);
+                            const atrBars = hist.map(h => ({ high: Number(h.high || h.price || 0), low: Number(h.low || h.price || 0), close: Number(h.price || h.last || 0) }));
+                            const atr = mw.computeATR(atrBars, 14);
+                            const volBuy2h = Number(data.count_VOL_minute_120_buy || data.vol_buy_2JAM || data.vol_buy_120MENIT || 0);
+                            const volSell2h = Number(data.count_VOL_minute_120_sell || data.vol_sell_2JAM || data.vol_sell_120MENIT || 0);
+                            const freqBuy2h = Number(data.count_FREQ_minute_120_buy || data.freq_buy_2JAM || data.freq_buy_120MENIT || 0);
+                            const freqSell2h = Number(data.count_FREQ_minute_120_sell || data.freq_sell_2JAM || data.freq_sell_120MENIT || 0);
+                            const avgTrade = mw.averageTradeSize(volBuy2h, freqBuy2h, volSell2h, freqSell2h);
+                            const fundingRateVal = Number(data.funding_Rate || data.funding_rate || data.funding_interestRate || 0);
+                            const fundingApr = mw.fundingAPR(fundingRateVal);
+                            const nextFundingTs = Number(data.funding_nextFundingTime || data.funding_Time || 0);
+                            const timeToFunding = mw.timeToFunding(nextFundingTs);
+                            data._analytics = data._analytics || {};
+                            data._analytics.derived = { cvd, vwap, atr, avgTrade, fundingApr, timeToFunding };
+                            try { data.analytics = data._analytics; } catch (e) { }
+                        } catch (e) { /* non-fatal */ }
+                    }
+                } catch (e) { /* ignore derived metric attach errors */ }
                 // Offload heavier analytics to worker pool when available and replace later
                 try {
                     const workerPool = (__okxShim && __okxShim.getWorkerPool ? __okxShim.getWorkerPool() : (window.workerPool || null));
@@ -1096,7 +1136,18 @@ try {
                     let atr14 = 0;
                     try {
                         const atrSeries = hist.map(point => ({ high: point.high || point.price || 0, low: point.low || point.price || 0, price: point.price || 0 }));
-                        atr14 = (atrSeries.length && typeof computeATR === 'function') ? computeATR(atrSeries, 14) : 0;
+                        const mwLocal = (typeof window !== 'undefined' && window.metricsWrapper) ? window.metricsWrapper : (typeof require === 'function' ? require('./js/modules/metrics-wrapper') : null);
+                        if (atrSeries.length) {
+                            if (mwLocal && typeof mwLocal.computeATR === 'function') {
+                                atr14 = mwLocal.computeATR(atrSeries, 14);
+                            } else if (typeof computeATR === 'function') {
+                                atr14 = computeATR(atrSeries, 14);
+                            } else {
+                                atr14 = 0;
+                            }
+                        } else {
+                            atr14 = 0;
+                        }
                     } catch (atrErr) { atr14 = 0; }
                     a.atr14 = Number.isFinite(atr14) ? Number(atr14) : 0;
                     const currentLiquidity = Number(a.liquidity_avg_trade_value || 0);
@@ -1405,7 +1456,13 @@ try {
         } catch (e) { console.warn('funding simulator wiring failed', e); }
         
         // Update rowLimit when limitInput changes
-        limitInput.addEventListener('change', () => { window.rowLimit = parseInt(limitInput.value, 10) || Infinity; scheduleUpdateTable(); });
+        limitInput.addEventListener('change', () => {
+            const parsed = parseInt(limitInput.value, 10);
+            window.rowLimit = Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
+            try { const mb = document.getElementById('microBody'); if (mb) mb.innerHTML = ''; } catch (e) { }
+            try { window.dispatchEvent(new CustomEvent('rowLimitChanged', { detail: window.rowLimit })); } catch (e) { }
+            scheduleUpdateTable();
+        });
 
         // Functions moved to modules:
         // - updateTable -> js/modules/update-table.js

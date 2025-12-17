@@ -845,6 +845,10 @@
                                 <th title="Liquidity Stress Index - measures market stress">⚡ LSI</th>
                                 <th title="Market Mode Classification">🏷️ Mode</th>
                                 <th>💡 Signal</th>
+                                <th title="Volume Spike Quality">📉 VolQuality</th>
+                                <th title="Funding vs Price Divergence">⚖️ FundingDiv</th>
+                                <th title="Liquidity Quality Index">💧 LiqQuality</th>
+                                <th title="Momentum Consistency">🕒 Momentum</th>
                             </tr>
                         </thead>
                         <tbody id="smartBody"></tbody>
@@ -1074,6 +1078,8 @@
     <script src="js/modules/info-tab.js"></script>
     <script src="js/modules/update-table.js"></script>
     <script src="js/modules/settings-panel.js"></script>
+    <!-- Load metrics wrapper in main thread so window.metricsWrapper is available -->
+    <script type="module" src="js/modules/metrics-wrapper.mjs"></script>
     <script src="websocket-example.js"></script>
     <script src="js/modules/ws-client.js"></script>
     <script>
