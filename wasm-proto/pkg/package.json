@@ -1,0 +1,15 @@
+{
+  "name": "wasm_proto",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "wasm_proto_bg.wasm",
+    "wasm_proto.js",
+    "wasm_proto.d.ts"
+  ],
+  "main": "wasm_proto.js",
+  "types": "wasm_proto.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
