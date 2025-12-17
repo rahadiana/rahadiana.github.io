@@ -408,4 +408,6 @@
     window.quickSort = quickSort;
     window.initAdvancedSort = initAdvancedSort;
     window.MAX_ADV_SORT_CRITERIA = MAX_ADV_SORT_CRITERIA;
+    // Expose helper used by other scripts
+    window.getSortOrderValue = getSortOrderValue;
 })();

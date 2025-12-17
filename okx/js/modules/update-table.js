@@ -1055,6 +1055,11 @@
             }
         } catch (e) { /* ignore */ }
 
+        // Refresh Funding tab using the shared updater (applies funding filters)
+        try {
+            if (typeof window.updateAllFundingRows === 'function') window.updateAllFundingRows();
+        } catch (e) { /* ignore funding refresh errors */ }
+
 
     }
 
@@ -2066,7 +2071,8 @@
                 if (coinDataMap instanceof Map) coinEntries = Array.from(coinDataMap.entries());
                 else coinEntries = Object.entries(coinDataMap || {});
             } catch (e) { coinEntries = []; }
-            try { console.debug('[renderMicroTabAsync] coins:', coinEntries.length, 'filter:', filterText, 'limit:', rowLimit); } catch (e) { }
+            try { 
+                console.debug('[renderMicroTabAsync] coins:', coinEntries.length, 'filter:', filterText, 'limit:', rowLimit); } catch (e) { }
 
             for (const [coin, data] of coinEntries) {
                 try {

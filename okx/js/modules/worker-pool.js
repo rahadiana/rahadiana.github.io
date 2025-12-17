@@ -534,12 +534,12 @@
             const classicScript = 'js/modules/worker.js';
             const moduleScript = 'js/modules/worker.mjs';
             // Quick non-blocking checks to help diagnose worker load issues (logs HTTP status / content-type)
-            try {
-                fetch(moduleScript, { method: 'GET' }).then(r => console.log('[WorkerPool] moduleScript fetch', moduleScript, r.status, r.headers.get('content-type'))).catch(err => console.warn('[WorkerPool] moduleScript fetch failed', moduleScript, err));
-            } catch (e) {}
-            try {
-                fetch(classicScript, { method: 'GET' }).then(r => console.log('[WorkerPool] classicScript fetch', classicScript, r.status, r.headers.get('content-type'))).catch(err => console.warn('[WorkerPool] classicScript fetch failed', classicScript, err));
-            } catch (e) {}
+            // try {
+            //     fetch(moduleScript, { method: 'GET' }).then(r => console.log('[WorkerPool] moduleScript fetch', moduleScript, r.status, r.headers.get('content-type'))).catch(err => console.warn('[WorkerPool] moduleScript fetch failed', moduleScript, err));
+            // } catch (e) {}
+            // try {
+            //     fetch(classicScript, { method: 'GET' }).then(r => console.log('[WorkerPool] classicScript fetch', classicScript, r.status, r.headers.get('content-type'))).catch(err => console.warn('[WorkerPool] classicScript fetch failed', classicScript, err));
+            // } catch (e) {}
             for (let i = 0; i < this.size; i++) {
                 let worker;
                 let usedScript = null;
@@ -576,7 +576,7 @@
                 worker._clearInitTimer = () => clearTimeout(initTimer);
                 worker.onmessage = (e) => this._handleMessage(worker, e);
                 worker.onerror = (e) => this._handleError(worker, e);
-                console.log(`[WorkerPool] Spawned worker ${i} using ${usedScript}`);
+                // console.log(`[WorkerPool] Spawned worker ${i} using ${usedScript}`);
                 this.workers.push(worker);
             }
 
@@ -602,7 +602,9 @@
             if (typeof id !== 'undefined' && id === -2 || init === true || e.data && e.data.info) {
                 worker._inited = true;
                 if (typeof worker._clearInitTimer === 'function') worker._clearInitTimer();
-                try { console.log(`[WorkerPool] Worker ${worker.id} init:`, e.data); } catch (ex) {}
+                try {
+                    //  console.log(`[WorkerPool] Worker ${worker.id} init:`, e.data);
+                     } catch (ex) {}
             }
             const { id: _id, success: _success, result: _result, error: _error } = { id, success, result, error };
             // Special: worker forwarded runtime errors use id === -1
@@ -671,7 +673,7 @@
                             try { if (typeof window !== 'undefined' && window.WEBGPU_CONFIG) payload.webgpu = window.WEBGPU_CONFIG; } catch (e) {}
                             newWorker.postMessage({ type: 'config', payload });
                         } catch (e) { /* ignore */ }
-                        console.log(`[WorkerPool] Respawned worker ${newWorker.id}`);
+                        // console.log(`[WorkerPool] Respawned worker ${newWorker.id}`);
                     } catch (respawnErr) {
                         console.error('[WorkerPool] Failed to respawn worker', respawnErr);
                     }
