@@ -200,10 +200,60 @@
         ];
         // Use current price (`last`) as the denominator for percent calculation
         const currentPrice = (data.last !== undefined && data.last !== null) ? Number(data.last) : null;
+        // Insert 'all' column: percent change vs `high` (named in header as 'TOP 24H')
+        const allCell = row.insertCell(2);
+        try {
+            const highRaw = (data && Object.prototype.hasOwnProperty.call(data, 'high')) ? data.high : null;
+            const highNum = (highRaw === null || highRaw === undefined) ? NaN : Number(highRaw);
+            if (!Number.isFinite(highNum) || !Number.isFinite(currentPrice) || highNum === 0) {
+                allCell.textContent = '-';
+                allCell.className = 'text-muted';
+            } else {
+                const pctHigh = ((currentPrice - highNum) / highNum) * 100;
+                const pctText = `${pctHigh >= 0 ? '+' : ''}${pctHigh.toFixed(2)}%`;
+                const outer = document.createElement('div');
+                outer.className = 'small text-muted';
+                const span = document.createElement('span');
+                span.textContent = `(${pctText})`;
+                span.className = pctHigh > 0 ? 'text-success' : pctHigh < 0 ? 'text-danger' : 'text-muted';
+                outer.appendChild(span);
+                allCell.appendChild(outer);
+                allCell.className = pctHigh > 0 ? 'text-success' : pctHigh < 0 ? 'text-danger' : 'text-muted';
+            }
+        } catch (e) {
+            allCell.textContent = '-';
+            allCell.className = 'text-muted';
+        }
+
+        // Insert 'down 24h' column: percent change from low -> current
+        const downCell = row.insertCell(3);
+        try {
+            const lowRaw = (data && Object.prototype.hasOwnProperty.call(data, 'low')) ? data.low : null;
+            const lowNum = (lowRaw === null || lowRaw === undefined) ? NaN : Number(lowRaw);
+            if (!Number.isFinite(lowNum) || !Number.isFinite(currentPrice) || lowNum === 0) {
+                downCell.textContent = '-';
+                downCell.className = 'text-muted';
+            } else {
+                const pctLow = ((currentPrice - lowNum) / lowNum) * 100;
+                const pctTextLow = `${pctLow >= 0 ? '+' : ''}${pctLow.toFixed(2)}%`;
+                const outerLow = document.createElement('div');
+                outerLow.className = 'small text-muted';
+                const spanLow = document.createElement('span');
+                spanLow.textContent = `(${pctTextLow})`;
+                spanLow.className = pctLow > 0 ? 'text-success' : pctLow < 0 ? 'text-danger' : 'text-muted';
+                outerLow.appendChild(spanLow);
+                downCell.appendChild(outerLow);
+                downCell.className = pctLow > 0 ? 'text-success' : pctLow < 0 ? 'text-danger' : 'text-muted';
+            }
+        } catch (e) {
+            downCell.textContent = '-';
+            downCell.className = 'text-muted';
+        }
+
         for (let i = 0; i < tfKeys.length; i++) {
             const key = tfKeys[i];
-            // shift by 1 to account for the current price column
-            const cell = row.insertCell(i + 2);
+            // shift by 3 to account for the current price + all + down columns
+            const cell = row.insertCell(i + 4);
             const v = (data && data[key] !== undefined) ? Number(data[key]) : null;
             if (!Number.isFinite(v)) { cell.textContent = '-'; cell.className = 'text-muted'; }
             else {
@@ -237,7 +287,7 @@
             }
         }
 
-        const upCell = row.insertCell(tfKeys.length + 2);
+        const upCell = row.insertCell(tfKeys.length + 4);
         const ut = data && (data.update_time || data.update_time_VOLCOIN) ? (new Date(Number(data.update_time) || Number(data.update_time_VOLCOIN) || Date.now()).toLocaleString()) : '-';
         upCell.textContent = ut;
     }
@@ -1033,7 +1083,7 @@
                     try {
                         const r = priceMovesBody.insertRow();
                         const c = r.insertCell(0);
-                        c.colSpan = 11;
+                        c.colSpan = 14;
                         c.className = 'text-muted small';
                         c.textContent = 'No price_move_* fields found in current data. Paste a sample payload or check console for details.';
                     } catch (e) { /* ignore DOM errors */ }
@@ -1292,8 +1342,8 @@
             const rate = getNumeric(data, 'funding_Rate', 'funding_rate');
             const premium = getNumeric(data, 'funding_premium', 'fundingpremium');
             const fundingVal = sett || rate || premium || 0;
-            if (posRec && posRec.recommendation === 'LONG' && Number(fundingVal) < 0) fundingTailwindBadge = '<span class="badge bg-success ms-1 small">Funding tailwind</span>';
-            if (posRec && posRec.recommendation === 'SHORT' && Number(fundingVal) > 0) fundingTailwindBadge = '<span class="badge bg-danger ms-1 small">Funding tailwind</span>';
+            if (posRec && posRec.recommendation === 'LONG' && Number(fundingVal) < 0) fundingTailwindBadge = '<span class="badge bg-success ms-1 small">Negative Funding</span>';
+            if (posRec && posRec.recommendation === 'SHORT' && Number(fundingVal) > 0) fundingTailwindBadge = '<span class="badge bg-danger ms-1 small">Positive Funding</span>';
         } catch (e) { fundingTailwindBadge = null; }
         const recCell = row.insertCell(5);
         recCell.innerHTML = (recommendation && recommendation.recommendation ? `${recommendation.recommendation} (${recommendation.confidence || 0}%)` : 'HOLD') + (fundingTailwindBadge || '');
@@ -2072,7 +2122,8 @@
                 else coinEntries = Object.entries(coinDataMap || {});
             } catch (e) { coinEntries = []; }
             try { 
-                console.debug('[renderMicroTabAsync] coins:', coinEntries.length, 'filter:', filterText, 'limit:', rowLimit); } catch (e) { }
+                // console.debug('[renderMicroTabAsync] coins:', coinEntries.length, 'filter:', filterText, 'limit:', rowLimit);
+             } catch (e) { }
 
             for (const [coin, data] of coinEntries) {
                 try {
@@ -2137,7 +2188,7 @@
                     renderMicroRowFromWorker(microBody, coin, microObj, { synth: !analytics, data });
                     rendered++;
                 } catch (e) {
-                    console.warn('[renderMicroTabAsync] failed rendering coin', coin, e);
+                    // console.warn('[renderMicroTabAsync] failed rendering coin', coin, e);
                     // continue with next coin
                 }
             }
