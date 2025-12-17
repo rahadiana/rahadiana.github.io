@@ -61,7 +61,17 @@
   function calculateVolDurability(data, tf) { const coreRes = preferCore('calculateVolDurability', data, tf); return coreRes === null ? undefined : coreRes; }
   function calculateVolRatio(data, tf) { const coreRes = preferCore('calculateVolRatio', data, tf); return coreRes === null ? undefined : coreRes; }
   function computeAllSmartMetrics(data) { const coreRes = preferCore('computeAllSmartMetrics', data); return coreRes === null ? undefined : coreRes; }
-  function computeMicrostructureMetrics(data) { const coreRes = preferCore('computeMicrostructureMetrics', data); return coreRes === null ? undefined : coreRes; }
+  function computeMicrostructureMetrics(data) {
+    const coreRes = preferCore('computeMicrostructureMetrics', data);
+    if (coreRes === null) return undefined;
+    if (coreRes && typeof coreRes === 'object') {
+      const keys = ['cohesion','accVol','fbi','ofsi','fsi','zPress','tim','cis','lsi','rangeComp','pfci'];
+      const out = Object.assign({}, coreRes);
+      for (const k of keys) out[k] = _n(coreRes[k]);
+      return out;
+    }
+    return coreRes;
+  }
   const w = { computeCVD, computeVWAP, computeVWAPBands, computeATR, computeRVOL, averageTradeSize, fundingAPR, timeToFunding, computeKyleLambda, computeTier1Normalized, computeVPIN, computeHurstExponent, computeVolumeProfilePOC, computeDepthImbalance, calculateVolDurability, calculateVolRatio, computeAllSmartMetrics, computeMicrostructureMetrics };
   try { if (typeof window !== 'undefined') window.metricsWrapper = w; } catch (e) {}
   if (typeof module !== 'undefined' && module.exports) module.exports = w;

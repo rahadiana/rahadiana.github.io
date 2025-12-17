@@ -5,7 +5,7 @@
  *               advancedSortState, compareWithComparator, showInsightTab, 
  *               maybeRenderHeavyTab, renderInfoTab, renderSignalLab, etc.
  */
- 
+
 (function () {
     'use strict';
 
@@ -40,7 +40,7 @@
         spikeModeSelect = document.getElementById('spikeModeSelect');
         showAdvancedToggle = document.getElementById('showAdvancedMetricsToggle');
         try {
-                if (spikeModeSelect) {
+            if (spikeModeSelect) {
                 try {
                     const stored = (typeof localStorage !== 'undefined') ? localStorage.getItem('okx_spikeMode') : null;
                     if (stored) spikeModeSelect.value = stored;
@@ -48,10 +48,10 @@
                 spikeModeSelect.addEventListener('change', (ev) => {
                     try {
                         const v = String(ev.target.value || 'all');
-                            try {
-                                if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet('okx_spikeMode', v);
-                                else if (typeof localStorage !== 'undefined') localStorage.setItem('okx_spikeMode', v);
-                            } catch (e) { }
+                        try {
+                            if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet('okx_spikeMode', v);
+                            else if (typeof localStorage !== 'undefined') localStorage.setItem('okx_spikeMode', v);
+                        } catch (e) { }
                     } catch (e) { }
                 });
             }
@@ -59,22 +59,22 @@
 
         try {
             if (showAdvancedToggle) {
+                try {
+                    const stored = (typeof localStorage !== 'undefined') ? localStorage.getItem('okx_showAdvancedMetrics') : null;
+                    const checked = (stored === null) ? '1' : stored;
+                    showAdvancedToggle.checked = checked === '1';
+                    toggleAdvancedMetrics(showAdvancedToggle.checked);
+                } catch (e) { }
+                showAdvancedToggle.addEventListener('change', (ev) => {
                     try {
-                        const stored = (typeof localStorage !== 'undefined') ? localStorage.getItem('okx_showAdvancedMetrics') : null;
-                        const checked = (stored === null) ? '1' : stored;
-                        showAdvancedToggle.checked = checked === '1';
-                        toggleAdvancedMetrics(showAdvancedToggle.checked);
-                    } catch (e) { }
-                    showAdvancedToggle.addEventListener('change', (ev) => {
+                        const v = ev.target.checked ? '1' : '0';
                         try {
-                            const v = ev.target.checked ? '1' : '0';
-                            try {
-                                if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet('okx_showAdvancedMetrics', v);
-                                else if (typeof localStorage !== 'undefined') localStorage.setItem('okx_showAdvancedMetrics', v);
-                            } catch (e) { }
-                            toggleAdvancedMetrics(ev.target.checked);
+                            if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet('okx_showAdvancedMetrics', v);
+                            else if (typeof localStorage !== 'undefined') localStorage.setItem('okx_showAdvancedMetrics', v);
                         } catch (e) { }
-                    });
+                        toggleAdvancedMetrics(ev.target.checked);
+                    } catch (e) { }
+                });
             }
         } catch (e) { }
 
@@ -88,6 +88,23 @@
                         // Call updateTable directly to re-render using the authoritative limit
                         if (typeof updateTable === 'function') updateTable();
                     } catch (e) { /* ignore */ }
+                });
+            }
+        } catch (e) { /* ignore */ }
+
+        // Auto-trigger micro rendering when the Microstructure tab is shown or clicked
+        try {
+            const microTabBtn = document.getElementById('micro-tab') || document.querySelector('[data-bs-target="#microstructure"]');
+            if (microTabBtn) {
+                microTabBtn.addEventListener('shown.bs.tab', function () {
+                    try {
+                        if (typeof scheduleUpdateTable === 'function') scheduleUpdateTable();
+                        else if (typeof updateTable === 'function') updateTable();
+                    } catch (e) { /* ignore */ }
+                });
+                // click fallback for non-Bootstrap environments
+                microTabBtn.addEventListener('click', function () {
+                    try { if (typeof scheduleUpdateTable === 'function') scheduleUpdateTable(); } catch (e) { /* ignore */ }
                 });
             }
         } catch (e) { /* ignore */ }
@@ -225,7 +242,7 @@
         upCell.textContent = ut;
     }
 
-    
+
 
     // ===================== Formatters =====================
     const fmtNum = (val, digits = 2) => {
@@ -243,9 +260,9 @@
         if (abs < Math.pow(10, -digits)) {
             const needed = Math.min(maxSmallDigits, Math.max(digits, Math.ceil(-Math.log10(abs)) + 2));
             const s = n.toFixed(needed);
-            return s.replace(/(\.\d*?)(0+)$/,'$1').replace(/\.$/, '');
+            return s.replace(/(\.\d*?)(0+)$/, '$1').replace(/\.$/, '');
         }
-        return n.toFixed(digits).replace(/(\.\d*?)(0+)$/,'$1').replace(/\.$/, '');
+        return n.toFixed(digits).replace(/(\.\d*?)(0+)$/, '$1').replace(/\.$/, '');
     };
     const fmtPct = (val, digits = 1) => {
         const n = Number(val);
@@ -677,7 +694,7 @@
             const num = Number(val);
             return Number.isFinite(num) ? num : 0;
         }
-        
+
         /**
          * Convert value to sortable key that handles null (infinite) properly
          * For descending: null/infinite should be at top (largest)
@@ -786,7 +803,7 @@
             const nowTs = Date.now();
             for (const s of spikeRows) {
                 try {
-                    const key = `${s.coin}:${s.timeframe}:${s.side}:${Math.round((s.ratio||0)*100)}`;
+                    const key = `${s.coin}:${s.timeframe}:${s.side}:${Math.round((s.ratio || 0) * 100)}`;
                     // throttle identical spike notifications for 30s
                     if (window._lastSpikeAlertAt[key] && (nowTs - window._lastSpikeAlertAt[key] < 30 * 1000)) continue;
                     window._lastSpikeAlertAt[key] = nowTs;
@@ -857,7 +874,7 @@
 
             // Spike detection handled by pre-scan to ensure Spike tab updates regardless of rowLimit
 
-            
+
 
             // Summary row
             if (summaryBody) {
@@ -914,13 +931,22 @@
         const _wp = (window.__okxShim && typeof window.__okxShim.getWorkerPool === 'function') ? window.__okxShim.getWorkerPool() : (window.workerPool || null);
         if (microBody && _wp) {
             try { if (!window.workerPool) window.workerPool = _wp; } catch (e) { }
-            try { microBody.innerHTML = ''; } catch (e) { }
+            // Do not clear `microBody` here — async renderer will update/replace rows to avoid flicker
             renderMicroTabAsync(microBody, sortedCoins, rowLimit);
         } else if (microBody) {
             // Fallback to sync if no worker pool
             try { microBody.innerHTML = ''; } catch (e) { }
             for (let i = 0; i < sortedCoins.length && i < rowLimit; i++) {
                 const [coin, data] = sortedCoins[i];
+                try {
+                    if (window.__microDebug) {
+                        if (typeof window.__microDebugCount === 'undefined') window.__microDebugCount = 20;
+                        console.debug('[micro-debug] fallingback renderMicroRow data keys for', coin, Object.keys(data || {}).slice(0, 40));
+                        console.debug('[micro-debug] fallingback analytics/_analytics keys for', coin, Object.keys((data && (data.analytics || data._analytics)) || {}));
+                        window.__microDebugCount--;
+                        if (window.__microDebugCount <= 0) { delete window.__microDebug; delete window.__microDebugCount; }
+                    }
+                } catch (e) { /* ignore debug logging errors */ }
                 renderMicroRow(microBody, coin, data);
             }
         }
@@ -1029,7 +1055,7 @@
             }
         } catch (e) { /* ignore */ }
 
-        
+
     }
 
     // ===================== Row Renderers =====================
@@ -1098,26 +1124,26 @@
         lcCell.className = lastChangeVal > 0 ? 'text-success' : lastChangeVal < 0 ? 'text-danger' : 'text-muted';
     }
 
-    
+
 
     function detectSpikes(data, coin, spikeRows, pricePosition) {
         try {
             const selectedMode = (spikeModeSelect && spikeModeSelect.value) ? String(spikeModeSelect.value) : 'all';
             const spikeThreshold = 2.0;
             const timeframes = [
-                { label: '1m', buyVolKeys: ['count_VOL_minute1_buy', 'vol_buy_1MENIT', 'vol_buy_1min'], buyAvgKeys: ['avg_VOLCOIN_buy_1MENIT'], sellVolKeys: ['count_VOL_minute1_sell','vol_sell_1MENIT','vol_sell_1min'], sellAvgKeys: ['avg_VOLCOIN_sell_1MENIT'] },
-                { label: '5m', buyVolKeys: ['count_VOL_minute_5_buy', 'vol_buy_5MENIT', 'vol_buy_5min'], buyAvgKeys: ['avg_VOLCOIN_buy_5MENIT'], sellVolKeys: ['count_VOL_minute_5_sell','vol_sell_5MENIT','vol_sell_5min'], sellAvgKeys: ['avg_VOLCOIN_sell_5MENIT'] },
-                { label: '10m', buyVolKeys: ['count_VOL_minute_10_buy', 'vol_buy_10MENIT', 'vol_buy_10min'], buyAvgKeys: ['avg_VOLCOIN_buy_10MENIT'], sellVolKeys: ['count_VOL_minute_10_sell','vol_sell_10MENIT','vol_sell_10min'], sellAvgKeys: ['avg_VOLCOIN_sell_10MENIT'] },
+                { label: '1m', buyVolKeys: ['count_VOL_minute1_buy', 'vol_buy_1MENIT', 'vol_buy_1min'], buyAvgKeys: ['avg_VOLCOIN_buy_1MENIT'], sellVolKeys: ['count_VOL_minute1_sell', 'vol_sell_1MENIT', 'vol_sell_1min'], sellAvgKeys: ['avg_VOLCOIN_sell_1MENIT'] },
+                { label: '5m', buyVolKeys: ['count_VOL_minute_5_buy', 'vol_buy_5MENIT', 'vol_buy_5min'], buyAvgKeys: ['avg_VOLCOIN_buy_5MENIT'], sellVolKeys: ['count_VOL_minute_5_sell', 'vol_sell_5MENIT', 'vol_sell_5min'], sellAvgKeys: ['avg_VOLCOIN_sell_5MENIT'] },
+                { label: '10m', buyVolKeys: ['count_VOL_minute_10_buy', 'vol_buy_10MENIT', 'vol_buy_10min'], buyAvgKeys: ['avg_VOLCOIN_buy_10MENIT'], sellVolKeys: ['count_VOL_minute_10_sell', 'vol_sell_10MENIT', 'vol_sell_10min'], sellAvgKeys: ['avg_VOLCOIN_sell_10MENIT'] },
                 { label: '15m', buyVolKeys: ['vol_buy_15MENIT'], buyAvgKeys: ['avg_VOLCOIN_buy_15MENIT'], sellVolKeys: ['vol_sell_15MENIT'], sellAvgKeys: ['avg_VOLCOIN_sell_15MENIT'] },
                 { label: '20m', buyVolKeys: ['vol_buy_20MENIT'], buyAvgKeys: ['avg_VOLCOIN_buy_20MENIT'], sellVolKeys: ['vol_sell_20MENIT'], sellAvgKeys: ['avg_VOLCOIN_sell_20MENIT'] },
                 { label: '30m', buyVolKeys: ['vol_buy_30MENIT'], buyAvgKeys: ['avg_VOLCOIN_buy_30MENIT'], sellVolKeys: ['vol_sell_30MENIT'], sellAvgKeys: ['avg_VOLCOIN_sell_30MENIT'] },
-                { label: '60m', buyVolKeys: ['count_VOL_minute_60_buy', 'vol_buy_1JAM', 'vol_buy_60MENIT'], buyAvgKeys: ['avg_VOLCOIN_buy_1JAM'], sellVolKeys: ['count_VOL_minute_60_sell','vol_sell_1JAM','vol_sell_60MENIT'], sellAvgKeys: ['avg_VOLCOIN_sell_1JAM'] },
-                { label: '120m', buyVolKeys: ['count_VOL_minute_120_buy', 'vol_buy_2JAM', 'vol_buy_120MENIT'], buyAvgKeys: ['avg_VOLCOIN_buy_2JAM'], sellVolKeys: ['count_VOL_minute_120_sell','vol_sell_2JAM','vol_sell_120MENIT'], sellAvgKeys: ['avg_VOLCOIN_sell_2JAM'] },
-                { label: '24h', buyVolKeys: ['count_VOL_minute_1440_buy', 'vol_buy_24JAM', 'vol_buy_24h'], buyAvgKeys: ['avg_VOLCOIN_buy_24JAM'], sellVolKeys: ['count_VOL_minute_1440_sell','vol_sell_24JAM','vol_sell_24h'], sellAvgKeys: ['avg_VOLCOIN_sell_24JAM'] }
+                { label: '60m', buyVolKeys: ['count_VOL_minute_60_buy', 'vol_buy_1JAM', 'vol_buy_60MENIT'], buyAvgKeys: ['avg_VOLCOIN_buy_1JAM'], sellVolKeys: ['count_VOL_minute_60_sell', 'vol_sell_1JAM', 'vol_sell_60MENIT'], sellAvgKeys: ['avg_VOLCOIN_sell_1JAM'] },
+                { label: '120m', buyVolKeys: ['count_VOL_minute_120_buy', 'vol_buy_2JAM', 'vol_buy_120MENIT'], buyAvgKeys: ['avg_VOLCOIN_buy_2JAM'], sellVolKeys: ['count_VOL_minute_120_sell', 'vol_sell_2JAM', 'vol_sell_120MENIT'], sellAvgKeys: ['avg_VOLCOIN_sell_2JAM'] },
+                { label: '24h', buyVolKeys: ['count_VOL_minute_1440_buy', 'vol_buy_24JAM', 'vol_buy_24h'], buyAvgKeys: ['avg_VOLCOIN_buy_24JAM'], sellVolKeys: ['count_VOL_minute_1440_sell', 'vol_sell_24JAM', 'vol_sell_24h'], sellAvgKeys: ['avg_VOLCOIN_sell_24JAM'] }
             ];
 
             const priceChange = parseFloat(data.percent_change) || 0;
-            
+
             // Calculate recommendation for spike
             const selectedTf = (recTimeframeSelect && recTimeframeSelect.value) ? recTimeframeSelect.value : '120m';
             const recResult = typeof calculateRecommendation === 'function' ? calculateRecommendation(data, pricePosition, selectedTf, true) : null;
@@ -1346,7 +1372,7 @@
         cvdCell.classList.add('advanced-metric');
         if (Number.isFinite(cvdVal)) { cvdCell.textContent = fmtNum(cvdVal, 0); cvdCell.className = cvdVal > 0 ? 'text-success' : (cvdVal < 0 ? 'text-danger' : 'text-muted'); }
         else cvdCell.textContent = (metrics && metrics.cvd && metrics.cvd.trend) ? metrics.cvd.trend : '-';
-        try { if (metrics && metrics.tier1 && Number.isFinite(metrics.tier1.cvd)) { const s = document.createElement('div'); s.className='small text-muted'; s.textContent = `(${metrics.tier1.cvd}% )`; cvdCell.appendChild(s); } } catch(e){}
+        try { if (metrics && metrics.tier1 && Number.isFinite(metrics.tier1.cvd)) { const s = document.createElement('div'); s.className = 'small text-muted'; s.textContent = `(${metrics.tier1.cvd}% )`; cvdCell.appendChild(s); } } catch (e) { }
 
         // RVOL (relative volume) — show multiplier (e.g., 1.23x)
         let rvolVal = null;
@@ -1355,7 +1381,7 @@
         rCell.classList.add('advanced-metric');
         rCell.textContent = Number.isFinite(rvolVal) ? `${Number(rvolVal).toFixed(2)}x` : '-';
         if (Number.isFinite(rvolVal)) rCell.className = rvolVal >= 1.5 ? 'text-danger fw-bold' : rvolVal <= 0.8 ? 'text-muted' : 'text-warning';
-        try { if (metrics && metrics.tier1 && Number.isFinite(metrics.tier1.rvol)) { const s = document.createElement('div'); s.className='small text-muted'; s.textContent = `(${metrics.tier1.rvol}% )`; rCell.appendChild(s); } } catch(e){}
+        try { if (metrics && metrics.tier1 && Number.isFinite(metrics.tier1.rvol)) { const s = document.createElement('div'); s.className = 'small text-muted'; s.textContent = `(${metrics.tier1.rvol}% )`; rCell.appendChild(s); } } catch (e) { }
         // Phase-2: VPIN, Hurst, POC, Depth Imbalance (polished with normalized badges)
         try {
             const makeMuted = (text) => { const d = document.createElement('div'); d.className = 'small text-muted'; d.textContent = text; return d; };
@@ -1368,20 +1394,20 @@
                     const hist = Array.isArray(data._history) ? data._history : (Array.isArray(data.history) ? data.history : []);
                     if (core) {
                         if ((!data.vpin && !data.vpinValid) && hist && hist.length >= 3 && typeof core.computeVPIN === 'function') {
-                            try { out.vpin = core.computeVPIN(hist, { lookbackBars: Math.min(50, hist.length), minSamples: 3 }); } catch(e) { }
+                            try { out.vpin = core.computeVPIN(hist, { lookbackBars: Math.min(50, hist.length), minSamples: 3 }); } catch (e) { }
                         }
                         if ((!data.hurst && !data.hurstValid) && hist && hist.length >= 20 && typeof core.computeHurstExponent === 'function') {
-                            try { out.hurst = core.computeHurstExponent(hist, { minSamples: Math.max(20, Math.min(50, hist.length)) }); } catch(e) { }
+                            try { out.hurst = core.computeHurstExponent(hist, { minSamples: Math.max(20, Math.min(50, hist.length)) }); } catch (e) { }
                         }
                         if ((!data.volumeProfile || !data.volumeProfile.poc) && hist && hist.length >= 2 && typeof core.computeVolumeProfilePOC === 'function') {
-                            try { out.volumeProfile = core.computeVolumeProfilePOC(hist, { bins: 16 }); } catch(e) { }
+                            try { out.volumeProfile = core.computeVolumeProfilePOC(hist, { bins: 16 }); } catch (e) { }
                         }
                         if ((!data.depthImbalance || !data.depthImbalance.value) && hist && hist.length >= 1 && typeof core.computeDepthImbalance === 'function') {
                             try {
                                 // depth snapshot may be present on last history point
                                 const last = hist[hist.length - 1] || {};
                                 out.depthImbalance = core.computeDepthImbalance(last);
-                            } catch(e) { }
+                            } catch (e) { }
                         }
                     }
                 } catch (e) { /* swallow fallback errors */ }
@@ -1397,11 +1423,11 @@
             if (Number.isFinite(vpinVal)) {
                 vpinCell.textContent = Math.round(vpinVal * 100) + '%';
                 const vpinClass = vpinVal > 0.2 ? 'text-danger' : (vpinVal > 0.1 ? 'text-warning' : 'text-muted');
-                try { vpinCell.classList.add(vpinClass); } catch(e) { vpinCell.className = (vpinCell.className || '') + ' ' + vpinClass; }
-                try { if (metrics.vpin && Number.isFinite(metrics.vpin.normalized)) vpinCell.appendChild(makeMuted('(' + metrics.vpin.normalized + '%)')); else if (fall.vpin && Number.isFinite(fall.vpin.normalized)) vpinCell.appendChild(makeMuted('(' + fall.vpin.normalized + '%)')); } catch(e){}
+                try { vpinCell.classList.add(vpinClass); } catch (e) { vpinCell.className = (vpinCell.className || '') + ' ' + vpinClass; }
+                try { if (metrics.vpin && Number.isFinite(metrics.vpin.normalized)) vpinCell.appendChild(makeMuted('(' + metrics.vpin.normalized + '%)')); else if (fall.vpin && Number.isFinite(fall.vpin.normalized)) vpinCell.appendChild(makeMuted('(' + fall.vpin.normalized + '%)')); } catch (e) { }
             } else if (metrics && metrics.vpin && metrics.vpin.percent) {
                 vpinCell.textContent = Math.round(metrics.vpin.percent) + '%';
-                try { if (metrics.vpin && Number.isFinite(metrics.vpin.normalized)) vpinCell.appendChild(makeMuted('(' + metrics.vpin.normalized + '%)')); } catch(e){}
+                try { if (metrics.vpin && Number.isFinite(metrics.vpin.normalized)) vpinCell.appendChild(makeMuted('(' + metrics.vpin.normalized + '%)')); } catch (e) { }
             } else vpinCell.textContent = '-';
 
             // Hurst
@@ -1411,9 +1437,9 @@
             if (Number.isFinite(hurstVal)) {
                 hurstVal = Math.max(0, Math.min(1, hurstVal)); // clamp
                 hurstCell.textContent = hurstVal.toFixed(3);
-                try { hurstCell.classList.add(hurstVal > 0.55 ? 'text-success' : (hurstVal < 0.45 ? 'text-danger' : 'text-muted')); } catch(e) { hurstCell.className = (hurstCell.className || '') + ' ' + (hurstVal > 0.55 ? 'text-success' : (hurstVal < 0.45 ? 'text-danger' : 'text-muted')); }
-                try { if (metrics.hurst && Number.isFinite(metrics.hurst.normalized)) hurstCell.appendChild(makeMuted('(' + metrics.hurst.normalized + '%)')); else if (fall.hurst && Number.isFinite(fall.hurst.normalized)) hurstCell.appendChild(makeMuted('(' + fall.hurst.normalized + '%)')); } catch(e){}
-                try { if (metrics.hurst && metrics.hurst.interpretation) hurstCell.title = metrics.hurst.interpretation; else if (fall.hurst && fall.hurst.interpretation) hurstCell.title = fall.hurst.interpretation; } catch(e){}
+                try { hurstCell.classList.add(hurstVal > 0.55 ? 'text-success' : (hurstVal < 0.45 ? 'text-danger' : 'text-muted')); } catch (e) { hurstCell.className = (hurstCell.className || '') + ' ' + (hurstVal > 0.55 ? 'text-success' : (hurstVal < 0.45 ? 'text-danger' : 'text-muted')); }
+                try { if (metrics.hurst && Number.isFinite(metrics.hurst.normalized)) hurstCell.appendChild(makeMuted('(' + metrics.hurst.normalized + '%)')); else if (fall.hurst && Number.isFinite(fall.hurst.normalized)) hurstCell.appendChild(makeMuted('(' + fall.hurst.normalized + '%)')); } catch (e) { }
+                try { if (metrics.hurst && metrics.hurst.interpretation) hurstCell.title = metrics.hurst.interpretation; else if (fall.hurst && fall.hurst.interpretation) hurstCell.title = fall.hurst.interpretation; } catch (e) { }
             } else hurstCell.textContent = '-';
 
             // POC (show value + value area range if available)
@@ -1426,7 +1452,7 @@
                     const low = (metrics.volumeProfile && Number.isFinite(metrics.volumeProfile.valueAreaLow)) ? Number(metrics.volumeProfile.valueAreaLow).toFixed(4) : (fall.volumeProfile && Number.isFinite(fall.volumeProfile.valueAreaLow) ? Number(fall.volumeProfile.valueAreaLow).toFixed(4) : null);
                     const high = (metrics.volumeProfile && Number.isFinite(metrics.volumeProfile.valueAreaHigh)) ? Number(metrics.volumeProfile.valueAreaHigh).toFixed(4) : (fall.volumeProfile && Number.isFinite(fall.volumeProfile.valueAreaHigh) ? Number(fall.volumeProfile.valueAreaHigh).toFixed(4) : null);
                     if (low !== null && high !== null) pocCell.appendChild(makeMuted('VA: ' + low + '\u2013' + high));
-                } catch (e) {}
+                } catch (e) { }
             } else pocCell.textContent = '-';
 
             // Depth Imbalance
@@ -1436,8 +1462,8 @@
             if (Number.isFinite(depthVal)) {
                 const pct = (depthVal * 100).toFixed(1);
                 depthCell.textContent = (depthVal > 0 ? '+' : '') + pct + '%';
-                try { depthCell.classList.add(depthVal > 0 ? 'text-success' : (depthVal < 0 ? 'text-danger' : 'text-muted')); } catch(e) { depthCell.className = (depthCell.className || '') + ' ' + (depthVal > 0 ? 'text-success' : (depthVal < 0 ? 'text-danger' : 'text-muted')); }
-                try { if (metrics.depthImbalance && Number.isFinite(metrics.depthImbalance.normalized)) depthCell.appendChild(makeMuted('(' + metrics.depthImbalance.normalized + '%)')); } catch(e){}
+                try { depthCell.classList.add(depthVal > 0 ? 'text-success' : (depthVal < 0 ? 'text-danger' : 'text-muted')); } catch (e) { depthCell.className = (depthCell.className || '') + ' ' + (depthVal > 0 ? 'text-success' : (depthVal < 0 ? 'text-danger' : 'text-muted')); }
+                try { if (metrics.depthImbalance && Number.isFinite(metrics.depthImbalance.normalized)) depthCell.appendChild(makeMuted('(' + metrics.depthImbalance.normalized + '%)')); } catch (e) { }
             } else depthCell.textContent = '-';
         } catch (e) { /* ignore phase-2 render errors */ }
 
@@ -1479,12 +1505,10 @@
             sl = (priceNow * (1 + Math.min(slMax, Math.max(0.005, rangeFactor / 2)))).toFixed(4);
         }
 
-        const r = body.insertRow();
-        r.insertCell(0).textContent = coin;
-        r.insertCell(1).textContent = selectedTf;
+        // removed accidental single-header row; render one row per timeframe below
 
         // Render one row per timeframe (or only the selected timeframe)
-        const allTfs = ['1m','5m','10m','30m','60m','120m','24h'];
+        const allTfs = ['1m', '5m', '10m', '30m', '60m', '120m', '24h'];
         const tfsToRender = (selectedTf && String(selectedTf).toLowerCase() !== 'all') ? [selectedTf] : allTfs;
 
         for (const tf of tfsToRender) {
@@ -1544,7 +1568,7 @@
                     const pct = (typeof confl.confluence !== 'undefined') ? confl.confluence : Math.round(Math.abs((confl.score || 0) * 100));
                     const consensus = confl.consensus || (confl.score > 0 ? 'BUY' : (confl.score < 0 ? 'SELL' : 'MIXED'));
                     conflCell.textContent = pct + '%';
-                    conflCell.title = consensus + ' • ' + (confl.breakdown ? confl.breakdown.map(b => `${b.timeframe}:${b.rec}(${Math.round((b.weight||0)*100)}%)`).join(' • ') : '');
+                    conflCell.title = consensus + ' • ' + (confl.breakdown ? confl.breakdown.map(b => `${b.timeframe}:${b.rec}(${Math.round((b.weight || 0) * 100)}%)`).join(' • ') : '');
                     if (pct >= 60) conflCell.className = 'text-success fw-bold';
                     else if (pct >= 40) conflCell.className = 'text-warning fw-bold';
                     else conflCell.className = 'text-danger fw-bold';
@@ -1567,7 +1591,8 @@
 
     function renderVolRow(body, coin, data, vb1, vs1, vb5, vs5, vb10, vs10, vb15, vs15, vb20, vs20, vb30, vs30, vb60, vs60, vb2h, vs2h, vb24, vs24) {
         const row = body.insertRow();
-        row.insertCell(0).textContent = coin;
+        const first = row.insertCell(0);
+        first.textContent = coin;
         row.insertCell(1).textContent = vb1;
         row.insertCell(2).textContent = vs1;
         row.insertCell(3).textContent = vb5;
@@ -1637,144 +1662,201 @@
     }
 
     function renderMicroRow(body, coin, data) {
-        // Use pre-computed analytics if available, fallback to raw data
-        const a = (typeof getUnifiedSmartMetrics === 'function') ? getUnifiedSmartMetrics(data) : (data && (data.analytics || data._analytics)) ? (data.analytics || data._analytics) : {};
-        const metrics = (typeof getUnifiedSmartMetrics === 'function') ? getUnifiedSmartMetrics(data) : a;
-        const tf = a.timeframes || {};
-        
-        // Get values from analytics first, then raw data as fallback (correct field names from WebSocket)
-        const volBuy2h = a.volBuy2h || Number(data.vol_buy_2JAM) || 0;
-        const volSell2h = a.volSell2h || Number(data.vol_sell_2JAM) || 0;
-        const freqBuy2h = a.freqBuy2h || Number(data.freq_buy_2JAM) || 0;
-        const freqSell2h = a.freqSell2h || Number(data.freq_sell_2JAM) || 0;
-        const avgVolBuy = a.avgBuy2h || Number(data.avg_VOLCOIN_buy_2JAM) || 1;
-        const avgVolSell = a.avgSell2h || Number(data.avg_VOLCOIN_sell_2JAM) || 1;
-        const avgFreqBuy = a.avgFreqBuy2h || Number(data.avg_FREQCOIN_buy_2JAM) || 1;
-        
-        // Get 1m and 5m data (correct field names from WebSocket)
-        const volBuy1m = (tf['1m'] && tf['1m'].volBuy) || Number(data.vol_buy_1MENIT) || 0;
-        const volBuy5m = (tf['5m'] && tf['5m'].volBuy) || Number(data.vol_buy_5MENIT) || 0;
-        const freqBuy1m = (tf['1m'] && tf['1m'].freqBuy) || Number(data.freq_buy_1MENIT) || 0;
-        const freqBuy5m = (tf['5m'] && tf['5m'].freqBuy) || Number(data.freq_buy_5MENIT) || 0;
-        
-        const totalVol = volBuy2h + volSell2h;
-        const totalFreq = freqBuy2h + freqSell2h;
-        
-        // Helper functions
-        const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
-        const safeDiv = (a, b, def = 0) => b > 0 ? a / b : def;
-        
-        // Cohesion Index
-        const volRatio = totalVol > 0 ? volBuy2h / totalVol : 0.5;
-        const freqRatio = totalFreq > 0 ? freqBuy2h / totalFreq : 0.5;
-        const pricePos = Number(data.price_position) || 50;
-        const priceFactor = pricePos / 100;
-        const cohesion = clamp(((volRatio + freqRatio + (1 - priceFactor)) / 3) * 100, 0, 100);
-        
-        // Acc Vol (Volume Acceleration) - use previously defined volBuy1m, volBuy5m
-        const avg5m = volBuy5m > 0 ? volBuy5m / 5 : 0;
-        const accVol = avg5m > 0 ? (volBuy1m - avg5m) / avg5m : 0;
-        
-        // FBI (Frequency Burst Index) - use previously defined freqBuy1m, freqBuy5m
-        const shortTermFreq = (freqBuy1m * 5 + freqBuy5m) / 6;
-        const fbi = safeDiv(shortTermFreq, avgFreqBuy, 1);
-        
-        // OFSI (Order Flow Stability Index)
-        const volDelta = volBuy2h - volSell2h;
-        const freqDelta = freqBuy2h - freqSell2h;
-        const volNorm = totalVol > 0 ? Math.abs(volDelta) / totalVol : 0;
-        const freqNorm = totalFreq > 0 ? Math.abs(freqDelta) / totalFreq : 0;
-        const ofsi = clamp((1 - Math.abs(volNorm - freqNorm)) * 100, 0, 100);
-        
-        // FSI (Flow Strength Index)
-        const buyPressure = safeDiv(volBuy2h, avgVolBuy, 1) + safeDiv(freqBuy2h, avgFreqBuy, 1);
-        const sellPressure = safeDiv(volSell2h, avgVolSell, 1) + safeDiv(freqSell2h, avgFreqBuy, 1);
-        const fsi = clamp(50 + (buyPressure - sellPressure) * 10, 0, 100);
-        
-        // Z-Press (Z-Weighted Pressure)
-        const volZBuy = (volBuy2h - avgVolBuy) / (avgVolBuy || 1);
-        const volZSell = (volSell2h - avgVolSell) / (avgVolSell || 1);
-        const zPress = clamp((volZBuy - volZSell) * 20, -100, 100);
-        
-        // TIM (Trade Imbalance Momentum)
-        const tim = totalVol > 0 ? ((volBuy2h - volSell2h) / totalVol) * 100 : 0;
-        
-        // CIS (Composite Institutional Signal)
-        const cis = clamp((cohesion * 0.3 + fsi * 0.3 + (fbi > 1 ? 50 : fbi * 50) * 0.2 + ofsi * 0.2), 0, 100);
-        
-        // LSI (Liquidity Shock Index)
-        const volSpike = safeDiv(volBuy2h + volSell2h, avgVolBuy + avgVolSell, 1);
-        const lsi = volSpike > 2 ? clamp(volSpike * 20, 0, 100) : 0;
-        
-        // Range Compression
-        const high = Number(data.high) || 0;
-        const low = Number(data.low) || 0;
-        const last = Number(data.last) || 0;
-        const range = high - low;
-        const rangeComp = last > 0 && range > 0 ? (range / last) * 100 : 0;
-        
-        // PFCI (Price-Flow Conflict Index)
-        const priceChange = Number(data.percent_change) || 0;
-        const flowDirection = volBuy2h > volSell2h ? 1 : -1;
-        const priceDirection = priceChange > 0 ? 1 : -1;
-        const pfci = priceDirection !== flowDirection ? Math.abs(priceChange) * 10 : 0;
-        
-        // Render row
-        const row = body.insertRow();
-        row.insertCell(0).textContent = coin;
-        
-        // Cohesion
-        const cohCell = row.insertCell(1);
-        cohCell.textContent = Math.round(cohesion) + '%';
-        cohCell.className = cohesion > 60 ? 'text-success' : cohesion < 40 ? 'text-danger' : 'text-warning';
-        
-        // Acc Vol
-        const accCell = row.insertCell(2);
-        accCell.textContent = accVol.toFixed(2);
-        accCell.className = accVol > 0.5 ? 'text-success' : accVol < -0.5 ? 'text-danger' : 'text-muted';
-        
-        // FBI
-        const fbiCell = row.insertCell(3);
-        fbiCell.textContent = fbi.toFixed(2);
-        fbiCell.className = fbi > 1.5 ? 'text-success fw-bold' : fbi > 1 ? 'text-warning' : 'text-muted';
-        
-        // OFSI
-        const ofsiCell = row.insertCell(4);
-        ofsiCell.textContent = Math.round(ofsi);
-        ofsiCell.className = ofsi > 70 ? 'text-success' : ofsi < 30 ? 'text-danger' : 'text-muted';
-        
-        // FSI
-        const fsiCell = row.insertCell(5);
-        fsiCell.textContent = Math.round(fsi);
-        fsiCell.className = fsi > 60 ? 'text-success' : fsi < 40 ? 'text-danger' : 'text-warning';
-        
-        // Z-Press
-        const zpCell = row.insertCell(6);
-        zpCell.textContent = (zPress > 0 ? '+' : '') + zPress.toFixed(1);
-        zpCell.className = zPress > 20 ? 'text-success' : zPress < -20 ? 'text-danger' : 'text-muted';
-        
-        // TIM
-        const timCell = row.insertCell(7);
-        timCell.textContent = (tim > 0 ? '+' : '') + tim.toFixed(1);
-        timCell.className = tim > 20 ? 'text-success' : tim < -20 ? 'text-danger' : 'text-muted';
-        
-        // CIS
-        const cisCell = row.insertCell(8);
-        cisCell.textContent = Math.round(cis);
-        cisCell.className = cis > 60 ? 'text-success fw-bold' : cis < 40 ? 'text-danger' : 'text-warning';
-        
-        // LSI
-        const lsiCell = row.insertCell(9);
-        lsiCell.textContent = Math.round(lsi);
-        lsiCell.className = lsi > 50 ? 'text-warning fw-bold' : 'text-muted';
-        
-        // Range Comp
-        row.insertCell(10).textContent = rangeComp.toFixed(3);
-        
-        // PFCI
-        const pfciCell = row.insertCell(11);
-        pfciCell.textContent = pfci.toFixed(1);
-        pfciCell.className = pfci > 30 ? 'text-warning fw-bold' : 'text-muted';
+        try {
+            console.debug('[renderMicroRow] coin:', coin, 'data present:', !!data);
+            // Use pre-computed analytics if available, fallback to raw data
+            const a = (typeof getUnifiedSmartMetrics === 'function') ? getUnifiedSmartMetrics(data) : (data && (data.analytics || data._analytics)) ? (data.analytics || data._analytics) : {};
+            const metrics = (typeof getUnifiedSmartMetrics === 'function') ? getUnifiedSmartMetrics(data) : a;
+            const tf = a.timeframes || {};
+
+            // Get values from analytics first, then raw data as fallback (correct field names from WebSocket)
+            let volBuy2h = a.volBuy2h || Number(data && data.vol_buy_2JAM) || 0;
+            let volSell2h = a.volSell2h || Number(data && data.vol_sell_2JAM) || 0;
+            let freqBuy2h = a.freqBuy2h || Number(data && data.freq_buy_2JAM) || 0;
+            let freqSell2h = a.freqSell2h || Number(data && data.freq_sell_2JAM) || 0;
+            let avgVolBuy = a.avgBuy2h || Number(data && data.avg_VOLCOIN_buy_2JAM) || 1;
+            let avgVolSell = a.avgSell2h || Number(data && data.avg_VOLCOIN_sell_2JAM) || 1;
+            let avgFreqBuy = a.avgFreqBuy2h || Number(data && data.avg_FREQCOIN_buy_2JAM) || 1;
+
+            // Get 1m and 5m data (correct field names from WebSocket)
+            const volBuy1m = (tf['1m'] && tf['1m'].volBuy) || Number(data && data.vol_buy_1MENIT) || 0;
+            const volBuy5m = (tf['5m'] && tf['5m'].volBuy) || Number(data && data.vol_buy_5MENIT) || 0;
+            const freqBuy1m = (tf['1m'] && tf['1m'].freqBuy) || Number(data && data.freq_buy_1MENIT) || 0;
+            const freqBuy5m = (tf['5m'] && tf['5m'].freqBuy) || Number(data && data.freq_buy_5MENIT) || 0;
+
+            const totalVol = volBuy2h + volSell2h;
+            const totalFreq = freqBuy2h + freqSell2h;
+
+            // Helper functions
+            const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
+            const safeDiv = (aV, bV, def = 0) => bV > 0 ? aV / bV : def;
+
+            // Cohesion Index
+            let volRatio = totalVol > 0 ? volBuy2h / totalVol : 0.5;
+            let freqRatio = totalFreq > 0 ? freqBuy2h / totalFreq : 0.5;
+            const pricePos = Number(data && data.price_position) || 50;
+            const priceFactor = pricePos / 100;
+            let cohesion = clamp(((volRatio + freqRatio + (1 - priceFactor)) / 3) * 100, 0, 100);
+
+            // Acc Vol (Volume Acceleration) - use previously defined volBuy1m, volBuy5m
+            const avg5m = volBuy5m > 0 ? volBuy5m / 5 : 0;
+            let accVol = avg5m > 0 ? (volBuy1m - avg5m) / avg5m : 0;
+
+            // FBI (Frequency Burst Index)
+            const shortTermFreq = (freqBuy1m * 5 + freqBuy5m) / 6;
+            let fbi = safeDiv(shortTermFreq, avgFreqBuy, 1);
+
+            // OFSI (Order Flow Stability Index)
+            const volDelta = volBuy2h - volSell2h;
+            const freqDelta = freqBuy2h - freqSell2h;
+            const volNorm = totalVol > 0 ? Math.abs(volDelta) / totalVol : 0;
+            const freqNorm = totalFreq > 0 ? Math.abs(freqDelta) / totalFreq : 0;
+            let ofsi = clamp((1 - Math.abs(volNorm - freqNorm)) * 100, 0, 100);
+
+            // FSI (Flow Strength Index)
+            const buyPressure = safeDiv(volBuy2h, avgVolBuy, 1) + safeDiv(freqBuy2h, avgFreqBuy, 1);
+            const sellPressure = safeDiv(volSell2h, avgVolSell, 1) + safeDiv(freqSell2h, avgFreqBuy, 1);
+            let fsi = clamp(50 + (buyPressure - sellPressure) * 10, 0, 100);
+
+            // Z-Press (Z-Weighted Pressure)
+            const volZBuy = (volBuy2h - avgVolBuy) / (avgVolBuy || 1);
+            const volZSell = (volSell2h - avgVolSell) / (avgVolSell || 1);
+            let zPress = clamp((volZBuy - volZSell) * 20, -100, 100);
+
+            // TIM (Trade Imbalance Momentum)
+            let tim = totalVol > 0 ? ((volBuy2h - volSell2h) / totalVol) * 100 : 0;
+
+            // CIS (Composite Institutional Signal)
+            let cis = clamp((cohesion * 0.3 + fsi * 0.3 + (fbi > 1 ? 50 : fbi * 50) * 0.2 + ofsi * 0.2), 0, 100);
+
+            // LSI (Liquidity Shock Index)
+            const volSpike = safeDiv(volBuy2h + volSell2h, avgVolBuy + avgVolSell, 1);
+            let lsi = volSpike > 2 ? clamp(volSpike * 20, 0, 100) : 0;
+
+            // Range Compression
+            const high = Number(data && data.high) || 0;
+            const low = Number(data && data.low) || 0;
+            const last = Number(data && data.last) || 0;
+            const range = high - low;
+            const rangeComp = last > 0 && range > 0 ? (range / last) * 100 : 0;
+
+            // PFCI (Price-Flow Conflict Index)
+            const priceChange = Number(data && data.percent_change) || 0;
+            const flowDirection = volBuy2h > volSell2h ? 1 : -1;
+            const priceDirection = priceChange > 0 ? 1 : -1;
+            let pfci = priceDirection !== flowDirection ? Math.abs(priceChange) * 10 : 0;
+
+            // If analytics provided micro values, prefer them (normalize names)
+            let micro = (metrics && metrics.micro) || (a && a.micro) || (a && a.microstructure) || {};
+
+            // Normalize common alternative field names into expected keys
+            const normalizeMicro = (m, src) => {
+                const out = Object.assign({}, m);
+                const pick = (keys) => {
+                    for (const k of keys) if (k in m) return m[k];
+                    for (const k of keys) if (src && k in src) return src[k];
+                    return undefined;
+                };
+                out.cohesion = Number(pick(['cohesion', 'cohesion_index', 'cohesionIndex'])) || out.cohesion;
+                out.accVol = Number(pick(['accVol', 'acc_vol', 'acc_volume', 'acceleration_vol'])) || out.accVol;
+                out.fbi = Number(pick(['fbi', 'freq_burst_index'])) || out.fbi;
+                out.ofsi = Number(pick(['ofsi', 'order_flow_stability', 'ofi'])) || out.ofsi;
+                out.fsi = Number(pick(['fsi', 'flow_strength_index'])) || out.fsi;
+                out.zPress = Number(pick(['zPress', 'z_press', 'z_weighted_press'])) || out.zPress;
+                out.tim = Number(pick(['tim', 'trade_imbalance_momentum'])) || out.tim;
+                out.cis = Number(pick(['cis', 'composite_institutional_signal'])) || out.cis;
+                out.lsi = Number(pick(['lsi', 'liquidity_shock_index'])) || out.lsi;
+                out.pfci = Number(pick(['pfci', 'price_flow_conflict_index'])) || out.pfci;
+                out.volBuy2h = Number(pick(['volBuy2h', 'vol_buy_2h', 'vol_buy_2JAM'])) || out.volBuy2h;
+                out.volSell2h = Number(pick(['volSell2h', 'vol_sell_2h', 'vol_sell_2JAM'])) || out.volSell2h;
+                out.freqBuy2h = Number(pick(['freqBuy2h', 'freq_buy_2h', 'freq_buy_2JAM'])) || out.freqBuy2h;
+                out.freqSell2h = Number(pick(['freqSell2h', 'freq_sell_2h', 'freq_sell_2JAM'])) || out.freqSell2h;
+                return out;
+            };
+            micro = normalizeMicro(micro, a || data);
+
+            // Rate-limited warning when micro is missing expected keys (helps debug client/server mismatch)
+            if (!globalThis.__microWarned) globalThis.__microWarned = new Set();
+            const missing = [];
+            ['cohesion', 'accVol', 'fbi', 'ofsi', 'fsi', 'zPress', 'tim', 'cis', 'lsi', 'pfci'].forEach(k => { if (!(k in micro) || micro[k] === undefined || Number.isNaN(Number(micro[k]))) missing.push(k); });
+            if (missing.length && !globalThis.__microWarned.has(coin)) {
+                console.warn('[renderMicroRow] micro missing fields for', coin, 'missing:', missing, 'analytics keys:', Object.keys(a || {}), 'micro keys:', Object.keys(micro));
+                globalThis.__microWarned.add(coin);
+            }
+            if (micro && Object.keys(micro).length) {
+                cohesion = typeof micro.cohesion === 'number' ? micro.cohesion : cohesion;
+                accVol = typeof micro.accVol === 'number' ? micro.accVol : accVol;
+                fbi = typeof micro.fbi === 'number' ? micro.fbi : fbi;
+                ofsi = typeof micro.ofsi === 'number' ? micro.ofsi : ofsi;
+                fsi = typeof micro.fsi === 'number' ? micro.fsi : fsi;
+                zPress = typeof micro.zPress === 'number' ? micro.zPress : zPress;
+                tim = typeof micro.tim === 'number' ? micro.tim : tim;
+                cis = typeof micro.cis === 'number' ? micro.cis : cis;
+                lsi = typeof micro.lsi === 'number' ? micro.lsi : lsi;
+                // allow pfci and rangeComp overrides too
+                pfci = typeof micro.pfci === 'number' ? micro.pfci : pfci;
+                // allow vol/freq overrides to keep display coherent
+                if (typeof micro.volBuy2h === 'number') volBuy2h = micro.volBuy2h;
+                if (typeof micro.volSell2h === 'number') volSell2h = micro.volSell2h;
+                if (typeof micro.freqBuy2h === 'number') freqBuy2h = micro.freqBuy2h;
+                if (typeof micro.freqSell2h === 'number') freqSell2h = micro.freqSell2h;
+            }
+
+            // Render row safely (always create same number of TDs)
+            const row = body.insertRow();
+            row.insertCell(0).textContent = coin || '';
+
+            const cohCell = row.insertCell(1);
+            cohCell.textContent = isNaN(cohesion) ? '-' : Math.round(cohesion) + '%';
+            cohCell.className = (cohesion > 60) ? 'text-success' : (cohesion < 40 ? 'text-danger' : 'text-warning');
+
+            const accCell = row.insertCell(2);
+            accCell.textContent = Number.isFinite(accVol) ? accVol.toFixed(2) : '-';
+            accCell.className = (accVol > 0.5) ? 'text-success' : (accVol < -0.5 ? 'text-danger' : 'text-muted');
+
+            const fbiCell = row.insertCell(3);
+            fbiCell.textContent = Number.isFinite(fbi) ? fbi.toFixed(2) : '-';
+            fbiCell.className = (fbi > 1.5) ? 'text-success fw-bold' : (fbi > 1 ? 'text-warning' : 'text-muted');
+
+            const ofsiCell = row.insertCell(4);
+            ofsiCell.textContent = isNaN(ofsi) ? '-' : Math.round(ofsi);
+            ofsiCell.className = (ofsi > 70) ? 'text-success' : (ofsi < 30 ? 'text-danger' : 'text-muted');
+
+            const fsiCell = row.insertCell(5);
+            fsiCell.textContent = isNaN(fsi) ? '-' : Math.round(fsi);
+            fsiCell.className = (fsi > 60) ? 'text-success' : (fsi < 40 ? 'text-danger' : 'text-warning');
+
+            const zpCell = row.insertCell(6);
+            zpCell.textContent = (Number.isFinite(zPress) ? ((zPress > 0 ? '+' : '') + zPress.toFixed(1)) : '-');
+            zpCell.className = (zPress > 20) ? 'text-success' : (zPress < -20 ? 'text-danger' : 'text-muted');
+
+            const timCell = row.insertCell(7);
+            timCell.textContent = Number.isFinite(tim) ? ((tim > 0 ? '+' : '') + tim.toFixed(1)) : '-';
+            timCell.className = (tim > 20) ? 'text-success' : (tim < -20 ? 'text-danger' : 'text-muted');
+
+            const cisCell = row.insertCell(8);
+            cisCell.textContent = isNaN(cis) ? '-' : Math.round(cis);
+            cisCell.className = (cis > 60) ? 'text-success fw-bold' : (cis < 40 ? 'text-danger' : 'text-warning');
+
+            const lsiCell = row.insertCell(9);
+            lsiCell.textContent = isNaN(lsi) ? '-' : Math.round(lsi);
+            lsiCell.className = (lsi > 50) ? 'text-warning fw-bold' : 'text-muted';
+
+            row.insertCell(10).textContent = Number.isFinite(rangeComp) ? rangeComp.toFixed(3) : '-';
+
+            const pfciCell = row.insertCell(11);
+            pfciCell.textContent = Number.isFinite(pfci) ? pfci.toFixed(1) : '-';
+            pfciCell.className = (pfci > 30) ? 'text-warning fw-bold' : 'text-muted';
+
+        } catch (e) {
+            console.warn('[renderMicroRow] error rendering micro row for', coin, e);
+            // fallback: create row with safe placeholders to preserve table layout
+            const row = body.insertRow();
+            row.insertCell(0).textContent = coin || '';
+            for (let i = 1; i < 12; i++) {
+                row.insertCell(i).textContent = '-';
+            }
+        }
     }
 
     function renderSpikeTable(body, spikeRows, rowLimit) {
@@ -1799,16 +1881,16 @@
             const ratioCell = r.insertCell(5);
             ratioCell.textContent = s.ratio.toFixed(2) + 'x';
             ratioCell.className = s.ratio >= 4 ? 'text-success fw-bold' : s.ratio >= 2 ? 'text-warning fw-bold' : '';
-            
+
             const priceCell = r.insertCell(6);
             const pc = s.price_change || 0;
             priceCell.textContent = (pc > 0 ? '+' : '') + pc.toFixed(2) + '%';
             priceCell.className = pc > 0 ? 'text-success fw-bold' : pc < 0 ? 'text-danger fw-bold' : 'text-muted';
-            
+
             const recCell = r.insertCell(7);
             recCell.textContent = s.recommendation ? `${s.recommendation} (${s.recConfidence}%)` : 'HOLD';
             recCell.className = s.recClassName || 'recommendation-hold';
-            
+
             const ts = s.update_time && s.update_time < 1e12 ? s.update_time * 1000 : s.update_time;
             const upCell = r.insertCell(8);
             upCell.textContent = ts ? new Date(ts).toLocaleString() : '-';
@@ -1860,12 +1942,12 @@
         const freqSell24h = safeNum(tfValue('24h', ['freqSell', 'freq_sell']) ?? getNumeric(data, 'freq_sell_24JAM', 'count_FREQ_minute_1440_sell'));
 
         row.insertCell(0).textContent = coin;
-        
+
         const addFreqCell = (buy, sell, idx) => {
             const buyCell = row.insertCell(idx);
             buyCell.textContent = buy;
             buyCell.className = buy > sell ? 'text-success' : 'text-muted';
-            
+
             const sellCell = row.insertCell(idx + 1);
             sellCell.textContent = sell;
             sellCell.className = sell > buy ? 'text-danger' : 'text-muted';
@@ -1952,146 +2034,350 @@
     }
 
     // ===================== Microstructure Tab Async Renderer =====================
-    let microRenderPending = false;
-    let lastMicroRenderTime = 0;
-    let lastMicroLimit = null;
-    const MICRO_RENDER_THROTTLE = 1000; // Don't re-render more than once per second
-    
-    async function renderMicroTabAsync(body, sorted, limit) {
-        const now = Date.now();
-        
-        // Throttle: skip if rendered recently
-        if (now - lastMicroRenderTime < MICRO_RENDER_THROTTLE) {
-            return;
-        }
-        
-        // If a render is in-flight, only skip if the requested limit is the same
-        if (microRenderPending && limit === lastMicroLimit) return;
-        microRenderPending = true;
-        lastMicroRenderTime = now;
-        
+    // micro render throttle state removed (unused)
+
+    async function renderMicroTabAsync() {
         try {
-            // Prepare batch data for worker - use structuredClone to prevent race conditions
-            const batchData = {};
-            for (let i = 0; i < sorted.length && i < limit; i++) {
-                const [coin, data] = sorted[i];
-                // Clone data to prevent race condition with WebSocket updates
+            const microBody = document.getElementById('microBody');
+            if (!microBody) return;
+
+            const coinDataMap =
+                (window.__okxShim && window.__okxShim.getCoinDataMap)
+                    ? window.__okxShim.getCoinDataMap()
+                    : window.coinDataMap || {};
+
+            microBody.innerHTML = '';
+
+            const filterText =
+                typeof getActiveFilterValue === 'function'
+                    ? getActiveFilterValue().toLowerCase()
+                    : '';
+
+            const rowLimit =
+                typeof window.getDashboardRowLimit === 'function'
+                    ? window.getDashboardRowLimit()
+                    : 5;
+
+            let rendered = 0;
+
+            // support both Map and plain Object for coinDataMap and add per-coin safety
+            let coinEntries = [];
+            try {
+                if (coinDataMap instanceof Map) coinEntries = Array.from(coinDataMap.entries());
+                else coinEntries = Object.entries(coinDataMap || {});
+            } catch (e) { coinEntries = []; }
+            try { console.debug('[renderMicroTabAsync] coins:', coinEntries.length, 'filter:', filterText, 'limit:', rowLimit); } catch (e) { }
+
+            for (const [coin, data] of coinEntries) {
                 try {
-                    batchData[coin] = typeof structuredClone === 'function' 
-                        ? structuredClone(data) 
-                        : JSON.parse(JSON.stringify(data));
-                } catch (e) {
-                    batchData[coin] = data; // fallback if clone fails
-                }
-            }
-            
-            // Send to worker pool for parallel processing (use shim-backed workerPool)
-            const _wp = (window.__okxShim && typeof window.__okxShim.getWorkerPool === 'function') ? window.__okxShim.getWorkerPool() : (window.workerPool || null);
-            let results = null;
-            if (_wp && typeof _wp.computeAnalyticsBatch === 'function') {
-                try { results = await _wp.computeAnalyticsBatch(batchData); } catch (e) { results = null; }
-            } else {
-                // fallback: synchronous compute on main thread
-                try { results = await (typeof computeAnalyticsBatch === 'function' ? computeAnalyticsBatch(batchData) : null); } catch (e) { results = null; }
-            }
-            
-            // Only clear and render if this is still the most recent request
-            if (lastMicroRenderTime === now) {
-                body.innerHTML = '';
-                
-                // Continue iterating until we've rendered `limit` rows or exhausted `sorted`.
-                let rendered = 0;
-                for (let i = 0; i < sorted.length && rendered < limit; i++) {
-                    const [coin] = sorted[i];
-                    const metrics = results && results[coin];
-                    if (metrics && metrics.micro) {
-                        renderMicroRowFromWorker(body, coin, metrics.micro);
-                        rendered++;
-                    } else if (!results) {
-                        // If results not available, fall back to rendering from raw data
-                        const data = (window.coinDataMap && window.coinDataMap[coin]) ? window.coinDataMap[coin] : null;
-                        if (data) {
-                            renderMicroRow(body, coin, data);
-                            rendered++;
-                        }
+                    if (rendered >= rowLimit) break;
+                    if (filterText && !coin.toLowerCase().includes(filterText)) continue;
+
+                    const analytics =
+                        data?.analytics ||
+                        data?._analytics ||
+                        null;
+
+                    // =========================
+                    // FALLBACK METRICS
+                    // =========================
+                    // compute a more robust accVol fallback: prefer analytics, else derive from 1m/5m or 2h aggregates
+                    const volBuy1m_fb = Number(data && (data.count_VOL_minute1_buy || data.vol_buy_1MENIT || 0)) || 0;
+                    const volBuy5m_fb = Number(data && (data.count_VOL_minute_5_buy || data.vol_buy_5MENIT || 0)) || 0;
+                    const volBuy2h_fb = Number(data && (data.count_VOL_minute_120_buy || data.vol_buy_2JAM || 0)) || 0;
+                    const avgBuy2h_fb = Number(data && (data.avg_VOLCOIN_buy_2JAM || data.avgBuy2h || 0)) || 0;
+                    let accVolFallback = 0;
+                    if (volBuy5m_fb > 0) {
+                        const avg5m = volBuy5m_fb / 5;
+                        accVolFallback = avg5m > 0 ? (volBuy1m_fb - avg5m) / avg5m : 0;
+                    } else if (avgBuy2h_fb > 0) {
+                        accVolFallback = (volBuy2h_fb / avgBuy2h_fb) - 1;
+                    } else {
+                        accVolFallback = (volBuy2h_fb > 0) ? Math.round(volBuy2h_fb) : 0;
                     }
+
+                    const fallback = {
+                        // Do not fabricate values. Use analytics when available, otherwise null.
+                        cohesion: (typeof analytics?.cohesion === 'number') ? analytics.cohesion : null,
+                        accVol: (typeof analytics?.accVol === 'number') ? analytics.accVol : (accVolFallback !== undefined ? accVolFallback : null),
+                        fbi: (typeof analytics?.fbi === 'number') ? analytics.fbi : null,
+                        ofsi: (typeof analytics?.ofsi === 'number') ? analytics.ofsi : null,
+                        fsi: (typeof analytics?.fsi === 'number') ? analytics.fsi : null,
+                        zpress: (typeof analytics?.zpress === 'number') ? analytics.zpress : ((data && data.percent_change) ? (Number(data.percent_change) / 10) : null),
+                        tim: (typeof analytics?.tim === 'number') ? analytics.tim : null,
+                        cis: (typeof analytics?.cis === 'number') ? analytics.cis : null,
+                        lsi: (typeof analytics?.lsi === 'number') ? analytics.lsi : null,
+                        rangeComp: (typeof analytics?.rangeComp === 'number') ? analytics.rangeComp : (() => { const h = Number(data.high || 0); const l = Number(data.low || 0); return h > l ? ((h - l) / h) : null; })(),
+                        pfci: (typeof analytics?.pfci === 'number') ? analytics.pfci : null
+                    };
+
+                    // Build a normalized micro object and delegate rendering to
+                    // `renderMicroRowFromWorker` so all rendering paths share the same logic.
+                    const microObj = {
+                        cohesion: (typeof analytics?.cohesion === 'number') ? analytics.cohesion : (fallback.cohesion !== undefined ? fallback.cohesion : null),
+                        accVol: (typeof analytics?.accVol === 'number') ? analytics.accVol : (fallback.accVol !== undefined ? fallback.accVol : null),
+                        fbi: (typeof analytics?.fbi === 'number') ? analytics.fbi : (fallback.fbi !== undefined ? fallback.fbi : null),
+                        ofsi: (typeof analytics?.ofsi === 'number') ? analytics.ofsi : (fallback.ofsi !== undefined ? fallback.ofsi : null),
+                        fsi: (typeof analytics?.fsi === 'number') ? analytics.fsi : (fallback.fsi !== undefined ? fallback.fsi : null),
+                        zPress: (typeof analytics?.zpress === 'number') ? analytics.zpress : (typeof analytics?.zPress === 'number' ? analytics.zPress : (fallback.zpress !== undefined ? fallback.zpress : (data && data.percent_change ? (Number(data.percent_change) / 10) : null))),
+                        tim: (typeof analytics?.tim === 'number') ? analytics.tim : (fallback.tim !== undefined ? fallback.tim : null),
+                        cis: (typeof analytics?.cis === 'number') ? analytics.cis : (fallback.cis !== undefined ? fallback.cis : null),
+                        lsi: (typeof analytics?.lsi === 'number') ? analytics.lsi : (fallback.lsi !== undefined ? fallback.lsi : null),
+                        rangeComp: (typeof analytics?.rangeComp === 'number') ? analytics.rangeComp : (fallback.rangeComp !== undefined ? fallback.rangeComp : ( () => { const h = Number(data.high || 0); const l = Number(data.low || 0); return h > l ? ((h - l) / h) : null; })()),
+                        pfci: (typeof analytics?.pfci === 'number') ? analytics.pfci : (fallback.pfci !== undefined ? fallback.pfci : null)
+                    };
+
+                    // mark synthesized rows when analytics is not present
+                    renderMicroRowFromWorker(microBody, coin, microObj, { synth: !analytics, data });
+                    rendered++;
+                } catch (e) {
+                    console.warn('[renderMicroTabAsync] failed rendering coin', coin, e);
+                    // continue with next coin
                 }
-                lastMicroLimit = limit;
             }
+
+            // =========================
+            // HARD FAILSAFE
+            // =========================
+            if (rendered === 0) {
+                const row = microBody.insertRow();
+                const cell = row.insertCell();
+                cell.colSpan = 12;
+                cell.className = 'text-muted text-center';
+                cell.textContent = 'No microstructure data available (waiting for analytics…)';
+            }
+
         } catch (err) {
-            console.warn('[MicroTab] Worker error, fallback to sync:', err);
-            body.innerHTML = '';
-            for (let i = 0; i < sorted.length && i < limit; i++) {
-                const [coin, data] = sorted[i];
-                renderMicroRow(body, coin, data);
-            }
-        } finally {
-            microRenderPending = false;
+            console.error('[renderMicroTabAsync] failed:', err);
         }
     }
-    
+
+
     // Render micro row from worker result (pre-computed metrics)
-    function renderMicroRowFromWorker(body, coin, m) {
-        const row = body.insertRow();
-        row.insertCell(0).textContent = coin;
-        
-        // Cohesion
+        function renderMicroRowFromWorker(body, coin, m, opts) {
+            opts = opts || {};
+            const row = body.insertRow();
+            row.dataset.coin = coin;
+
+            m = m || {};
+            // first cell (coin) — allow synth badge + subtle tint when requested
+            const firstCell = row.insertCell(0);
+            if (opts.synth) {
+                firstCell.innerHTML = `${coin} <span class="badge bg-info text-dark ms-1">synth</span>`;
+                try { row.style.background = 'rgba(13,110,253,0.03)'; } catch (e) { }
+            } else {
+                firstCell.textContent = coin;
+            }
+        const isNum = v => Number.isFinite(v);
+        const get = (k, def = null) => (isNum(m[k]) ? m[k] : def);
+        const d = opts && opts.data ? opts.data : null;
+
+        const safeNum = v => { const n = Number(v); return Number.isFinite(n) ? n : null; };
+        // helper to compute FBI/OFSI from raw payload when worker metrics missing
+        const computeFlowFromData = (src) => {
+            try {
+                const vb = Number((src && (src.count_VOL_minute_120_buy || src.vol_buy_2JAM || src.vol_buy_120MENIT)) || 0) || 0;
+                const vs = Number((src && (src.count_VOL_minute_120_sell || src.vol_sell_2JAM || src.vol_sell_120MENIT)) || 0) || 0;
+                const total = vb + vs;
+                if (total > 0) {
+                    const fbiVal = (vb - vs) / total; // in [-1,1]
+                    const ofsiVal = Math.abs(vb - vs) / total; // [0,1]
+                    return { fbi: fbiVal, ofsi: ofsiVal, totalFlow: total, volBuy2h: vb, volSell2h: vs };
+                }
+            } catch (e) { }
+            return { fbi: null, ofsi: null, totalFlow: 0, volBuy2h: 0, volSell2h: 0 };
+        };
+
+        // helper to insert a cell and render a numeric value or placeholder
+        const renderNum = (idx, value, opts = {}) => {
+            const cell = row.insertCell(idx);
+            if (value === null || value === undefined || Number.isNaN(value)) {
+                cell.textContent = '-';
+                if (opts.classIfMissing) cell.className = opts.classIfMissing;
+                return cell;
+            }
+            if (opts.format) cell.textContent = opts.format(value);
+            else cell.textContent = String(value);
+            if (opts.className) cell.className = opts.className;
+            return cell;
+        };
+
+        // expected keys for diagnostics
+        const expectedKeys = ['cohesion', 'accVol', 'fbi', 'ofsi', 'fsi', 'zPress', 'tim', 'cis', 'lsi', 'rangeComp', 'pfci'];
+        const missing = expectedKeys.filter(k => !isNum(m[k]) && (k !== 'accVol'));
+        if (missing.length && window.__microDebug) {
+            window.__microLogCounts = window.__microLogCounts || {};
+            const c = window.__microLogCounts[coin] = (window.__microLogCounts[coin] || 0) + 1;
+            if (c <= 5) console.warn('[renderMicroRowFromWorker] missing micro keys for', coin, missing, 'count:', c);
+        }
+
+        // Cohesion: prefer provided; otherwise compute from sign(priceChange) * FBI
+        let coh = get('cohesion', null);
+        const priceChangePct = safeNum(d && (d.percent_change || d.percentChange || d.price_change)) || 0;
+        const priceSign = priceChangePct > 0 ? 1 : (priceChangePct < 0 ? -1 : 0);
+        let fflow = { fbi: null, ofsi: null, totalFlow: 0, volBuy2h: 0, volSell2h: 0 };
+        if (!isNum(m['fbi']) || !isNum(coh)) {
+            fflow = computeFlowFromData(d || {});
+        }
+        const fbiComputed = isNum(m['fbi']) ? m['fbi'] : (fflow.fbi !== undefined ? fflow.fbi : null);
+        if (!isNum(coh)) {
+            if (isNum(fbiComputed) && priceSign !== 0) {
+                const cohesionFraction = priceSign * Math.abs(fbiComputed);
+                coh = cohesionFraction * 100; // store as percent for display
+            } else {
+                coh = null;
+            }
+        }
         const cohCell = row.insertCell(1);
-        cohCell.textContent = Math.round(m.cohesion) + '%';
-        cohCell.className = m.cohesion > 60 ? 'text-success' : m.cohesion < 40 ? 'text-danger' : 'text-warning';
-        
-        // Acc Vol (Volume Acceleration)
+        if (coh === null) {
+            cohCell.textContent = '-';
+            cohCell.className = '';
+        } else {
+            cohCell.textContent = Math.round(coh) + '%';
+            cohCell.className = coh > 60 ? 'text-success' : coh < 40 ? 'text-danger' : 'text-warning';
+        }
+
+        // Acc Vol (Volume Acceleration) — STRICT: only show when provided by analytics
+        const accVol = (m.hasOwnProperty('accVol')) ? (isNum(m.accVol) ? m.accVol : null) : (d && d._analytics && isNum(d._analytics.accVol) ? d._analytics.accVol : null);
         const accCell = row.insertCell(2);
-        const accVol = m.accVol || 0;
-        accCell.textContent = accVol.toFixed(2);
-        accCell.className = accVol > 0.5 ? 'text-success' : accVol < -0.5 ? 'text-danger' : 'text-muted';
-        
+        if (accVol === null) {
+            accCell.innerHTML = '<span class="text-muted">N/A</span>';
+        } else {
+            accCell.textContent = accVol.toFixed(2);
+            accCell.className = accVol > 0.5 ? 'text-success' : accVol < -0.5 ? 'text-danger' : 'text-muted';
+        }
+
         // FBI
+        const fbi = isNum(m.fbi) ? m.fbi : (fflow.fbi !== undefined ? fflow.fbi : null);
         const fbiCell = row.insertCell(3);
-        fbiCell.textContent = m.fbi.toFixed(2);
-        fbiCell.className = m.fbi > 1.5 ? 'text-success fw-bold' : m.fbi > 1 ? 'text-warning' : 'text-muted';
-        
-        // OFSI
+        if (!isNum(fbi)) {
+            fbiCell.textContent = '-';
+            fbiCell.className = 'text-muted';
+        } else {
+            fbiCell.textContent = fbi.toFixed(2);
+            if (fbi >= 0.5) fbiCell.className = 'text-success fw-bold';
+            else if (fbi <= -0.5) fbiCell.className = 'text-danger fw-bold';
+            else fbiCell.className = 'text-muted';
+        }
+
+        // OFSI (as percent)
+        const ofsiFraction = isNum(m.ofsi) ? (m.ofsi) : (fflow.ofsi !== undefined ? fflow.ofsi : null);
         const ofsiCell = row.insertCell(4);
-        ofsiCell.textContent = Math.round(m.ofsi);
-        ofsiCell.className = m.ofsi > 70 ? 'text-success' : m.ofsi < 30 ? 'text-danger' : 'text-muted';
-        
-        // FSI
+        if (!isNum(ofsiFraction)) {
+            ofsiCell.textContent = '-';
+            ofsiCell.className = 'text-muted';
+        } else {
+            const ofsiPct = Math.round(ofsiFraction * 100);
+            ofsiCell.textContent = ofsiPct + '%';
+            ofsiCell.className = ofsiPct > 70 ? 'text-success' : ofsiPct < 30 ? 'text-danger' : 'text-muted';
+        }
+
+        // FSI = |FBI| * OFSI (fraction) -> display percent
+        const fsiFraction = isNum(m.fsi) ? m.fsi : (isNum(fbi) && isNum(ofsiFraction) ? Math.abs(fbi) * ofsiFraction : null);
         const fsiCell = row.insertCell(5);
-        fsiCell.textContent = Math.round(m.fsi);
-        fsiCell.className = m.fsi > 60 ? 'text-success' : m.fsi < 40 ? 'text-danger' : 'text-warning';
-        
+        if (!isNum(fsiFraction)) {
+            fsiCell.textContent = '-';
+            fsiCell.className = '';
+        } else {
+            const fsiPct = Math.round(fsiFraction * 100);
+            fsiCell.textContent = fsiPct + '%';
+            fsiCell.className = fsiPct > 60 ? 'text-success' : fsiPct < 40 ? 'text-danger' : 'text-warning';
+        }
+
         // Z-Press
+        const zPress = isNum(m.zPress) ? m.zPress : (isNum(m.zPress) ? m.zPress : null);
         const zpCell = row.insertCell(6);
-        zpCell.textContent = (m.zPress > 0 ? '+' : '') + m.zPress.toFixed(1);
-        zpCell.className = m.zPress > 20 ? 'text-success' : m.zPress < -20 ? 'text-danger' : 'text-muted';
-        
-        // TIM
+        if (!isNum(zPress)) {
+            zpCell.textContent = '-';
+            zpCell.className = 'text-muted';
+        } else {
+            zpCell.textContent = (zPress > 0 ? '+' : '') + zPress.toFixed(1);
+            zpCell.className = zPress > 20 ? 'text-success' : zPress < -20 ? 'text-danger' : 'text-muted';
+        }
+
+        // TIM (trade intensity): prefer provided, else compute from 1m window
+        let timVal = isNum(m.tim) ? m.tim : null;
+        if (!isNum(timVal) && d) {
+            const vb1 = Number(d.count_VOL_minute1_buy || d.vol_buy_1MENIT || 0) || 0;
+            const vs1 = Number(d.count_VOL_minute1_sell || d.vol_sell_1MENIT || 0) || 0;
+            const total1m = vb1 + vs1;
+            if (total1m > 0) timVal = total1m; // volume per 1m
+        }
         const timCell = row.insertCell(7);
-        timCell.textContent = (m.tim > 0 ? '+' : '') + m.tim.toFixed(1);
-        timCell.className = m.tim > 20 ? 'text-success' : m.tim < -20 ? 'text-danger' : 'text-muted';
-        
-        // CIS
+        if (!isNum(timVal)) {
+            timCell.textContent = '-';
+            timCell.className = 'text-muted';
+        } else {
+            timCell.textContent = (timVal > 0 ? '+' : '') + timVal.toFixed(1);
+            timCell.className = timVal > 1000 ? 'text-success' : 'text-muted';
+        }
+
+        // CIS = sign(FBI) × Cohesion × OFSI
+        let cisVal = isNum(m.cis) ? m.cis : null;
+        if (!isNum(cisVal)) {
+            if (isNum(fbi) && isNum(ofsiFraction) && isNum(coh)) {
+                const cohesionFraction = coh / 100;
+                cisVal = Math.sign(fbi) * cohesionFraction * ofsiFraction * 100; // percent
+            } else cisVal = null;
+        }
         const cisCell = row.insertCell(8);
-        cisCell.textContent = Math.round(m.cis);
-        cisCell.className = m.cis > 60 ? 'text-success fw-bold' : m.cis < 40 ? 'text-danger' : 'text-warning';
-        
-        // LSI
+        if (!isNum(cisVal)) {
+            cisCell.textContent = '-';
+            cisCell.className = '';
+        } else {
+            const cisPct = Math.round(cisVal);
+            cisCell.textContent = cisPct + '%';
+            cisCell.className = cisPct > 60 ? 'text-success fw-bold' : cisPct < 40 ? 'text-danger' : 'text-warning';
+        }
+
+        // LSI = OFSI × |ΔPrice| (use price pct as fraction)
+        let lsi = isNum(m.lsi) ? m.lsi : null;
+        if (!isNum(lsi)) {
+            if (isNum(ofsiFraction) && isNum(priceChangePct)) {
+                lsi = ofsiFraction * (Math.abs(priceChangePct) / 100) * 100; // percent-style
+            } else lsi = null;
+        }
         const lsiCell = row.insertCell(9);
-        lsiCell.textContent = Math.round(m.lsi);
-        lsiCell.className = m.lsi > 50 ? 'text-warning fw-bold' : 'text-muted';
-        
-        // Range Comp
-        row.insertCell(10).textContent = m.rangeComp.toFixed(3);
-        
+        if (!isNum(lsi)) {
+            lsiCell.textContent = '-';
+            lsiCell.className = 'text-muted';
+        } else {
+            lsiCell.textContent = Math.round(lsi) + '%';
+            lsiCell.className = lsi > 50 ? 'text-warning fw-bold' : 'text-muted';
+        }
+
+        // Range Comp: prefer provided; else attempt ATR-based computation when history available
+        let rangeComp = isNum(m.rangeComp) ? m.rangeComp : null;
+        if (!isNum(rangeComp) && d && d._history && typeof computeATR === 'function') {
+            try {
+                const atr = computeATR(d._history, 14);
+                const h = Number(d.high || 0);
+                const l = Number(d.low || 0);
+                if (atr && atr > 0 && h > l) rangeComp = 1 - ((h - l) / atr);
+            } catch (e) { rangeComp = null; }
+        }
+        const rCell = row.insertCell(10);
+        if (!isNum(rangeComp)) rCell.textContent = '-';
+        else rCell.textContent = rangeComp.toFixed(3);
+
         // PFCI
+        let pfci = get('pfci', null);
+        // compute pfci = |ΔPrice| / TotalFlow when possible
+        if (!isNum(pfci) && fflow && fflow.totalFlow > 0 && isNum(priceChangePct)) {
+            pfci = Math.abs(priceChangePct) / (fflow.totalFlow || 1);
+        }
         const pfciCell = row.insertCell(11);
-        pfciCell.textContent = m.pfci.toFixed(1);
-        pfciCell.className = m.pfci > 30 ? 'text-warning fw-bold' : 'text-muted';
+        if (!isNum(pfci)) {
+            pfciCell.textContent = '-';
+            pfciCell.className = 'text-muted';
+        } else {
+            pfciCell.textContent = pfci.toFixed(1);
+            pfciCell.className = pfci > 30 ? 'text-warning fw-bold' : 'text-muted';
+        }
     }
 
     // ===================== Smart Analysis Tab Renderer =====================
-    
+
     function renderSmartRow(body, coin, data) {
         const row = body.insertRow();
         row.dataset.coin = coin;
@@ -2100,13 +2386,13 @@
         const core = getMetricsCore();
         const hasAnalyticsCore = !!(core && typeof core.computeAllSmartMetrics === 'function');
         const hasLegacy = typeof computeSmartMetrics === 'function';
-        
+
         if (!hasAnalyticsCore && !hasLegacy) {
             row.insertCell(0).textContent = coin;
-                // insert placeholders for all Smart columns (keep layout stable)
-                for (let i = 1; i <= 16; i++) {
-                    row.insertCell(i).textContent = '-';
-                }
+            // insert placeholders for all Smart columns (keep layout stable)
+            for (let i = 1; i <= 16; i++) {
+                row.insertCell(i).textContent = '-';
+            }
             return;
         }
 
@@ -2237,7 +2523,7 @@
             sigCell.appendChild(signalSpan);
         } catch (e) {
             sigCell.textContent = (metrics.smartSignal && metrics.smartSignal.signal ? metrics.smartSignal.signal : 'HOLD') + ' (' + ((metrics.smartSignal && metrics.smartSignal.confidence) || 0) + '%)';
-            const mapCls = (function(s){ if(!s) return ''; s=String(s).toUpperCase(); if(s.indexOf('BUY')!==-1) return 'recommendation-buy'; if(s.indexOf('SELL')!==-1) return 'recommendation-sell'; if(s.indexOf('HOLD')!==-1) return 'recommendation-hold'; return ''; })(metrics.smartSignal && metrics.smartSignal.signal);
+            const mapCls = (function (s) { if (!s) return ''; s = String(s).toUpperCase(); if (s.indexOf('BUY') !== -1) return 'recommendation-buy'; if (s.indexOf('SELL') !== -1) return 'recommendation-sell'; if (s.indexOf('HOLD') !== -1) return 'recommendation-hold'; return ''; })(metrics.smartSignal && metrics.smartSignal.signal);
             sigCell.className = mapCls || ((metrics.smartSignal && metrics.smartSignal.className) ? metrics.smartSignal.className : '');
         }
 
@@ -2282,7 +2568,7 @@
             } else { mcCell.textContent = '-'; }
         } catch (e) {
             // non-fatal
-            try { row.insertCell(13).textContent = '-'; row.insertCell(14).textContent = '-'; row.insertCell(15).textContent = '-'; row.insertCell(16).textContent = '-'; } catch (ex) {}
+            try { row.insertCell(13).textContent = '-'; row.insertCell(14).textContent = '-'; row.insertCell(15).textContent = '-'; row.insertCell(16).textContent = '-'; } catch (ex) { }
         }
     }
 
