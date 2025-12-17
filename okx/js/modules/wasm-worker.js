@@ -22,16 +22,19 @@ self.addEventListener('message', async (ev) => {
             try { self.postMessage({ cmd: 'loading', baseUrl: base, requestId: msg.requestId }); } catch (e) {}
 
             // Build candidate URLs for the ESM glue and wasm binary.
+            // Normalize base to ensure it ends with '/' so relative URL resolution
+            // points into the pkg folder (avoids replacing the last path segment).
+            const normalizedBase = (typeof base === 'string' && base.length && base.charAt(base.length-1) !== '/') ? base + '/' : base;
             const glueCandidates = [];
             try {
                 // If base looks absolute (has protocol), use directly.
-                const baseUrl = new URL(base, self.location.href);
+                const baseUrl = new URL(normalizedBase, self.location.href);
                 glueCandidates.push(new URL('wasm_proto.js', baseUrl).href);
                 glueCandidates.push(new URL('wasm-proto.js', baseUrl).href);
             } catch (e) {
                 // Fallback string concat
-                glueCandidates.push(base.replace(/\/$/, '') + '/wasm_proto.js');
-                glueCandidates.push(base.replace(/\/$/, '') + '/wasm-proto.js');
+                glueCandidates.push((normalizedBase || base).replace(/\/$/, '') + '/wasm_proto.js');
+                glueCandidates.push((normalizedBase || base).replace(/\/$/, '') + '/wasm-proto.js');
             }
 
             // Try each candidate by performing a lightweight HEAD fetch to detect accessibility and CORS.
