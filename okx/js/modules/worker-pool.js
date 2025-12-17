@@ -1091,7 +1091,7 @@
         }
 
         // Recreate and initialize the dedicated wasm worker (useful for debugging/init retries)
-        initWasmWorker(baseUrl = '/wasm-proto/pkg') {
+        initWasmWorker(baseUrl = '/okx/wasm-proto/pkg') {
             try {
                 // terminate previous if present
                 if (this.wasmWorker) {
