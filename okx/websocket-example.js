@@ -1267,6 +1267,9 @@ try {
                         } catch (e) { /* ignore filter-eval errors */ }
                         const premium = premiumVal !== null ? fmtNum(premiumVal, 6) : '-';
                         const premiumClass = (premiumVal !== null && !Number.isNaN(Number(premiumVal))) ? (Number(premiumVal) < 0 ? 'text-danger' : (Number(premiumVal) > 0 ? 'text-success' : '')) : '';
+                        const fundingRateVal = getNumeric(data, 'funding_Rate', 'funding_rate', 'funding_interestRate');
+                        const fundingRateDisplay = (fundingRateVal === null || fundingRateVal === undefined) ? '-' : (Number.isFinite(Number(fundingRateVal)) ? (Number(fundingRateVal) * 100).toFixed(Math.abs(fundingRateVal) < 0.001 ? 3 : 2) + '%' : String(fundingRateVal));
+                        const fundingRateClass = (fundingRateVal !== null && !Number.isNaN(Number(fundingRateVal))) ? (Number(fundingRateVal) < 0 ? 'text-success' : (Number(fundingRateVal) > 0 ? 'text-danger' : '')) : '';
                         const sett = data.funding_settFundingRate !== undefined ? fmtNum(data.funding_settFundingRate, 6) : '-';
                         const minR = data.funding_minFundingRate !== undefined ? fmtNum(data.funding_minFundingRate, 6) : '-';
                         const impact = (data.funding_impactValue !== undefined) ? String(data.funding_impactValue) : '-';
@@ -1275,7 +1278,8 @@ try {
                         const changeVal = (data.percent_change !== undefined && data.percent_change !== null) ? Number(data.percent_change) : null;
                         const changeDisplay = changeVal !== null ? (Number(changeVal).toFixed(2) + '%') : '-';
                         const changeClass = changeVal === null ? '' : (changeVal > 0 ? 'text-success' : (changeVal < 0 ? 'text-danger' : ''));
-                        const nextTs = data.funding_nextFundingTime ? Number(data.funding_nextFundingTime) : (data.funding_Time ? Number(data.funding_Time) : 0);
+                        // Prefer explicit `funding_Time` when available for countdown; fallback to `funding_nextFundingTime`
+                        const nextTs = (data.funding_Time ? Number(data.funding_Time) : (data.funding_nextFundingTime ? Number(data.funding_nextFundingTime) : 0));
                         const fmtCountdown = (ts) => {
                             if (!ts || Number.isNaN(ts)) return '-';
                             const d = ts - Date.now();
@@ -1287,7 +1291,7 @@ try {
                             return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
                         };
                         const countdownText = fmtCountdown(nextTs);
-                        const cells = `<td>${coin}</td><td>${priceDisplay}</td><td class="${changeClass}">${changeDisplay}</td><td><span class="${premiumClass}">${premium}</span></td><td>${sett}</td><td>${minR}</td><td>${impact}</td><td>${nextTime}</td><td class="funding-countdown" data-next="${nextTs || ''}">${countdownText}</td>`;
+                        const cells = `<td>${coin}</td><td>${priceDisplay}</td><td class="${changeClass}">${changeDisplay}</td><td><span class="${premiumClass}">${premium}</span></td><td><span class="${fundingRateClass}">${fundingRateDisplay}</span></td><td>${sett}</td><td>${minR}</td><td>${impact}</td><td>${nextTime}</td><td class="funding-countdown" data-next="${nextTs || ''}">${countdownText}</td>`;
                         try {
                             const currentRows = fundingBodyEl.querySelectorAll('tr').length || 0;
                             if (!tr && rl !== Infinity && currentRows >= rl) {
@@ -1296,10 +1300,34 @@ try {
                                 if (!tr) {
                                     tr = document.createElement('tr');
                                     tr.dataset.coin = coin;
-                                    tr.innerHTML = cells;
+                                    // build cells explicitly to avoid header/td misalignment
+                                    const c0 = tr.insertCell(0); c0.textContent = coin;
+                                    const c1 = tr.insertCell(1); c1.textContent = priceDisplay;
+                                    const c2 = tr.insertCell(2); c2.className = changeClass; c2.textContent = changeDisplay;
+                                    const c3 = tr.insertCell(3); c3.innerHTML = `<span class="${premiumClass}">${premium}</span>`;
+                                    const c4 = tr.insertCell(4); c4.innerHTML = `<span class="${fundingRateClass}">${fundingRateDisplay}</span>`;
+                                    const c5 = tr.insertCell(5); c5.textContent = sett;
+                                    const c6 = tr.insertCell(6); c6.textContent = minR;
+                                    const c7 = tr.insertCell(7); c7.textContent = impact;
+                                    const c8 = tr.insertCell(8); c8.textContent = nextTime;
+                                    const c9 = tr.insertCell(9); c9.className = 'funding-countdown'; c9.dataset.next = nextTs || ''; c9.textContent = countdownText;
                                     fundingBodyEl.appendChild(tr);
                                 } else {
-                                    tr.innerHTML = cells;
+                                    // update existing row cells robustly
+                                    try {
+                                        // ensure number of cells >= expected
+                                        while (tr.cells.length < 10) tr.insertCell(tr.cells.length);
+                                        tr.cells[0].textContent = coin;
+                                        tr.cells[1].textContent = priceDisplay;
+                                        tr.cells[2].className = changeClass; tr.cells[2].textContent = changeDisplay;
+                                        tr.cells[3].innerHTML = `<span class="${premiumClass}">${premium}</span>`;
+                                        tr.cells[4].innerHTML = `<span class="${fundingRateClass}">${fundingRateDisplay}</span>`;
+                                        tr.cells[5].textContent = sett;
+                                        tr.cells[6].textContent = minR;
+                                        tr.cells[7].textContent = impact;
+                                        tr.cells[8].textContent = nextTime;
+                                        tr.cells[9].className = 'funding-countdown'; tr.cells[9].dataset.next = nextTs || ''; tr.cells[9].textContent = countdownText;
+                                    } catch (e) { /* ignore cell update errors */ }
                                 }
                             }
                         } catch (e) { /* ignore DOM errors */ }
@@ -1458,4 +1486,21 @@ try {
                 } catch (e) { console.warn('restoreHiddenAsBanners failed', e); }
             });
         } catch (e) { console.warn('wiring restore hidden alerts failed', e); }
+
+        // When Funding tab is shown, default sort to funding_rate for easier inspection
+        try {
+            const fundingTabBtn = document.getElementById('funding-tab');
+            const setFundingSort = () => {
+                try {
+                    const sel = document.getElementById('sortBy');
+                    if (!sel) return;
+                    sel.value = 'funding_rate';
+                    sel.dispatchEvent(new Event('change'));
+                } catch (e) { /* ignore */ }
+            };
+            if (fundingTabBtn) {
+                try { fundingTabBtn.addEventListener('shown.bs.tab', setFundingSort); } catch (e) { /* no bootstrap */ }
+                fundingTabBtn.addEventListener('click', () => setTimeout(setFundingSort, 50));
+            }
+        } catch (e) { /* ignore setup errors */ }
 

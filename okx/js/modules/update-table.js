@@ -465,6 +465,10 @@
                 const lowPrice = parseFloat(data.low) || currentPrice;
                 const priceRange = highPrice - lowPrice;
                 return priceRange > 0 ? ((currentPrice - lowPrice) / priceRange) * 100 : 50;
+            case 'funding_rate':
+                try {
+                    return Number(getNumeric(data, 'funding_Rate', 'funding_rate', 'funding_interestRate')) || 0;
+                } catch (e) { return 0; }
             case 'recommendation':
                 try {
                     if (typeof calculateRecommendation === 'function') {
@@ -1305,9 +1309,10 @@
             const sett = getNumeric(data, 'funding_settFundingRate', 'funding_settfundingrate');
             const rate = getNumeric(data, 'funding_Rate', 'funding_rate');
             const premium = getNumeric(data, 'funding_premium', 'fundingpremium');
+            // Prefer explicit per-8h `funding_Rate` when available (may be an array)
             let fundingVal = null;
-            if (sett) fundingVal = sett;
-            else if (rate) fundingVal = rate;
+            if (rate) fundingVal = rate;
+            else if (sett) fundingVal = sett;
             else if (premium) fundingVal = premium;
             // display as percent
             if (fundingVal === null || fundingVal === 0) {

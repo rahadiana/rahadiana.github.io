@@ -41,6 +41,13 @@
       ]
     },
     {
+      "label": "💸 Funding",
+      "options": [
+        { "value": "funding_rate", "text": "Funding Rate (per period)" },
+        { "value": "funding_premium", "text": "Funding Premium" }
+      ]
+    },
+    {
       "label": "💹 Volume (5m)",
       "options": [
         { "value": "vol_buy_5m", "text": "Vol Buy (5m)" },

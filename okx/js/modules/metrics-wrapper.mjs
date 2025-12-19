@@ -154,18 +154,41 @@ function calculateFundingPriceDivergence(data) {
     const fundingRate = Number(data.funding_Rate || 0);
     const priceChange = Number(data.percent_change || 0);
 
+    const FUNDING_EXTREME = 0.001;
+    const FUNDING_NEUTRAL = 0.0001;
+
     let divergence = 'ALIGNED';
-    if (fundingRate < -0.001 && priceChange > 2) {
-        divergence = 'STRONG_BULL_CONFLUENCE';
-    } else if (fundingRate > 0.001 && priceChange > 2) {
-        divergence = 'BEARISH_DIVERGENCE';
-    } else if (fundingRate < -0.001 && priceChange < -2) {
-        divergence = 'BULLISH_DIVERGENCE';
+
+    if (fundingRate > FUNDING_EXTREME && priceChange < -1) {
+        divergence = 'LONG_TRAP';
+    }
+    else if (fundingRate < -FUNDING_EXTREME && priceChange > 1) {
+        divergence = 'SHORT_TRAP';
+    }
+    else if (fundingRate > FUNDING_EXTREME && priceChange > 2) {
+        divergence = 'OVERHEATED_LONG';
+    }
+    else if (Math.abs(fundingRate) < FUNDING_NEUTRAL && priceChange < -1) {
+        divergence = 'BEARISH_FLOW';
     }
 
-    const signal = divergence === 'STRONG_BULL_CONFLUENCE' ? 'VERY_BULLISH' : divergence === 'BULLISH_DIVERGENCE' ? 'BUY_DIP' : divergence === 'BEARISH_DIVERGENCE' ? 'TAKE_PROFIT' : 'NEUTRAL';
+    let signal = 'NEUTRAL';
 
-    return { divergence, fundingRate, priceChange, signal };
+    if (divergence === 'SHORT_TRAP') signal = 'BUY_PULLBACK';
+    else if (divergence === 'LONG_TRAP') signal = 'SELL_RALLIES';
+    else if (divergence === 'OVERHEATED_LONG') signal = 'TAKE_PROFIT';
+    else if (divergence === 'BEARISH_FLOW') signal = 'WAIT_OR_SHORT';
+
+    return {
+        divergence,
+        fundingRate,
+        priceChange,
+        signal,
+        confidence:
+            divergence === 'LONG_TRAP' || divergence === 'SHORT_TRAP' ? 0.8 :
+            divergence === 'OVERHEATED_LONG' ? 0.7 :
+            divergence === 'BEARISH_FLOW' ? 0.6 : 0.3
+    };
 }
 
 function calculateLiquidityQuality(data, opts) {
@@ -179,51 +202,102 @@ function calculateLiquidityQuality(data, opts) {
     const avgTradeSizeSell = freqSell > 0 ? volSell / freqSell : 0;
 
     const maxTrade = Math.max(avgTradeSizeBuy, avgTradeSizeSell, 0);
-    const tradeSizeImbalance = maxTrade > 0 ? Math.abs(avgTradeSizeBuy - avgTradeSizeSell) / maxTrade : 0;
+    const tradeSizeImbalance = maxTrade > 0
+        ? Math.abs(avgTradeSizeBuy - avgTradeSizeSell) / maxTrade
+        : 0;
 
-    const avgFreq = (_n(data[`avg_FREQCOIN_buy_${tf}`]) + _n(data[`avg_FREQCOIN_sell_${tf}`])) / 2;
-    const freqRatio = avgFreq > 0 ? (((freqBuy + freqSell) / 2) / avgFreq) : 0;
+    const avgFreq =
+        (_n(data[`avg_FREQCOIN_buy_${tf}`]) +
+         _n(data[`avg_FREQCOIN_sell_${tf}`])) / 2;
+
+    const currentFreq = (freqBuy + freqSell) / 2;
+    const freqRatio = avgFreq > 0 ? currentFreq / avgFreq : 0;
 
     let quality = 'MODERATE';
-    if (freqRatio < 0.2 && tradeSizeImbalance > 0.2) {
+
+    // 🚨 Market aktif tapi satu sisi dominan (toxic)
+    if (freqRatio > 0.6 && tradeSizeImbalance > 0.35) {
+        quality = 'TOXIC_FLOW';
+    }
+    // ❌ Sepi + tidak natural
+    else if (freqRatio < 0.3 && tradeSizeImbalance > 0.3) {
         quality = 'ILLIQUID_MANIPULATED';
-    } else if (freqRatio < 0.2) {
+    }
+    // 🧊 Sepi tapi wajar
+    else if (freqRatio < 0.3) {
         quality = 'ILLIQUID_QUIET';
-    } else if (freqRatio > 0.8 && tradeSizeImbalance < 0.1) {
+    }
+    // ✅ Ramai & seimbang
+    else if (freqRatio > 0.7 && tradeSizeImbalance < 0.15) {
         quality = 'HEALTHY_LIQUID';
     }
 
-    const signal = quality === 'ILLIQUID_MANIPULATED' ? 'CAUTION' : quality === 'HEALTHY_LIQUID' ? 'SAFE_TO_TRADE' : 'NEUTRAL';
+    let signal = 'NEUTRAL';
+    if (quality === 'ILLIQUID_MANIPULATED') signal = 'CAUTION';
+    else if (quality === 'TOXIC_FLOW') signal = 'WAIT_OR_FADE';
+    else if (quality === 'HEALTHY_LIQUID') signal = 'SAFE_TO_TRADE';
 
-    return { quality, freqRatio, tradeSizeImbalance, avgTradeSizeBuy, avgTradeSizeSell, signal };
+    return {
+        quality,
+        freqRatio,
+        tradeSizeImbalance,
+        avgTradeSizeBuy,
+        avgTradeSizeSell,
+        signal
+    };
 }
 
 function calculateMomentumConsistency(data) {
     const timeframes = [
-        { name: '1MENIT', key: 'price_move_1MENIT' },
-        { name: '5MENIT', key: 'price_move_5MENIT' },
-        { name: '10MENIT', key: 'price_move_10MENIT' },
-        { name: '30MENIT', key: 'price_move_30MENIT' },
-        { name: '1JAM', key: 'price_move_1JAM' },
-        { name: '2JAM', key: 'price_move_2JAM' }
+        { name: '1MENIT', key: 'price_move_1MENIT', thr: 0.2, w: 0.5 },
+        { name: '5MENIT', key: 'price_move_5MENIT', thr: 0.3, w: 0.8 },
+        { name: '10MENIT', key: 'price_move_10MENIT', thr: 0.4, w: 1 },
+        { name: '30MENIT', key: 'price_move_30MENIT', thr: 0.5, w: 1.2 },
+        { name: '1JAM', key: 'price_move_1JAM', thr: 0.6, w: 1.5 },
+        { name: '2JAM', key: 'price_move_2JAM', thr: 0.8, w: 2 }
     ];
 
     const current = Number(data.last || 0);
-    let bullishCount = 0, bearishCount = 0;
+    let bullScore = 0, bearScore = 0, activeTF = 0;
+
     for (const tf of timeframes) {
         const prev = Number(data[tf.key] || 0);
         if (prev <= 0) continue;
+
         const change = ((current - prev) / prev) * 100;
-        if (change > 0.5) bullishCount++;
-        else if (change < -0.5) bearishCount++;
+        if (change > tf.thr) {
+            bullScore += tf.w;
+            activeTF++;
+        } else if (change < -tf.thr) {
+            bearScore += tf.w;
+            activeTF++;
+        }
     }
-    const total = bullishCount + bearishCount;
-    const consistency = total > 0 ? Math.abs(bullishCount - bearishCount) / total : 0;
 
-    const trend = bullishCount > bearishCount ? 'BULLISH' : bearishCount > bullishCount ? 'BEARISH' : 'NEUTRAL';
-    const strength = consistency > 0.8 ? 'STRONG' : consistency > 0.5 ? 'MODERATE' : 'WEAK';
+    const totalScore = bullScore + bearScore;
+    const consistency = totalScore > 0
+        ? Math.abs(bullScore - bearScore) / totalScore
+        : 0;
 
-    return { bullishCount, bearishCount, consistency: Math.round(consistency * 100), trend, strength };
+    let trend = 'NEUTRAL';
+    if (bullScore > bearScore) trend = 'BULLISH';
+    else if (bearScore > bullScore) trend = 'BEARISH';
+
+    let strength = 'WEAK';
+    if (consistency > 0.75 && activeTF >= 4) strength = 'STRONG';
+    else if (consistency > 0.5) strength = 'MODERATE';
+
+    const compression =
+        consistency < 0.3 && activeTF >= 4 ? 'COMPRESSED' : 'NORMAL';
+
+    return {
+        bullScore: Math.round(bullScore * 10) / 10,
+        bearScore: Math.round(bearScore * 10) / 10,
+        consistency: Math.round(consistency * 100),
+        trend,
+        strength,
+        compression
+    };
 }
 
 // Attach new metrics to wrapper export

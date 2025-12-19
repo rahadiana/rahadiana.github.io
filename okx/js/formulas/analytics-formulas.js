@@ -27,12 +27,29 @@ function localGetNumeric(obj, ...keys) {
         if (!key) continue;
         if (obj[key] !== undefined && obj[key] !== null) {
             const v = obj[key];
+            // If value is an array, prefer the last numeric element (most recent)
+            if (Array.isArray(v)) {
+                for (let i = v.length - 1; i >= 0; i--) {
+                    try {
+                        const nItem = _toNum(v[i]);
+                        if (nItem !== 0 || v[i] === 0 || v[i] === '0') return nItem;
+                    } catch (e) { }
+                }
+            }
             const n = _toNum(v);
             if (n !== 0 || v === 0 || v === '0') return n;
         }
         const lk = key.toLowerCase();
         if (lower[lk] !== undefined && lower[lk] !== null) {
             const v = lower[lk];
+            if (Array.isArray(v)) {
+                for (let i = v.length - 1; i >= 0; i--) {
+                    try {
+                        const nItem = _toNum(v[i]);
+                        if (nItem !== 0 || v[i] === 0 || v[i] === '0') return nItem;
+                    } catch (e) { }
+                }
+            }
             const n = _toNum(v);
             if (n !== 0 || v === 0 || v === '0') return n;
         }
@@ -56,12 +73,28 @@ function getNumeric(data, ...keys) {
         if (!key) continue;
         if (data[key] !== undefined && data[key] !== null) {
             const v = data[key];
+            if (Array.isArray(v)) {
+                for (let i = v.length - 1; i >= 0; i--) {
+                    try {
+                        const nItem = _toNum(v[i]);
+                        if (nItem !== 0 || v[i] === 0 || v[i] === '0') return nItem;
+                    } catch (e) { }
+                }
+            }
             const n = _toNum(v);
             if (n !== 0 || v === 0 || v === '0') return n;
         }
         const lk = key.toLowerCase();
         if (lower[lk] !== undefined && lower[lk] !== null) {
             const v = lower[lk];
+            if (Array.isArray(v)) {
+                for (let i = v.length - 1; i >= 0; i--) {
+                    try {
+                        const nItem = _toNum(v[i]);
+                        if (nItem !== 0 || v[i] === 0 || v[i] === '0') return nItem;
+                    } catch (e) { }
+                }
+            }
             const n = _toNum(v);
             if (n !== 0 || v === 0 || v === '0') return n;
         }
@@ -368,7 +401,8 @@ function calculateRecommendation(data, pricePosition, timeframe, applyState = fa
         }
     } catch (e) { }
 
-    const priceBias = (50 - (Number(pricePosition) || 50)) / 50;
+    // Clamp price bias to reduce flip-flop in ranging markets
+    const priceBias = Math.max(-0.6, Math.min(0.6, (50 - (Number(pricePosition) || 50)) / 50));
     const volDurNorm = ((Number(volDurTf != null ? volDurTf : volDur2h) || 50) - 50) / 50;
     const vol24Norm = ((Number(volDur24h) || 50) - 50) / 50;
     const zImbalance = (zImbalanceTf != null) ? zImbalanceTf : _tanh((Number(zBuy) - Number(zSell)) / 3);
@@ -402,7 +436,8 @@ function calculateRecommendation(data, pricePosition, timeframe, applyState = fa
         imbalance: 0.30,
         freq: 0.20,
         persistence: 0.10,
-        divergence: 0.06
+        // Reduce divergence weight to lower double-count risk when funding or other signals
+        divergence: 0.03
     };
 
     let rawScore = 0;
@@ -413,9 +448,14 @@ function calculateRecommendation(data, pricePosition, timeframe, applyState = fa
     rawScore += W.persistence * persistenceNorm;
     rawScore += W.divergence * divergenceNorm;
 
-    rawScore = rawScore * (1 - 0.5 * riskPenalty);
+    // Apply non-linear risk penalty: smoother for low risk, aggressive for high risk
+    const riskAdj = riskPenalty < 0.6
+        ? (1 - 0.3 * riskPenalty)
+        : (1 - 0.3 * 0.6 - 0.8 * (riskPenalty - 0.6));
+    rawScore *= Math.max(0.2, riskAdj);
     // --- Funding influence: prefer LONG when funding is negative (shorts paying) ---
     try {
+        // Funding now modulates the score multiplicatively instead of being added
         const fundingPremium = getNumeric(data, 'funding_premium', 'funding_premium');
         const fundingSett = getNumeric(data, 'funding_settFundingRate', 'funding_settfundingrate');
         const fundingRate = getNumeric(data, 'funding_Rate', 'funding_rate', 'funding_interestRate');
@@ -423,13 +463,14 @@ function calculateRecommendation(data, pricePosition, timeframe, applyState = fa
         if (Math.abs(fundingPremium) > 0) fundingVal = fundingPremium;
         else if (Math.abs(fundingSett) > 0) fundingVal = fundingSett;
         else if (Math.abs(fundingRate) > 0) fundingVal = fundingRate;
-        // Normalize: treat ~0.1% (0.001) as full-scale
+        // Normalize: treat ~0.1% (0.001) as full-scale and invert sign so negative funding favors LONG
         const fundingFactor = Math.max(-1, Math.min(1, (-fundingVal) / 0.001));
-        const FUNDING_WEIGHT = 0.25; // influence weight (tunable)
-        rawScore += FUNDING_WEIGHT * fundingFactor;
+        const FUNDING_INFLUENCE = 0.15; // modulation strength (tunable)
+        rawScore *= (1 + FUNDING_INFLUENCE * fundingFactor);
     } catch (e) { /* ignore funding errors */ }
     const score = Math.max(-1, Math.min(1, rawScore));
-    const confidence = Math.round(Math.abs(score) * 100);
+    // Decay confidence by risk: high risk reduces confidence
+    const confidence = Math.max(0, Math.round(Math.abs(score) * 100 * (1 - riskPenalty)));
 
     // Calculate recommendation based on score first
     let recommendation = 'HOLD';
