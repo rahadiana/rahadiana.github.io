@@ -35,7 +35,7 @@
             try { return (typeof window !== 'undefined' && window._hiddenAlertBuffer) ? window._hiddenAlertBuffer : (window._hiddenAlertBuffer = []); } catch (e) { return (window._hiddenAlertBuffer = []); }
         },
         getPersistHistoryEnabled: function() {
-            try { return (typeof window !== 'undefined' && typeof window.persistHistoryEnabled !== 'undefined') ? window.persistHistoryEnabled : true; } catch (e) { return true; }
+            try { return (typeof window !== 'undefined' && typeof window.persistHistoryEnabled !== 'undefined') ? window.persistHistoryEnabled : false; } catch (e) { return false; }
         },
         setPersistHistoryEnabled: function(val) {
             try { if (typeof window !== 'undefined') window.persistHistoryEnabled = !!val; } catch (e) { }

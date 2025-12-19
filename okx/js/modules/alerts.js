@@ -63,12 +63,27 @@ function syncAlertNotesVisibility() {
     } catch (e) { console.warn('alert notes visibility sync failed', e); }
 }
 const lastAlertAt = {}; // per-coin throttle
-// Whether to persist per-coin history to localStorage (default: enabled)
-var persistHistoryEnabled = ((typeof window.safeLocalStorageGet === 'function') ? window.safeLocalStorageGet('okx_calc_persist', 'true') : localStorage.getItem('okx_calc_persist')) !== 'false';
+// Whether to persist per-coin history to localStorage (default: DISABLED)
+// Default to false unless explicitly set to 'true' in storage
+var persistHistoryEnabled = ((typeof window.safeLocalStorageGet === 'function') ? window.safeLocalStorageGet('okx_calc_persist', null) : localStorage.getItem('okx_calc_persist')) === 'true';
 function setPersistHistoryEnabled(val) {
     persistHistoryEnabled = !!val;
     window.persistHistoryEnabled = persistHistoryEnabled;
     try { if (window.__okxShim && typeof window.__okxShim.setPersistHistoryEnabled === 'function') window.__okxShim.setPersistHistoryEnabled(persistHistoryEnabled); } catch (e) { }
+}
+
+function clearPersistedHistories() {
+    try {
+        const keys = ['okx_calc_history', 'okx_calc_history_v1', 'okx_calc_persist_history', 'okx_calc_persist'];
+        for (const k of keys) {
+            try { localStorage.removeItem(k); } catch (e) { }
+            try { sessionStorage.removeItem(k); } catch (e) { }
+        }
+        // If an IndexedDB-based history helper is present, ask it to clear as well
+        try { if (window.idbHistory && typeof window.idbHistory.clearAllHistories === 'function') window.idbHistory.clearAllHistories(); } catch (e) { }
+        // Also clear any in-memory fallback cache
+        try { if (window._localStorageFallback) { for (const k of Object.keys(window._localStorageFallback)) { if (k && k.indexOf('okx_calc') === 0) delete window._localStorageFallback[k]; } } } catch (e) { }
+    } catch (e) { /* ignore */ }
 }
 
 // create banner container
@@ -206,14 +221,39 @@ try {
             // initialize state from saved preference
             alt.checked = persistHistoryEnabled;
             alt.addEventListener('change', (ev) => {
-                setPersistHistoryEnabled(ev.target.checked);
-                try { if (main) { main.checked = persistHistoryEnabled; } if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet('okx_calc_persist', persistHistoryEnabled ? 'true' : 'false'); else localStorage.setItem('okx_calc_persist', persistHistoryEnabled ? 'true' : 'false'); } catch (e) { }
+                try {
+                    const enable = !!ev.target.checked;
+                    if (!enable) {
+                        const doClear = confirm('Disable Persist History? Press OK to also CLEAR stored histories, Cancel to keep stored histories.');
+                        setPersistHistoryEnabled(false);
+                        if (main) main.checked = false;
+                        try { if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet('okx_calc_persist', 'false'); else localStorage.setItem('okx_calc_persist', 'false'); } catch (e) { }
+                        if (doClear) clearPersistedHistories();
+                    } else {
+                        setPersistHistoryEnabled(true);
+                        if (main) main.checked = true;
+                        try { if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet('okx_calc_persist', 'true'); else localStorage.setItem('okx_calc_persist', 'true'); } catch (e) { }
+                    }
+                } catch (e) { /* ignore */ }
             });
         }
         if (main && alt) {
-            // also sync main -> alt when main changes
+            // also sync main -> alt when main changes (with optional clear on disable)
             main.addEventListener('change', (ev) => {
-                try { alt.checked = !!ev.target.checked; } catch (e) { }
+                try {
+                    const enable = !!ev.target.checked;
+                    if (!enable) {
+                        const doClear = confirm('Disable Persist History? Press OK to also CLEAR stored histories, Cancel to keep stored histories.');
+                        setPersistHistoryEnabled(false);
+                        alt.checked = false;
+                        try { if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet('okx_calc_persist', 'false'); else localStorage.setItem('okx_calc_persist', 'false'); } catch (e) { }
+                        if (doClear) clearPersistedHistories();
+                    } else {
+                        setPersistHistoryEnabled(true);
+                        alt.checked = true;
+                        try { if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet('okx_calc_persist', 'true'); else localStorage.setItem('okx_calc_persist', 'true'); } catch (e) { }
+                    }
+                } catch (e) { }
             });
         }
     } catch (e) { console.warn('alt persist wiring failed', e); }
@@ -732,10 +772,23 @@ try {
         t.checked = persistHistoryEnabled;
         // Defensive: make sure the toggle and its parent accept pointer events
         try { t.style.pointerEvents = 'auto'; if (t.parentElement) t.parentElement.style.pointerEvents = 'auto'; } catch (e) { }
-        // Wire change handler
+        // Wire change handler (ask before clearing persisted data when disabling)
         t.addEventListener('change', (ev) => {
-            setPersistHistoryEnabled(ev.target.checked);
-            try { if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet('okx_calc_persist', persistHistoryEnabled ? 'true' : 'false'); else localStorage.setItem('okx_calc_persist', persistHistoryEnabled ? 'true' : 'false'); } catch (e) { }
+            try {
+                const enable = !!ev.target.checked;
+                if (!enable) {
+                    const doClear = confirm('Disable Persist History? Press OK to also CLEAR stored histories, Cancel to keep stored histories.');
+                    setPersistHistoryEnabled(false);
+                    try { if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet('okx_calc_persist', 'false'); else localStorage.setItem('okx_calc_persist', 'false'); } catch (e) { }
+                    // mirror to alt if present
+                    try { const alt = document.getElementById('persistHistoryToggleAlt'); if (alt) alt.checked = false; } catch (e) { }
+                    if (doClear) clearPersistedHistories();
+                } else {
+                    setPersistHistoryEnabled(true);
+                    try { if (typeof window.safeLocalStorageSet === 'function') window.safeLocalStorageSet('okx_calc_persist', 'true'); else localStorage.setItem('okx_calc_persist', 'true'); } catch (e) { }
+                    try { const alt = document.getElementById('persistHistoryToggleAlt'); if (alt) alt.checked = true; } catch (e) { }
+                }
+            } catch (e) { /* ignore */ }
         });
         // Also make the label clickable (some layouts may overlay the checkbox)
         try {

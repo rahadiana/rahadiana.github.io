@@ -1243,16 +1243,19 @@ try {
                         } catch (e) { /* ignore */ }
                     } else {
                         const nextTime = data.funding_nextFundingTime ? new Date(Number(data.funding_nextFundingTime)).toLocaleString() : (data.funding_Time ? new Date(Number(data.funding_Time)).toLocaleString() : '-');
+                        // Prefer explicit per-8h `funding_Rate` when available (may be an array)
+                        const fundingRateVal = getNumeric(data, 'funding_Rate', 'funding_rate', 'funding_interestRate');
+                        const fundingRateNum = (fundingRateVal !== null && !Number.isNaN(Number(fundingRateVal))) ? Number(fundingRateVal) : null;
+                        // Keep premiumVal for display but filter using fundingRate
                         const premiumVal = (data.funding_premium !== undefined) ? data.funding_premium : (data.funding_Rate !== undefined ? data.funding_Rate : (data.funding_interestRate !== undefined ? data.funding_interestRate : null));
-                        // Apply funding tab filters (Sign / Min |abs|) read at call-time
+                        // Apply funding tab filters (Sign / Min |abs|) read at call-time — now using fundingRate
                         try {
                             const { ftSign, minAbs } = getFundingFilterValues();
-                            const premiumNum = (premiumVal !== null && !Number.isNaN(Number(premiumVal))) ? Number(premiumVal) : null;
                             let skipByFunding = false;
-                            if (ftSign === 'positive' && (premiumNum === null || premiumNum <= 0)) skipByFunding = true;
-                            if (ftSign === 'negative' && (premiumNum === null || premiumNum >= 0)) skipByFunding = true;
-                            if (ftSign === 'zero' && (premiumNum !== 0)) skipByFunding = true;
-                            if (minAbs > 0 && (premiumNum === null || Math.abs(premiumNum) < minAbs)) skipByFunding = true;
+                            if (ftSign === 'positive' && (fundingRateNum === null || fundingRateNum <= 0)) skipByFunding = true;
+                            if (ftSign === 'negative' && (fundingRateNum === null || fundingRateNum >= 0)) skipByFunding = true;
+                            if (ftSign === 'zero' && (fundingRateNum !== 0)) skipByFunding = true;
+                            if (minAbs > 0 && (fundingRateNum === null || Math.abs(fundingRateNum) < minAbs)) skipByFunding = true;
                             if (skipByFunding) {
                                 try { if (tr) fundingBodyEl.removeChild(tr); } catch (e) { }
                                 try {
@@ -1266,10 +1269,10 @@ try {
                             }
                         } catch (e) { /* ignore filter-eval errors */ }
                         const premium = premiumVal !== null ? fmtNum(premiumVal, 6) : '-';
-                        const premiumClass = (premiumVal !== null && !Number.isNaN(Number(premiumVal))) ? (Number(premiumVal) < 0 ? 'text-danger' : (Number(premiumVal) > 0 ? 'text-success' : '')) : '';
-                        const fundingRateVal = getNumeric(data, 'funding_Rate', 'funding_rate', 'funding_interestRate');
+                        // Color negative => red, non-negative => green
+                        const premiumClass = (premiumVal !== null && !Number.isNaN(Number(premiumVal))) ? (Number(premiumVal) < 0 ? 'text-danger' : 'text-success') : '';
                         const fundingRateDisplay = (fundingRateVal === null || fundingRateVal === undefined) ? '-' : (Number.isFinite(Number(fundingRateVal)) ? (Number(fundingRateVal) * 100).toFixed(Math.abs(fundingRateVal) < 0.001 ? 3 : 2) + '%' : String(fundingRateVal));
-                        const fundingRateClass = (fundingRateVal !== null && !Number.isNaN(Number(fundingRateVal))) ? (Number(fundingRateVal) < 0 ? 'text-success' : (Number(fundingRateVal) > 0 ? 'text-danger' : '')) : '';
+                        const fundingRateClass = (fundingRateVal !== null && !Number.isNaN(Number(fundingRateVal))) ? (Number(fundingRateVal) < 0 ? 'text-danger' : 'text-success') : '';
                         const sett = data.funding_settFundingRate !== undefined ? fmtNum(data.funding_settFundingRate, 6) : '-';
                         const minR = data.funding_minFundingRate !== undefined ? fmtNum(data.funding_minFundingRate, 6) : '-';
                         const impact = (data.funding_impactValue !== undefined) ? String(data.funding_impactValue) : '-';
@@ -1413,55 +1416,7 @@ try {
         window.PERSIST_KEY = PERSIST_KEY;
         window.persistHistoryEnabled = persistHistoryEnabled;
         window.getAdvancedSortState = function() { return advancedSortState; };
-        // Funding simulator wiring
-        try {
-            const openBtn = document.getElementById('openFundingSimBtn');
-            if (openBtn) openBtn.addEventListener('click', () => {
-                try {
-                    const modalEl = document.getElementById('fundingSimModal');
-                    const bs = new bootstrap.Modal(modalEl);
-                    // prefill from last selected coin if present
-                    const coin = window._lastReceivedCoin || '';
-                    try { if (coin) document.getElementById('simCoin').value = coin; } catch (e) { }
-                    bs.show();
-                } catch (e) { console.warn('openFundingSim failed', e); }
-            });
-
-            // Simulator compute function
-            function computeFundingSim() {
-                try {
-                    const notional = Number(document.getElementById('simNotional').value) || 0;
-                    const lev = Number(document.getElementById('simLeverage').value) || 1;
-                    const side = (document.getElementById('simSide').value || 'LONG').toUpperCase();
-                    const rate = Number(document.getElementById('simFundingRate').value) || 0;
-                    const periodHours = Number(document.getElementById('simPeriodHours').value) || 8;
-                    const periods = Number(document.getElementById('simPeriods').value) || 1;
-                    // Funding P&L per period (USD) = notional * rate * (1 for LONG receives if rate<0?)
-                    // Convention: fundingRate >0 means LONG pays SHORT. So
-                    // LONG P&L = - rate * notional
-                    // SHORT P&L = rate * notional
-                    const sign = (side === 'LONG') ? -1 : 1;
-                    const fPer = sign * rate * notional; // per funding period
-                    const fPerLeverageAdjusted = fPer * lev; // exposure amplified by leverage
-                    // convert to per-day assuming periodHours
-                    const perDay = periodHours > 0 ? (24 / periodHours) * fPer : fPer;
-                    const bePctPerDay = perDay === 0 ? 0 : (perDay / notional) * 100;
-                    document.getElementById('sim_f_per').textContent = (fPerLeverageAdjusted >= 0 ? '+' : '') + Number(fPerLeverageAdjusted).toFixed(4) + ' USD';
-                    document.getElementById('sim_f_day').textContent = (perDay * lev >= 0 ? '+' : '') + Number(perDay * lev).toFixed(4) + ' USD/day';
-                    document.getElementById('sim_be_pct').textContent = Number(bePctPerDay).toFixed(4) + ' %';
-                } catch (e) { console.warn('computeFundingSim failed', e); }
-            }
-
-            // wire inputs
-            ['simNotional','simLeverage','simSide','simFundingRate','simPeriodHours','simPeriods'].forEach(id => {
-                const el = document.getElementById(id);
-                if (!el) return;
-                el.addEventListener('input', computeFundingSim);
-                el.addEventListener('change', computeFundingSim);
-            });
-            // compute once initially
-            setTimeout(() => { try { computeFundingSim(); } catch (e) {} }, 400);
-        } catch (e) { console.warn('funding simulator wiring failed', e); }
+        // Funding simulator removed
         
         // Update rowLimit when limitInput changes
         limitInput.addEventListener('change', () => { window.rowLimit = parseInt(limitInput.value, 10) || Infinity; scheduleUpdateTable(); });
