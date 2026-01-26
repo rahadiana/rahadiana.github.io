@@ -270,6 +270,13 @@ function connect() {
         p2p.onMeshReady = () => {
             console.log('[SECURITY] Mesh Edge Active. Sending validation signal...');
             ws.send(JSON.stringify({ type: 'p2p:ready' }));
+
+            // Periodically re-assert readiness to prevent state drift
+            setInterval(() => {
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'p2p:ready' }));
+                }
+            }, 15000);
         };
 
         if (!p2p.isSuperPeer) {
