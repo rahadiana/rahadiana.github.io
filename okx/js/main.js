@@ -255,15 +255,52 @@ async function decompressGzip(blob) {
     return await new Response(decompressedStream).text();
 }
 
+function checkWebRTCSupport() {
+    return !!(window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection);
+}
+
+function detectBrowser() {
+    const ua = navigator.userAgent.toLowerCase();
+    if (ua.includes('chrome') && !ua.includes('edge')) return 'Chrome';
+    if (ua.includes('firefox')) return 'Firefox';
+    if (ua.includes('safari') && !ua.includes('chrome')) return 'Safari';
+    if (ua.includes('edge') || ua.includes('edg/')) return 'Edge';
+    if (ua.includes('opera') || ua.includes('opr/')) return 'Opera';
+    return 'Unknown';
+}
+
+function safeSend(msg) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(msg));
+        return true;
+    }
+    return false;
+}
+
+function sendWebRTCCapability() {
+    const hasWebRTC = checkWebRTCSupport();
+    console.log(`[SECURITY] Mesh Capability: ${hasWebRTC ? 'Verified' : 'Failed'}`);
+
+    safeSend({
+        type: 'webrtc:capability',
+        hasWebRTC: hasWebRTC,
+        browser: detectBrowser(),
+        platform: navigator.platform,
+        userAgent: navigator.userAgent
+    });
+}
+
 function connect() {
     ws = new WebSocket(WS_URL);
 
     ws.onopen = () => {
         console.log('Main WS Connected');
         statusDot.className = 'w-1.5 h-1.5 rounded-full bg-bb-green animate-pulse';
-        statusText.innerText = 'CONNECTED';
-        statusText.className = 'text-bb-green font-bold tracking-wider';
-        if (reconnectInterval) { clearInterval(reconnectInterval); reconnectInterval = null; }
+        statusText.innerText = 'PROVING CAPABILITY...';
+        statusText.className = 'text-bb-gold animate-pulse';
+
+        // ⭐ institutional Verification: Prove WebRTC capability to server
+        sendWebRTCCapability();
 
         // Init P2P Mesh
         p2p = new P2PMesh(ws, (data) => {
@@ -273,13 +310,11 @@ function connect() {
         // Anti-Leech Validation
         p2p.onMeshReady = () => {
             console.log('[SECURITY] Mesh Edge Active. Sending validation signal...');
-            ws.send(JSON.stringify({ type: 'p2p:ready' }));
+            safeSend({ type: 'p2p:ready' });
 
             // Periodically re-assert readiness to prevent state drift
             setInterval(() => {
-                if (ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({ type: 'p2p:ready' }));
-                }
+                safeSend({ type: 'p2p:ready' });
             }, 15000);
         };
 
@@ -309,12 +344,24 @@ function connect() {
                 if (p2p.isSuperPeer) {
                     statusText.innerText = `READY [S] / PROTECTED`;
                 }
+            } else if (payload.type === 'webrtc:capability:ack') {
+                console.log('[SECURITY] Server verified WebRTC capability.');
+                if (reconnectInterval) { clearInterval(reconnectInterval); reconnectInterval = null; }
             } else if (payload.type === 'p2p:status') {
                 statusText.innerText = `READY [${p2p.isSuperPeer ? 'S' : 'P'}] / ${payload.status}`;
                 statusText.className = 'text-bb-green font-bold animate-pulse';
             } else if (payload.type === 'error') {
-                alert(`SERVER ERROR: ${payload.msg}`);
                 console.error('[SERVER ERROR]', payload.msg);
+
+                if (payload.code === 'BOT_DETECTED') {
+                    alert(`ACCESS DENIED: ${payload.msg}\n\nThis system requires a real browser for Institutional P2P distribution.`);
+                } else if (payload.code === 'NO_WEBRTC_CAPABILITY' || payload.code === 'NO_WEBRTC') {
+                    alert(`WEBRTC ERROR: ${payload.msg}`);
+                } else if (payload.code === 'P2P_VALIDATION_TIMEOUT') {
+                    alert(`MESH ERROR: ${payload.msg}`);
+                } else {
+                    alert(`SERVER ERROR: ${payload.msg}`);
+                }
             }
             else if (payload.type === 'peer-update') {
                 p2p.updatePeerList(payload.peers, payload.superPeers);
@@ -332,6 +379,12 @@ function connect() {
                 // Lightweight update to keep ticker alive & populate sidebar while mesh forms
                 const coin = payload.coin;
                 if (!marketState[coin]) marketState[coin] = { coin: coin };
+
+                // Show warning if grace period is running out
+                if (payload.graceRemaining !== undefined && payload.graceRemaining < 120) {
+                    statusText.innerText = `MESH PENDING: ${payload.graceRemaining}s`;
+                    statusText.className = 'text-bb-red animate-pulse';
+                }
 
                 // Patch Price data for sidebar visualization
                 marketState[coin].raw = {

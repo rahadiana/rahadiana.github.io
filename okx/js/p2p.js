@@ -126,7 +126,7 @@ class P2PMesh {
         if (this.peers.has(targetId)) return;
 
         // Notify server we're attempting
-        this.ws.send(JSON.stringify({ type: 'p2p:attempt', targetId }));
+        this.sendMessage({ type: 'p2p:attempt', targetId });
 
         const pc = this.createPeerConnection(targetId);
 
@@ -152,11 +152,11 @@ class P2PMesh {
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
 
-            this.ws.send(JSON.stringify({
+            this.sendMessage({
                 type: 'offer',
                 targetId,
                 offer
-            }));
+            });
         } catch (err) {
             console.error(`[P2P] Error creating offer to ${targetId}:`, err);
             this.cleanupPeer(targetId);
@@ -175,7 +175,7 @@ class P2PMesh {
         console.log(`[P2P] 📨 Processing offer from: ${senderId}`);
 
         // Notify server we're attempting
-        this.ws.send(JSON.stringify({ type: 'p2p:attempt', targetId: senderId }));
+        this.sendMessage({ type: 'p2p:attempt', targetId: senderId });
 
         const pc = this.createPeerConnection(senderId);
 
@@ -206,11 +206,11 @@ class P2PMesh {
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
 
-            this.ws.send(JSON.stringify({
+            this.sendMessage({
                 type: 'answer',
                 targetId: senderId,
                 answer
-            }));
+            });
         } catch (err) {
             console.error(`[P2P] Error handling offer from ${senderId}:`, err);
             this.cleanupPeer(senderId);
@@ -274,11 +274,11 @@ class P2PMesh {
 
         pc.onicecandidate = (event) => {
             if (event.candidate) {
-                this.ws.send(JSON.stringify({
+                this.sendMessage({
                     type: 'ice-candidate',
                     targetId,
                     candidate: event.candidate
-                }));
+                });
             }
         };
 
@@ -299,20 +299,20 @@ class P2PMesh {
                 this.retryCounts.delete(targetId);
 
                 // Notify server
-                this.ws.send(JSON.stringify({
+                this.sendMessage({
                     type: 'p2p:connected',
                     targetId
-                }));
+                });
 
                 console.log(`[P2P] ✅ Successfully connected to ${targetId}`);
             }
 
             if (['failed', 'closed', 'disconnected'].includes(state)) {
                 // Notify server
-                this.ws.send(JSON.stringify({
+                this.sendMessage({
                     type: 'p2p:disconnected',
                     targetId
-                }));
+                });
 
                 this.cleanupPeer(targetId);
 
