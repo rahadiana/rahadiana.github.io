@@ -12,11 +12,23 @@ class P2PMesh {
         this.dataChannels = new Map(); // id -> RTCDataChannel
         this.iceCandidateBuffers = new Map(); // id -> RTCIceCandidate[]
         this.stats = new Map(); // id -> { sent: 0, received: 0, lastSeen: Date.now(), rtt: 0 }
+        this.retryCounts = new Map(); // id -> count
         this.isSuperPeer = false;
         this.knownPeers = [];
         this.config = { superPeers: [] };
         this.onMeshReady = null; // Callback for server validation
         this.meshValidated = false;
+
+        this.ICE_CONFIG = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' },
+                { urls: 'stun:global.stun.twilio.com:3478' }
+            ],
+            iceCandidatePoolSize: 10
+        };
+        this.MAX_RETRIES = 5;
     }
 
     init(peerId, config) {
@@ -38,8 +50,6 @@ class P2PMesh {
         }
 
         // REDUNDANT FULL-MESH STRATEGY
-        // Connect to ALL known peers to maximize data paths
-        // Use lexicographical comparison (myId < targetId) to decide who initiates
         peers.forEach(id => {
             if (id !== this.peerId && !this.peers.has(id)) {
                 if (this.peerId < id) {
@@ -128,9 +138,7 @@ class P2PMesh {
     }
 
     createPeerConnection(targetId) {
-        const pc = new RTCPeerConnection({
-            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-        });
+        const pc = new RTCPeerConnection(this.ICE_CONFIG);
 
         // RECEIVE Channel (Responder Only)
         pc.ondatachannel = (event) => {
@@ -145,19 +153,49 @@ class P2PMesh {
         };
 
         pc.onconnectionstatechange = () => {
-            console.log(`[P2P] Mesh Link (${targetId}): ${pc.connectionState}`);
-            if (pc.connectionState === 'connected') this.iceCandidateBuffers.delete(targetId);
-            if (['failed', 'closed', 'disconnected'].includes(pc.connectionState)) {
-                this.peers.delete(targetId);
-                this.dataChannels.delete(targetId);
+            console.log(`[P2P] Mesh Link (${targetId}) STATE: ${pc.connectionState}`);
+
+            if (pc.connectionState === 'connected') {
                 this.iceCandidateBuffers.delete(targetId);
-                this.stats.delete(targetId);
+                this.retryCounts.delete(targetId);
+            }
+
+            if (['failed', 'closed', 'disconnected'].includes(pc.connectionState)) {
+                this.cleanupPeer(targetId);
+                this.retryConnection(targetId);
             }
         };
 
         this.peers.set(targetId, pc);
         this.stats.set(targetId, { sent: 0, received: 0, lastSeen: Date.now(), rtt: 0 });
         return pc;
+    }
+
+    cleanupPeer(targetId) {
+        const pc = this.peers.get(targetId);
+        if (pc) pc.close();
+        this.peers.delete(targetId);
+        this.dataChannels.delete(targetId);
+        this.iceCandidateBuffers.delete(targetId);
+    }
+
+    retryConnection(targetId) {
+        // Only retry if target is still in knownPeers and we are the lexicographical initiator
+        if (!this.knownPeers.includes(targetId) || this.peerId >= targetId) return;
+
+        const count = this.retryCounts.get(targetId) || 0;
+        if (count < this.MAX_RETRIES) {
+            const delay = Math.pow(2, count) * 2000;
+            console.log(`[P2P] Retrying Link ${targetId} in ${delay}ms (Attempt ${count + 1}/${this.MAX_RETRIES})...`);
+            this.retryCounts.set(targetId, count + 1);
+            setTimeout(() => {
+                if (this.knownPeers.includes(targetId) && !this.peers.has(targetId)) {
+                    this.connectToPeer(targetId);
+                }
+            }, delay);
+        } else {
+            console.warn(`[P2P] Link ${targetId} Exhausted. Giving up after ${this.MAX_RETRIES} attempts.`);
+        }
     }
 
     setupDataChannel(targetId, dc) {
