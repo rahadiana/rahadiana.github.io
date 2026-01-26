@@ -24,14 +24,14 @@
             theme: {
                 extend: {
                     colors: {
-                        'bb-black': '#0a0a0a',
-                        'bb-dark': '#121212',
-                        'bb-panel': '#1a1a1a',
-                        'bb-border': '#333333',
-                        'bb-gold': '#fbbf24', // amber-500
-                        'bb-green': '#22c55e', // green-500
-                        'bb-red': '#ef4444', // red-500
-                        'bb-blue': '#3b82f6', // blue-500
+                        'bb-black': '#050505',
+                        'bb-dark': 'rgba(18, 18, 18, 0.85)',
+                        'bb-panel': 'rgba(26, 26, 26, 0.6)',
+                        'bb-border': 'rgba(255, 255, 255, 0.08)',
+                        'bb-gold': '#fbbf24',
+                        'bb-green': '#22c55e',
+                        'bb-red': '#ef4444',
+                        'bb-blue': '#3b82f6',
                         'bb-text': '#e5e5e5',
                         'bb-muted': '#737373',
                     },
@@ -39,7 +39,13 @@
                         mono: ['"JetBrains Mono"', 'Consolas', 'monospace'],
                     },
                     fontSize: {
-                        'xxs': '0.65rem',
+                        'xxs': '0.6rem',
+                    },
+                    backdropBlur: {
+                        'xs': '2px',
+                    },
+                    boxShadow: {
+                        'gold-glow': '0 0 15px rgba(251, 191, 36, 0.15)',
                     }
                 }
             }
@@ -52,12 +58,21 @@
 
     <!-- HEADER -->
     <header
-        class="bg-bb-dark border-b border-bb-border h-10 flex px-3 items-stretch justify-between shrink-0 z-50 overflow-visible">
-        <div class="flex items-stretch gap-4">
+        class="bg-bb-dark/50 backdrop-blur-xl border-b border-bb-border h-10 flex px-4 items-stretch justify-between shrink-0 z-50 overflow-visible relative">
+        <!-- Decoration: Bottom Glow Line -->
+        <div
+            class="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-bb-gold/30 to-transparent">
+        </div>
+
+        <div class="flex items-stretch gap-6">
             <!-- Logo Section -->
-            <div class="flex items-center gap-2 pr-4">
-                <span class="text-bb-gold font-bold text-lg leading-none">OKX SIGNAL TERMINAL</span>
-                <span class="bg-bb-gold text-black text-[9px] px-1 font-bold rounded-sm">V2</span>
+            <div class="flex items-center gap-2 pr-2">
+                <span
+                    class="text-bb-gold font-black text-base leading-none tracking-tighter drop-shadow-[0_0_10px_rgba(251,191,36,0.2)]">SIGNAL
+                    TERMINAL</span>
+                <span
+                    class="bg-bb-gold/10 text-bb-gold text-[8px] px-1 font-black rounded border border-bb-gold/30 uppercase">WEB3
+                    CORE</span>
             </div>
 
             <!-- TOP LEVEL TABS -->
