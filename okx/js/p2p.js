@@ -116,15 +116,13 @@ class P2PMesh {
             }
         });
 
-        // Prune stale connections (only in large groups)
-        if (peers.length > 5) {
-            this.peers.forEach((pc, id) => {
-                if (!targets.has(id)) {
-                    console.log(`[P2P] ✂️ Pruning stale connection: ${id}`);
-                    this.cleanupPeer(id);
-                }
-            });
-        }
+        // Prune stale connections (Peers that are no longer in our target list)
+        this.peers.forEach((pc, id) => {
+            if (!targets.has(id)) {
+                console.log(`[P2P] ✂️ Pruning stale connection: ${id}`);
+                this.cleanupPeer(id);
+            }
+        });
 
         // Trigger early validation if we have at least one working connection
         this.checkEarlyValidation();
@@ -356,6 +354,7 @@ class P2PMesh {
 
         this.peers.delete(targetId);
         this.dataChannels.delete(targetId);
+        this.stats.delete(targetId); // ⭐ REMOVE Stats so they disappear from UI
         this.iceCandidateBuffers.delete(targetId);
     }
 
