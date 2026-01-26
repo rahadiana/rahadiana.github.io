@@ -23,8 +23,10 @@ export function render(container) {
                             <th class="p-2 text-center border-l border-bb-border/30 cursor-pointer hover:text-white" data-sort="m5">5M</th>
                             <th class="p-2 text-center border-l border-bb-border/30 cursor-pointer hover:text-white" data-sort="m10">10M</th>
                             <th class="p-2 text-center border-l border-bb-border/30 cursor-pointer hover:text-white" data-sort="m15">15M</th>
+                            <th class="p-2 text-center border-l border-bb-border/30 cursor-pointer hover:text-white" data-sort="m20">20M</th>
                             <th class="p-2 text-center border-l border-bb-border/30 cursor-pointer hover:text-white" data-sort="m30">30M</th>
                             <th class="p-2 text-center border-l border-bb-border/30 cursor-pointer hover:text-white" data-sort="h1">1H</th>
+                            <th class="p-2 text-center border-l border-bb-border/30 cursor-pointer hover:text-white" data-sort="h2">2H</th>
                             <th class="p-2 text-center border-l border-bb-border/30 cursor-pointer hover:text-white" data-sort="d1">1D</th>
                         </tr>
                     </thead>
@@ -89,12 +91,17 @@ function updateTable() {
             const t = b + s;
             const ratio = t > 0 ? (b - s) / t : 0;
 
-            // Pace Durability logic (simplified global version)
             const h1Base = ((vol.vol_buy_1JAM || 0) + (vol.vol_sell_1JAM || 0)) / 60;
             const currentPace = t / mult;
             const durability = h1Base > 0 ? Math.min(1.0, (currentPace / h1Base) / 2) : 0;
 
-            return { ratio, durability };
+            // ⭐ Institutional Upgrade: AVG-based Spike (Historical)
+            const avgVal = raw.AVG || {};
+            const histTotal = (avgVal[`avg_VOLCOIN_buy_${tf}`] || 0) + (avgVal[`avg_VOLCOIN_sell_${tf}`] || 0);
+            const histPace = histTotal / mult;
+            const avgSpike = histPace > 0 ? (currentPace / histPace) : 0;
+
+            return { ratio, durability, avgSpike };
         };
 
         dataArray.push({
@@ -105,8 +112,10 @@ function updateTable() {
             m5: getMetrics('5MENIT', 5),
             m10: getMetrics('10MENIT', 10),
             m15: getMetrics('15MENIT', 15),
+            m20: getMetrics('20MENIT', 20),
             m30: getMetrics('30MENIT', 30),
             h1: getMetrics('1JAM', 60),
+            h2: getMetrics('2JAM', 120),
             d1: getMetrics('24JAM', 1440)
         });
     });
@@ -134,19 +143,23 @@ function updateTable() {
         const rColor = getRatioColor(m.ratio);
         const rLabel = m.ratio >= 0.10 ? 'BUY' : m.ratio <= -0.10 ? 'SELL' : 'NEUT';
 
-        // Mini Bar
-        const barWidth = Math.round(m.durability * 5); // 5 segments
+        // mini bar and spike
+        const avgTag = m.avgSpike > 1.5 ? `<span class="text-bb-gold">${m.avgSpike.toFixed(1)}x</span>` : `<span class="text-bb-muted/30">AVG</span>`;
+        const barWidth = Math.round(m.durability * 5);
         let bars = '';
         const dColor = getDurabilityColor(m.durability);
         for (let i = 0; i < 5; i++) {
-            bars += `<span class="w-1.5 h-2 rounded-xxs ${i < barWidth ? dColor : 'bg-bb-border/20'}"></span>`;
+            bars += `<span class="w-1.5 h-1.5 rounded-xxs ${i < barWidth ? dColor : 'bg-bb-border/10'}"></span>`;
         }
 
         return `
             <td class="p-1 border-l border-bb-border/20">
-                <div class="flex flex-col items-center">
-                    <div class="flex gap-0.5 mb-1">${bars}</div>
-                    <div class="flex justify-between w-full px-1 text-[7px] font-bold">
+                <div class="flex flex-col items-center leading-none gap-0.5">
+                    <div class="flex items-center gap-1">
+                        <div class="flex gap-0.25">${bars}</div>
+                        <div class="text-[6px] font-black tracking-tighter">${avgTag}</div>
+                    </div>
+                    <div class="flex justify-between w-full px-1 text-[7px] font-black italic">
                         <span class="${rColor}">${m.ratio > 0 ? '+' : ''}${m.ratio.toFixed(2)}</span>
                         <span class="${rColor}">${rLabel}</span>
                     </div>
@@ -167,9 +180,10 @@ function updateTable() {
             ${createProfileCell(item.m5)}
             ${createProfileCell(item.m10)}
             ${createProfileCell(item.m15)}
+            ${createProfileCell(item.m20)}
             ${createProfileCell(item.m30)}
             ${createProfileCell(item.h1)}
-            ${createProfileCell(item.h4)}
+            ${createProfileCell(item.h2)}
             ${createProfileCell(item.d1)}
         </tr>
     `).join('');

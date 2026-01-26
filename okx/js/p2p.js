@@ -20,6 +20,7 @@ class P2PMesh {
         this.meshValidated = false;
         this.connectionTimeouts = new Map(); // id -> timeout
         this.validationSent = false;
+        this.startTime = Date.now();
 
         this.ICE_CONFIG = {
             iceServers: [
@@ -487,6 +488,7 @@ class P2PMesh {
             myId: this.peerId,
             isSuperPeer: this.isSuperPeer,
             isValidated: this.meshValidated,
+            startTime: this.startTime,
             peerCount: this.peers.size,
             activeChannels: Array.from(this.dataChannels.values())
                 .filter(dc => dc.readyState === 'open').length,

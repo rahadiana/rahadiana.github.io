@@ -59,7 +59,9 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
     const tfs = [
         { label: '1M', key: '1MENIT' },
         { label: '5M', key: '5MENIT' },
+        { label: '10M', key: '10MENIT' },
         { label: '15M', key: '15MENIT' },
+        { label: '20M', key: '20MENIT' },
         { label: '30M', key: '30MENIT' },
         { label: '1H', key: '1JAM' },
         { label: '2H', key: '2JAM' },
@@ -74,8 +76,6 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
         const pChg = priceData[`percent_change_${tf.key}`] || 0;
 
         // Durability Score Logic: 
-        // We use the 15m as base for 1m/5m, and 24h as base for 1h.
-        // For simplicity: Pace relative to 1H average in the RAW VOL data.
         const v5m = (volData.vol_buy_5MENIT || 0) + (volData.vol_sell_5MENIT || 0);
         const v1h = (volData.vol_buy_1JAM || 0) + (volData.vol_sell_1JAM || 0);
         const paceBase = v1h / 60; // 1h avg pace
@@ -83,7 +83,9 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
         let multiplier = 1;
         if (tf.key === '1MENIT') multiplier = 1;
         if (tf.key === '5MENIT') multiplier = 5;
+        if (tf.key === '10MENIT') multiplier = 10;
         if (tf.key === '15MENIT') multiplier = 15;
+        if (tf.key === '20MENIT') multiplier = 20;
         if (tf.key === '30MENIT') multiplier = 30;
         if (tf.key === '1JAM') multiplier = 60;
         if (tf.key === '2JAM') multiplier = 120;
@@ -91,6 +93,14 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
 
         const currentPace = total / multiplier;
         let score = paceBase > 0 ? (currentPace / paceBase) : 0.5;
+
+        // ⭐ Institutional Upgrade: AVG-based Spike (Historical)
+        const avgVal = data.raw?.AVG || {};
+        const histBuy = avgVal[`avg_VOLCOIN_buy_${tf.key}`] || 1;
+        const histSell = avgVal[`avg_VOLCOIN_sell_${tf.key}`] || 1;
+        const histTotal = histBuy + histSell;
+        const histPace = histTotal / multiplier;
+        const avgSpike = histPace > 0 ? (currentPace / histPace) : 1.0;
 
         // Normalize score to 0-1 range for the visual bar (Clamped 1.0 = Max Visual)
         // Adjust scaling: 0.5x = Normal, > 1x = Strong
@@ -104,6 +114,7 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
             ...tf,
             score: normalizedScore,
             rawScore: score,
+            avgSpike,
             buyPct,
             pChg,
             state,
@@ -193,9 +204,15 @@ function updateBarsUI(tfs) {
                                 <span class="text-bb-gold font-black italic tracking-tighter">${tf.state}</span>
                             </div>
                             <div class="bg-bb-gold/10 p-2 mt-2 rounded border border-bb-gold/20">
-                                <div class="flex justify-between items-center text-white font-black">
-                                    <span class="text-[9px] text-bb-gold/80">SCORE</span>
-                                    <span class="text-lg">${(tf.score * 100).toFixed(0)}%</span>
+                                <div class="flex flex-col gap-1">
+                                    <div class="flex justify-between items-center text-white font-black">
+                                        <span class="text-[9px] text-bb-gold/80 uppercase">1H Pace Score</span>
+                                        <span class="text-lg">${(tf.score * 100).toFixed(0)}%</span>
+                                    </div>
+                                    <div class="flex justify-between items-center text-white font-black border-t border-bb-gold/10 pt-1">
+                                        <span class="text-[9px] text-bb-gold/80 uppercase">Hist AVG Spike</span>
+                                        <span class="text-xs text-bb-gold">${tf.avgSpike.toFixed(2)}x</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>

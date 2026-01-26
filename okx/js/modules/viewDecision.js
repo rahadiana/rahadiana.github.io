@@ -2,7 +2,7 @@ import * as Utils from '../utils.js';
 
 export function render(container) {
     container.innerHTML = `
-        <div class="h-full flex flex-col gap-4 p-3 bg-bb-black text-bb-text font-sans">
+        <div class="min-h-full flex flex-col gap-4 p-4 bg-bb-black text-bb-text font-sans">
             
             <!-- TOP DECISION CARD -->
             <div class="bg-bb-panel border-2 border-bb-border rounded-lg p-6 shadow-2xl flex flex-col items-center justify-center min-h-[180px] relative overflow-hidden" id="decision-main-card">
@@ -28,8 +28,19 @@ export function render(container) {
                 </div>
             </div>
 
+            <!-- INTELLIGENCE BRIEFING: NARRATIVE SUMMARY -->
+            <div class="panel p-5 pb-5 relative !overflow-visible bg-white/[0.02] border-bb-gold/10 shrink-0" id="dec-narrative-card">
+                 <div class="absolute -top-2 left-3 px-2 bg-bb-black border border-bb-gold/20 text-[7px] text-bb-gold font-black tracking-[0.2em] rounded">INSTITUTIONAL INTELLIGENCE</div>
+                 <div class="mt-2 text-[14px] leading-relaxed text-white font-medium drop-shadow-sm" id="dec-narrative">
+                     <span class="text-bb-muted animate-pulse italic">Scanning market microstructure and positioning metrics...</span>
+                 </div>
+                 <div class="mt-4 flex flex-wrap gap-2" id="dec-narrative-tags">
+                     <!-- Context tags -->
+                 </div>
+            </div>
+
             <!-- MIDDLE GRID: STATS & SIZING -->
-            <div class="grid grid-cols-2 gap-3 h-[240px] shrink-0">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 min-h-[220px] shrink-0">
                 <!-- POSITION SIZING -->
                 <div class="bg-bb-panel border border-bb-border rounded p-4 flex flex-col gap-3">
                     <div class="flex justify-between items-center border-b border-bb-border/30 pb-2">
@@ -161,6 +172,7 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
     const attribution = signals.attribution || {};
     const marketRegime = signals.marketRegime || data.signals?.marketRegime || {};
     const volRegime = data.signals?.volatilityRegime || {};
+    const syn = data.synthesis || {};
 
     // 0. HFT Detection & Liquidity Quality
     const elHFT = document.getElementById('dec-hft-badge');
@@ -234,13 +246,13 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
     if (elTP) elTP.innerText = `x${master.riskManagement?.takeProfitMultiplier || 1.0}`;
 
     if (elVel) {
-        const vel = of.cvd_momentum || 0;
-        const absVel = Math.abs(vel);
-        elVel.innerText = `${vel > 0 ? '+' : ''}${Utils.formatNumber(vel, 0)}`;
+        const synMom = syn.momentum || {};
+        const vel = synMom.velocity_15MENIT || 0;
+        elVel.innerText = `$${Utils.formatNumber(vel, 0)}`;
 
         if (elVelBadge) {
-            const status = absVel > 10000 ? 'EXPLOSIVE' : absVel > 2000 ? 'ACCELERATING' : 'STABLE';
-            const color = status === 'EXPLOSIVE' ? 'bg-bb-gold text-black font-black' : status === 'ACCELERATING' ? 'bg-bb-green/20 text-bb-green' : 'bg-bb-blue/20 text-bb-blue';
+            const status = synMom.aggression_level_15MENIT || 'RETAIL';
+            const color = status === 'INSTITUTIONAL' ? 'bg-bb-gold text-black font-black' : status === 'ACTIVE' ? 'bg-bb-green/20 text-bb-green' : 'bg-bb-blue/20 text-bb-blue';
             elVelBadge.innerText = status;
             elVelBadge.className = `text-[6px] px-1 rounded uppercase ${color}`;
         }
@@ -403,4 +415,77 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
     const elVolRegime = document.getElementById('dec-vol-regime');
     if (elRegime) elRegime.innerText = marketRegime.currentRegime || 'RANGING';
     if (elVolRegime) elVolRegime.innerText = volRegime.regime || 'NORMAL';
+
+    // 9. Market Narrative Brief
+    updateNarrative(data, signals, master, marketRegime, volRegime, syn);
+}
+
+function updateNarrative(data, signals, master, regime, vol, syn = {}) {
+    const elNarrative = document.getElementById('dec-narrative');
+    const elTags = document.getElementById('dec-narrative-tags');
+    if (!elNarrative || !elTags) return;
+
+    const flow = syn.flow || {};
+    const eff = syn.efficiency || {};
+    const mom = syn.momentum || {};
+
+    const netFlow = flow.net_flow_15MENIT || 0;
+    const char = eff.character_15MENIT || 'NORMAL';
+    const bias = flow.capital_bias_15MENIT || 'NEUTRAL';
+    const action = master.action || 'WAIT';
+    const aggr = mom.aggression_level_15MENIT || 'RETAIL';
+
+    let brief = "";
+    let tags = [];
+
+    // 1. Institutional Context (The "Big Why")
+    if (char === 'ABSORPTION') {
+        brief = `Market is currently in an **Institutional Absorption** phase. `;
+        brief += `Large buy/sell orders are being absorbed into resting limit liquidity. Volume is high, but price is being pinned by a major participant. `;
+        tags.push({ text: 'ABSORPTION ZONE', color: 'bg-bb-gold/20 text-bb-gold border-bb-gold/30' });
+    } else if (char === 'EFFORTLESS_MOVE') {
+        brief = `We are witnessing an **Effortless Price Move**. `;
+        brief += `Liquidity has thinned out and the path of least resistance is clear. Small volume is driving significant price shift. `;
+        tags.push({ text: 'EFFORTLESS MOVE', color: 'bg-bb-blue/20 text-bb-blue border-bb-blue/30' });
+    } else {
+        brief = `Market character is **Standard**. `;
+        brief += `Buying and selling pressure are interacting within expected efficiency parameters. `;
+    }
+
+    // 2. Flow Analysis (Real Money Influx)
+    if (Math.abs(netFlow) > 10000) {
+        brief += `A massive **Net Capital ${netFlow > 0 ? 'Inflow' : 'Outflow'}** of $${Utils.formatNumber(Math.abs(netFlow), 0)} is detected. `;
+        brief += `Strategic participants are ${netFlow > 0 ? 'accumulating' : 'distributing'} heavily at these levels. `;
+    } else if (bias !== 'NEUTRAL') {
+        brief += `The underlying **Capital Bias** is currently leaning towards **${bias}**. `;
+    }
+
+    // 3. Aggression & Velocity
+    if (aggr === 'INSTITUTIONAL') {
+        brief += `Trade velocity indicates **Institutional Aggression**. Large-block traders are dominating the current execution stream. `;
+        tags.push({ text: 'INSTO AGGRESSION', color: 'bg-bb-red/20 text-bb-red border-bb-red/30' });
+    }
+
+    // 4. Tactical Conclusion
+    if (action === 'BUY') {
+        if (char === 'ABSORPTION') {
+            brief += `**Caution Recommended.** While a BUY signal is present, the current Absorption state suggests a potential Liquidity Trap. Wait for a breakout confirmation.`;
+            tags.push({ text: 'LIQUIDITY TRAP!', color: 'bg-bb-red/20 text-bb-red border-bb-red/30 animate-pulse' });
+        } else {
+            brief += `**Deploy Capital.** Institutional flow and market character are perfectly aligned for a high-probability Long entry.`;
+            tags.push({ text: 'ALPHA SETUP', color: 'bg-bb-green/20 text-bb-green border-bb-green/30' });
+        }
+    } else if (action === 'SELL') {
+        brief += `**Short Bias.** Combined indicators suggest institutional sell-side pressure is mounting. Risk management is advised.`;
+        tags.push({ text: 'SHORT BIAS', color: 'bg-bb-red/20 text-bb-red border-bb-red/30' });
+    } else {
+        brief += `**Maintain Neutrality.** The system is scanning for a clearer institutional edge before recommending entry.`;
+        tags.push({ text: 'NEUTRAL ZONE', color: 'bg-bb-muted/20 text-bb-muted border-bb-muted/30' });
+    }
+
+    // Extra badges
+    if (Math.abs(netFlow) > 50000) tags.push({ text: 'WHALE CLUSTER', color: 'bg-bb-gold/40 text-white' });
+
+    elNarrative.innerHTML = brief.replace(/\*\*(.*?)\*\*/g, '<b class="text-bb-gold">$1</b>');
+    elTags.innerHTML = tags.map(t => `<span class="text-[7px] px-1.5 py-0.5 border rounded font-black uppercase ${t.color}">${t.text}</span>`).join('');
 }

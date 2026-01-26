@@ -11,13 +11,16 @@ let cachedMarketState = null;
 let cachedProfile = 'AGGRESSIVE';
 let cachedTimeframe = '15MENIT';
 
+// Alpha Sniper State
+const signalHistory = {}; // { "COIN:TF:PROF": { action: 'BUY', ts: 1234567 } }
+
 export function init(selectCoinCallback) {
     onSelectCoin = selectCoinCallback;
 }
 
 export function render(container) {
     const tabs = [
-        'ALERTS', 'OVERVIEW', 'DECISION', 'SMART', 'VOLATILITY', 'MICROSTRUCTURE', 'LIQUIDITY', 'DERIVATIVES',
+        'ALERTS', 'OVERVIEW', 'DECISION', 'SMART', 'SYNTHESIS', 'VOLATILITY', 'MICROSTRUCTURE', 'LIQUIDITY', 'DERIVATIVES',
         'REGIME', 'SENTIMENT', 'IO', 'PRICEMOVE',
         'VOLSPIKE', 'VOLDURABILITY', 'VOLRATIO', 'OPENINTEREST', 'FUNDING'
     ];
@@ -89,6 +92,7 @@ export function render(container) {
 
             if (currentMatrix === 'OVERVIEW') currentSort = { column: 'totalVol', dir: 'desc' };
             else if (currentMatrix === 'DECISION' || currentMatrix === 'ALERTS') currentSort = { column: 'dashboard', dir: 'desc' };
+            else if (currentMatrix === 'SYNTHESIS') currentSort = { column: 'netFlow15m', dir: 'desc' };
             else if (currentMatrix === 'VOLATILITY') currentSort = { column: 'atrPct', dir: 'desc' };
             else if (currentMatrix === 'SMART') currentSort = { column: 'smi', dir: 'desc' };
             else if (currentMatrix === 'PRICEMOVE') currentSort = { column: 'chg', dir: 'desc' };
@@ -172,12 +176,34 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
             const ratio = t > 0 ? (b - s) / t : 0;
             const durability = h1Base > 0 ? Math.min(1.0, (t / mult) / h1Base / 2) : 0;
             const spike = h1Base > 0 ? (t / mult) / h1Base : 0;
-            return { spike, ratio, durability };
+
+            // ⭐ Institutional Upgrade: AVG-based Spike (Historical)
+            const avgVal = raw.AVG || {};
+            const histBuy = avgVal[`avg_VOLCOIN_buy_${tf}`] || 0;
+            const histSell = avgVal[`avg_VOLCOIN_sell_${tf}`] || 0;
+            const histTotal = histBuy + histSell;
+            const histPace = histTotal / mult;
+            const avgSpike = histPace > 0 ? (t / mult) / histPace : 0;
+
+            return { spike, avgSpike, ratio, durability };
         };
+
+        const syn = data.synthesis || {};
+        const flow = syn.flow || {};
+        const eff = syn.efficiency || {};
+        const mom = syn.momentum || {};
 
         return {
             id,
             coin: id,
+            // Synthesis Data
+            netFlow15m: flow.net_flow_15MENIT || 0,
+            flowBias: flow.capital_bias_15MENIT || 'NEUTRAL',
+            char15m: eff.character_15MENIT || 'NORMAL',
+            eff15m: eff.efficiency_15MENIT || 0,
+            fric15m: eff.friction_15MENIT || 0,
+            aggr15m: mom.aggression_level_15MENIT || 'RETAIL',
+            velocity15m: mom.velocity_15MENIT || 0,
             price: price.last || 0,
             high: price.high || 0,
             low: price.low || 0,
@@ -268,8 +294,8 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
                 const key = tfMap[timeframe] || 'timeframes_15min';
                 return lsrData[key]?.longShortRatio || 1.0;
             })(),
-            takerBuy: signals.orderFlow?.takerBuyRatio || 0.5,
-            aggressive: signals.orderFlow?.aggressiveBuyPct || 0.5,
+            takerBuy: analytics.orderFlow?.takerBuyRatio || 0.5,
+            aggressive: analytics.orderFlow?.aggressiveBuyPct || 0.5,
 
             // Other TF data
             chg1m: price.percent_change_1MENIT || 0,
@@ -278,9 +304,12 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
             chg24h: price.percent_change_24h || 0,
             s1m: getSpikeData('1MENIT', 1),
             s5m: getSpikeData('5MENIT', 5),
+            s10m: getSpikeData('10MENIT', 10),
             s15m: getSpikeData('15MENIT', 15),
+            s20m: getSpikeData('20MENIT', 20),
             s30m: getSpikeData('30MENIT', 30),
             s1h: getSpikeData('1JAM', 60),
+            s2h: getSpikeData('2JAM', 120),
             s24h: getSpikeData('24JAM', 1440),
             oi5m: oiRaw.oiChange5m || 0,
             oi15m: oiRaw.oiChange15m || 0,
@@ -305,7 +334,23 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
                 if (buys >= 3) return 'L-BULL';
                 if (sells >= 3) return 'L-BEAR';
                 return 'CHOP';
-            })()
+            })(),
+
+            // Alpha Sniper Age tracking
+            ts: (() => {
+                const key = `${id}:${timeframe}:${profile}`;
+                const act = master.action || 'WAIT';
+                if (act === 'WAIT') {
+                    delete signalHistory[key];
+                    return 0;
+                }
+                if (!signalHistory[key] || signalHistory[key].action !== act) {
+                    signalHistory[key] = { action: act, ts: Date.now() };
+                }
+                return signalHistory[key].ts;
+            })(),
+            isTrap: (master.action === 'BUY' && eff.character_15MENIT === 'ABSORPTION') || (master.action === 'SELL' && eff.character_15MENIT === 'ABSORPTION'),
+            isAlpha: (master.action === 'BUY' && flow.capital_bias_15MENIT === 'ACCUMULATION') || (master.action === 'SELL' && flow.capital_bias_15MENIT === 'DISTRIBUTION')
         };
     });
 
@@ -375,7 +420,8 @@ function renderHeader() {
         html += th('SIGNAL', 'action', 'text-center');
         html += th('SCORE', 'dashboard', 'text-center');
         html += th('CONFLU', 'confCount', 'text-center');
-        html += th('AGE', 'ts', 'text-right');
+        html += th('SNIPER', 'isAlpha', 'text-center');
+        html += th('LIVE AGE', 'ts', 'text-right');
     } else if (currentMatrix === 'VOLATILITY') {
         html += th('CHG% 24H', 'chg', 'text-right', 'w-24');
         html += th('ATR MOM%', 'atrPct', 'text-right');
@@ -390,6 +436,7 @@ function renderHeader() {
         html += th('MTF', 'mtf', 'text-center');
         html += th('LSR', 'lsrRatio', 'text-center');
         html += th('VWAP Δ', 'vwapDelta', 'text-center');
+        html += th('SYNTH', 'char15m', 'text-center');
         html += th('CHG 24H', 'chg', 'text-right', 'w-24');
     } else if (currentMatrix === 'SMART') {
         html += th('💰 SMI', 'smi', 'text-center');
@@ -415,6 +462,14 @@ function renderHeader() {
             html += th('SCORE', 'dashboard', 'text-center');
             html += th('CONF', 'conf', 'text-center');
             html += th('CONFLU', 'confCount', 'text-center');
+        } else if (currentMatrix === 'SYNTHESIS') {
+            html += th('NET FLOW 15M', 'netFlow15m', 'text-right');
+            html += th('BIAS', 'flowBias', 'text-center');
+            html += th('CHARACTER', 'char15m', 'text-center');
+            html += th('AGGR', 'aggr15m', 'text-center');
+            html += th('EFFI', 'eff15m', 'text-center');
+            html += th('FRIC', 'fric15m', 'text-center');
+            html += th('VELO', 'velocity15m', 'text-right');
         } else if (currentMatrix === 'MICROSTRUCTURE') {
             html += th('VPIN', 'vpin', 'text-center');
             html += th('KYLE', 'lambda', 'text-center');
@@ -451,20 +506,32 @@ function renderHeader() {
         } else if (currentMatrix === 'VOLSPIKE') {
             html += th('1M', 's1m', 'text-center');
             html += th('5M', 's5m', 'text-center');
+            html += th('10M', 's10m', 'text-center');
             html += th('15M', 's15m', 'text-center');
+            html += th('20M', 's20m', 'text-center');
+            html += th('30M', 's30m', 'text-center');
             html += th('1H', 's1h', 'text-center');
+            html += th('2H', 's2h', 'text-center');
             html += th('24H', 's24h', 'text-center');
         } else if (currentMatrix === 'VOLDURABILITY') {
             html += th('1M DUR', 's1m', 'text-center');
             html += th('5M DUR', 's5m', 'text-center');
+            html += th('10M DUR', 's10m', 'text-center');
             html += th('15M DUR', 's15m', 'text-center');
+            html += th('20M DUR', 's20m', 'text-center');
+            html += th('30M DUR', 's30m', 'text-center');
             html += th('1H DUR', 's1h', 'text-center');
+            html += th('2H DUR', 's2h', 'text-center');
             html += th('24H DUR', 's24h', 'text-center');
         } else if (currentMatrix === 'VOLRATIO') {
             html += th('1M RATIO', 's1m', 'text-center');
             html += th('5M RATIO', 's5m', 'text-center');
+            html += th('10M RATIO', 's10m', 'text-center');
             html += th('15M RATIO', 's15m', 'text-center');
+            html += th('20M RATIO', 's20m', 'text-center');
+            html += th('30M RATIO', 's30m', 'text-center');
             html += th('1H RATIO', 's1h', 'text-center');
+            html += th('2H RATIO', 's2h', 'text-center');
             html += th('24H RATIO', 's24h', 'text-center');
         } else if (currentMatrix === 'OPENINTEREST') {
             html += th('5M CHG', 'oi5m', 'text-center');
@@ -538,6 +605,13 @@ function renderRows(data) {
             const vColor = r.vwapDelta > 0.5 ? 'text-bb-red' : r.vwapDelta < -0.5 ? 'text-bb-green font-bold' : 'text-white/60';
             rowHtml += wrap(`${r.vwapDelta > 0 ? '+' : ''}${r.vwapDelta.toFixed(2)}%`, 'text-center', `font-mono text-[9px] ${vColor}`);
 
+            let synthBadge = '-';
+            if (r.char15m === 'ABSORPTION') synthBadge = '<span class="text-bb-gold font-black animate-pulse">ABS</span>';
+            else if (r.char15m === 'EFFORTLESS_MOVE') synthBadge = '<span class="text-bb-blue font-black">EFF</span>';
+            else if (r.netFlow15m > 0) synthBadge = '<span class="text-bb-green opacity-40">IN</span>';
+            else if (r.netFlow15m < 0) synthBadge = '<span class="text-bb-red opacity-40">OUT</span>';
+            rowHtml += wrap(synthBadge, 'text-center', 'text-[8px] font-black');
+
             rowHtml += wrap(`${r.chg > 0 ? '+' : ''}${r.chg.toFixed(2)}%`, 'text-right', `font-mono ${r.chg >= 0 ? 'text-bb-green' : 'text-bb-red'} font-bold`, 'width: 96px;');
         } else if (currentMatrix === 'SMART') {
             // High Density Smart Columns (Verified Data)
@@ -586,6 +660,24 @@ function renderRows(data) {
                 rowHtml += wrap(r.lambda.toFixed(6), 'text-center', 'text-bb-blue');
                 rowHtml += wrap(r.vwoi.toFixed(2), 'text-center', r.vwoi > 0.1 ? 'text-bb-green' : r.vwoi < -0.1 ? 'text-bb-red' : 'text-bb-muted');
                 rowHtml += wrap(r.whale.toFixed(2), 'text-center', 'text-bb-gold');
+            } else if (currentMatrix === 'SYNTHESIS') {
+                const fColor = r.netFlow15m > 0 ? 'text-bb-green' : r.netFlow15m < 0 ? 'text-bb-red' : 'text-bb-muted';
+                rowHtml += wrap(`$${Utils.formatNumber(r.netFlow15m, 0)}`, 'text-right', `font-mono ${fColor}`);
+
+                const bColor = r.flowBias === 'ACCUMULATION' ? 'text-bb-green' : 'text-bb-red';
+                rowHtml += wrap(`<span class="px-1.5 bg-white/5 text-[8px] font-black ${bColor}">${r.flowBias}</span>`, 'text-center');
+
+                let charBadge = 'text-bb-muted';
+                if (r.char15m === 'ABSORPTION') charBadge = 'text-bb-gold font-black italic animate-pulse';
+                if (r.char15m === 'EFFORTLESS_MOVE') charBadge = 'text-bb-blue font-black';
+                rowHtml += wrap(`<span class="text-[9px] ${charBadge}">${r.char15m}</span>`, 'text-center');
+
+                const aColor = r.aggr15m === 'INSTITUTIONAL' ? 'text-bb-gold' : r.aggr15m === 'ACTIVE' ? 'text-bb-blue' : 'text-bb-muted/50';
+                rowHtml += wrap(r.aggr15m, 'text-center', `text-[8px] font-bold ${aColor}`);
+
+                rowHtml += wrap(r.eff15m.toFixed(4), 'text-center', 'text-white opacity-60');
+                rowHtml += wrap(r.fric15m.toFixed(4), 'text-center', 'text-white opacity-60');
+                rowHtml += wrap(`$${Utils.formatNumber(r.velocity15m, 0)}`, 'text-right', 'font-mono text-bb-gold');
             } else if (currentMatrix === 'LIQUIDITY') {
                 rowHtml += wrap(r.ofi, 'text-center', r.ofi > 60 ? 'text-bb-green' : r.ofi < 40 ? 'text-bb-red' : 'text-white');
                 rowHtml += wrap(Utils.formatNumber(r.bidDepth), 'text-right', 'text-bb-green font-mono');
@@ -623,12 +715,22 @@ function renderRows(data) {
             } else if (currentMatrix === 'VOLSPIKE') {
                 const sCell = (v) => {
                     const color = v.spike > 2.0 ? 'text-bb-gold font-black' : v.spike > 1.2 ? 'text-bb-green' : v.spike < 0.5 ? 'text-bb-red opacity-50' : 'text-bb-muted';
-                    return `<span class="${color}">${v.spike.toFixed(2)}x</span>`;
+                    const avgColor = v.avgSpike > 3.0 ? 'text-bb-gold font-black underline' : v.avgSpike > 1.5 ? 'text-white font-bold' : 'text-bb-muted/50';
+                    return `
+                        <div class="flex flex-col items-center leading-tight">
+                            <span class="${color}">${v.spike.toFixed(2)}x</span>
+                            <span class="${avgColor} text-[7px] tracking-tighter">AVG:${v.avgSpike.toFixed(1)}x</span>
+                        </div>
+                    `;
                 };
                 rowHtml += wrap(sCell(r.s1m), 'text-center');
                 rowHtml += wrap(sCell(r.s5m), 'text-center');
+                rowHtml += wrap(sCell(r.s10m), 'text-center');
                 rowHtml += wrap(sCell(r.s15m), 'text-center');
+                rowHtml += wrap(sCell(r.s20m), 'text-center');
+                rowHtml += wrap(sCell(r.s30m), 'text-center');
                 rowHtml += wrap(sCell(r.s1h), 'text-center');
+                rowHtml += wrap(sCell(r.s2h), 'text-center');
                 rowHtml += wrap(sCell(r.s24h), 'text-center');
             } else if (currentMatrix === 'ALERTS') {
                 const action = r.action || 'WAIT';
@@ -641,7 +743,18 @@ function renderRows(data) {
                 rowHtml += wrap(`<span class="${sigColor} font-black">${action === 'BUY' ? 'LONG' : action === 'SELL' ? 'SHORT' : 'WAIT'}</span>`, 'text-center');
                 rowHtml += wrap(`<div class="h-1 w-full bg-bb-border/20 rounded overflow-hidden mt-1"><div class="h-full ${barColor}" style="width: ${r.dashboard}%"></div></div>`, 'text-center');
                 rowHtml += wrap(`${r.confCount}/${r.confRequired}`, 'text-center', 'font-bold text-white');
-                rowHtml += wrap(`<span class="text-bb-muted">RECENT</span>`, 'text-right');
+
+                // Sniper Interpretation
+                let sniperBadge = '<span class="text-bb-muted opacity-40 italic">Monitoring...</span>';
+                if (r.isTrap) sniperBadge = '<span class="px-1.5 py-0.5 bg-bb-red/20 text-bb-red rounded border border-bb-red/30 font-black animate-pulse">TRAP!</span>';
+                else if (r.isAlpha) sniperBadge = '<span class="px-1.5 py-0.5 bg-bb-green/20 text-bb-green rounded border border-bb-green/30 font-black">ALPHA</span>';
+                else if (r.volQuality < 30) sniperBadge = '<span class="px-1.5 py-0.5 bg-white/5 text-bb-gold rounded border border-bb-gold/20 font-black">THIN</span>';
+                rowHtml += wrap(sniperBadge, 'text-center');
+
+                // Age Calculation
+                const ageSec = r.ts > 0 ? Math.floor((Date.now() - r.ts) / 1000) : 0;
+                const ageStr = ageSec < 60 ? `${ageSec}s` : `${Math.floor(ageSec / 60)}m`;
+                rowHtml += wrap(`<span class="text-bb-muted font-mono">${ageStr} AGO</span>`, 'text-right');
             } else if (currentMatrix === 'VOLATILITY') {
                 const getVolColor = (v) => v > 10 ? 'text-bb-red font-bold' : v > 5 ? 'text-bb-gold' : 'text-bb-green opacity-70';
                 rowHtml += wrap(`${r.atrPct.toFixed(4)}%`, 'text-right', 'font-mono text-white');
@@ -661,8 +774,12 @@ function renderRows(data) {
                 };
                 rowHtml += wrap(dCell(r.s1m), 'text-center');
                 rowHtml += wrap(dCell(r.s5m), 'text-center');
+                rowHtml += wrap(dCell(r.s10m), 'text-center');
                 rowHtml += wrap(dCell(r.s15m), 'text-center');
+                rowHtml += wrap(dCell(r.s20m), 'text-center');
+                rowHtml += wrap(dCell(r.s30m), 'text-center');
                 rowHtml += wrap(dCell(r.s1h), 'text-center');
+                rowHtml += wrap(dCell(r.s2h), 'text-center');
                 rowHtml += wrap(dCell(r.s24h), 'text-center');
             } else if (currentMatrix === 'VOLRATIO') {
                 const rCell = (v) => {
@@ -672,8 +789,12 @@ function renderRows(data) {
                 };
                 rowHtml += wrap(rCell(r.s1m), 'text-center');
                 rowHtml += wrap(rCell(r.s5m), 'text-center');
+                rowHtml += wrap(rCell(r.s10m), 'text-center');
                 rowHtml += wrap(rCell(r.s15m), 'text-center');
+                rowHtml += wrap(rCell(r.s20m), 'text-center');
+                rowHtml += wrap(rCell(r.s30m), 'text-center');
                 rowHtml += wrap(rCell(r.s1h), 'text-center');
+                rowHtml += wrap(rCell(r.s2h), 'text-center');
                 rowHtml += wrap(rCell(r.s24h), 'text-center');
             } else if (currentMatrix === 'OPENINTEREST') {
                 const oCell = (v) => {

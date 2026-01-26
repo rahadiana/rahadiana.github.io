@@ -16,6 +16,7 @@ import * as ViewVisual from './modules/viewVisual.js';
 import * as Sidebar from './modules/sidebar.js';
 import * as ViewStrategy from './modules/viewStrategy.js';
 import * as ViewP2P from './modules/viewP2P.js';
+import * as ViewSynthesis from './modules/viewSynthesis.js';
 import P2PMesh from './p2p.js';
 
 // Configuration
@@ -31,7 +32,8 @@ const VIEWS = {
     'LEVELS': ViewLiquidity,
     'LIQUIDATIONS': ViewLiquidations,
     'MONITORING': ViewMonitoring,
-    'VOL': ViewVol
+    'VOL': ViewVol,
+    'SYNTHESIS': ViewSynthesis
 };
 
 // State
