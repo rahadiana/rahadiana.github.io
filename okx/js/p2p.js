@@ -49,15 +49,37 @@ class P2PMesh {
             console.log(`[P2P] Role Change: ${this.isSuperPeer ? 'PROMOTED TO SUPERPEER' : 'DEMOTED TO DATAPEER'}`);
         }
 
-        // REDUNDANT FULL-MESH STRATEGY
-        peers.forEach(id => {
+        // SCALABLE RING + STAR TOPOLOGY
+        // Connect to ALL superPeers
+        // Connect to PREVIOUS and NEXT peer in the sorted ID list (The RING)
+        const sortedPeers = [...peers].sort();
+        const myIdx = sortedPeers.indexOf(this.peerId);
+
+        const targets = new Set(superPeers); // Start with Stars
+        if (myIdx !== -1) {
+            // Add neighbors for Ring connectivity
+            const prevIdx = (myIdx - 1 + sortedPeers.length) % sortedPeers.length;
+            const nextIdx = (myIdx + 1) % sortedPeers.length;
+            targets.add(sortedPeers[prevIdx]);
+            targets.add(sortedPeers[nextIdx]);
+        }
+
+        targets.forEach(id => {
             if (id !== this.peerId && !this.peers.has(id)) {
                 if (this.peerId < id) {
-                    console.log(`[P2P] (Initiator) Establishing Mesh Link TO: ${id}`);
+                    console.log(`[P2P] (Initiator) Forming Mesh Link TO: ${id}`);
                     this.connectToPeer(id);
                 } else {
-                    console.log(`[P2P] (Responder) Awaiting Mesh Link FROM: ${id}`);
+                    console.log(`[P2P] (Responder) Waiting Mesh Link FROM: ${id}`);
                 }
+            }
+        });
+
+        // Prune connections to peers that are no longer neighbors or superpeers
+        this.peers.forEach((pc, id) => {
+            if (!targets.has(id)) {
+                console.log(`[P2P] Pruning stale link: ${id}`);
+                this.cleanupPeer(id);
             }
         });
     }
@@ -180,8 +202,16 @@ class P2PMesh {
     }
 
     retryConnection(targetId) {
-        // Only retry if target is still in knownPeers and we are the lexicographical initiator
-        if (!this.knownPeers.includes(targetId) || this.peerId >= targetId) return;
+        // Only retry if target is still relevant in Ring+Star and we are lower ID
+        const sortedPeers = [...this.knownPeers, this.peerId].sort();
+        const myIdx = sortedPeers.indexOf(this.peerId);
+        const prevIdx = (myIdx - 1 + sortedPeers.length) % sortedPeers.length;
+        const nextIdx = (myIdx + 1) % sortedPeers.length;
+
+        const isNeighbor = sortedPeers[prevIdx] === targetId || sortedPeers[nextIdx] === targetId;
+        const isSuper = this.config.superPeers?.includes(targetId);
+
+        if (!(isNeighbor || isSuper) || this.peerId >= targetId) return;
 
         const count = this.retryCounts.get(targetId) || 0;
         if (count < this.MAX_RETRIES) {
@@ -189,7 +219,7 @@ class P2PMesh {
             console.log(`[P2P] Retrying Link ${targetId} in ${delay}ms (Attempt ${count + 1}/${this.MAX_RETRIES})...`);
             this.retryCounts.set(targetId, count + 1);
             setTimeout(() => {
-                if (this.knownPeers.includes(targetId) && !this.peers.has(targetId)) {
+                if (!this.peers.has(targetId)) {
                     this.connectToPeer(targetId);
                 }
             }, delay);
