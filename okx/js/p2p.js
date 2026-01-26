@@ -108,10 +108,10 @@ class P2PMesh {
             if (id !== this.peerId && !this.peers.has(id)) {
                 // Use lexicographic ordering untuk avoid double connections
                 if (this.peerId < id) {
-                    console.log(`[P2P] 🔗 Initiating connection to: ${id}`);
+                    // console.log(`[P2P] 🔗 Initiating connection to: ${id}`);
                     this.connectToPeer(id);
                 } else {
-                    console.log(`[P2P] ⏳ Awaiting connection from: ${id}`);
+                    // console.log(`[P2P] ⏳ Awaiting connection from: ${id}`);
                 }
             }
         });
@@ -180,7 +180,7 @@ class P2PMesh {
             }
         }
 
-        console.log(`[P2P] 📨 Processing offer from: ${senderId}`);
+        // console.log(`[P2P] 📨 Processing offer from: ${senderId}`);
 
         // Notify server we're attempting
         this.sendMessage({ type: 'p2p:attempt', targetId: senderId });
@@ -442,7 +442,7 @@ class P2PMesh {
         if (openChannels.length === 0) {
             return;
         }
-
+        console.log(`[P2P] Broadcasting to ${openChannels.length} peers`);
         // Wrap in packet for P2P routing
         const packet = JSON.stringify({
             type: 'stream',
