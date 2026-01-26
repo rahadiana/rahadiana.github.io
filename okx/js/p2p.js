@@ -34,6 +34,14 @@ class P2PMesh {
         this.CONNECTION_TIMEOUT = 30000; // 30 detik per attempt
     }
 
+    sendMessage(msg) {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify(msg));
+            return true;
+        }
+        return false;
+    }
+
     init(peerId, config) {
         this.peerId = peerId;
         this.config = config;
