@@ -10,6 +10,7 @@ class P2PMesh {
         this.peerId = null;
         this.peers = new Map(); // id -> RTCPeerConnection
         this.dataChannels = new Map(); // id -> RTCDataChannel
+        this.iceCandidateBuffers = new Map(); // id -> RTCIceCandidate[]
         this.stats = new Map(); // id -> { sent: 0, received: 0, lastSeen: Date.now(), rtt: 0 }
         this.isSuperPeer = false;
         this.knownPeers = [];
@@ -21,7 +22,7 @@ class P2PMesh {
     init(peerId, config) {
         this.peerId = peerId;
         this.config = config;
-        this.isSuperPeer = config.superPeers.includes(peerId);
+        this.isSuperPeer = config.superPeers?.includes(peerId) || false;
         console.log(`[P2P] Initialized as ${this.isSuperPeer ? 'SUPERPEER' : 'DATAPEER'} (ID: ${peerId})`);
     }
 
@@ -36,26 +37,18 @@ class P2PMesh {
             console.log(`[P2P] Role Change: ${this.isSuperPeer ? 'PROMOTED TO SUPERPEER' : 'DEMOTED TO DATAPEER'}`);
         }
 
-        // Connectivity Strategy:
-        // 1. DataPeers must connect to at least one SuperPeer
-        if (!this.isSuperPeer) {
-            const targetSuper = superPeers.find(id => id !== this.peerId);
-            if (targetSuper && !this.peers.has(targetSuper)) {
-                this.connectToPeer(targetSuper);
+        // Connectivity Strategy: Connect to all designated SuperPeers
+        superPeers.forEach(id => {
+            if (id !== this.peerId && !this.peers.has(id)) {
+                console.log(`[P2P] Auto-Initiating connection to SuperPeer: ${id}`);
+                this.connectToPeer(id);
             }
-        }
-        // 2. SuperPeers should connect to each other for mesh redundancy
-        else {
-            const otherSuper = superPeers.find(id => id !== this.peerId);
-            if (otherSuper && !this.peers.has(otherSuper)) {
-                this.connectToPeer(otherSuper);
-            }
-        }
+        });
     }
 
     async connectToPeer(targetId) {
         if (this.peers.has(targetId)) return;
-        console.log(`[P2P] Attempting connection to ${targetId}...`);
+        console.log(`[P2P] Attempting connection TO ${targetId}...`);
         const pc = this.createPeerConnection(targetId);
 
         const dc = pc.createDataChannel("marketData", { negotiated: true, id: 0 });
@@ -72,8 +65,13 @@ class P2PMesh {
     }
 
     async handleOffer(senderId, offer) {
-        if (this.peers.has(senderId)) return;
-        console.log(`[P2P] Received offer from ${senderId}`);
+        if (this.peers.has(senderId)) {
+            // Already connected or connecting
+            const pc = this.peers.get(senderId);
+            if (pc.signalingState === 'stable') return;
+        }
+
+        console.log(`[P2P] Received offer FROM ${senderId}`);
         const pc = this.createPeerConnection(senderId);
 
         // Setup receiving channel
@@ -81,6 +79,15 @@ class P2PMesh {
         this.setupDataChannel(senderId, dc);
 
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
+
+        // Drain ICE buffer for this specific peer
+        const buffer = this.iceCandidateBuffers.get(senderId) || [];
+        console.log(`[P2P] Draining ICE buffer for ${senderId} (${buffer.length} candidates)`);
+        while (buffer.length > 0) {
+            const cand = buffer.shift();
+            await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(e => { });
+        }
+
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
 
@@ -94,15 +101,33 @@ class P2PMesh {
     async handleAnswer(senderId, answer) {
         const pc = this.peers.get(senderId);
         if (pc) {
+            console.log(`[P2P] Received answer FROM ${senderId}`);
             await pc.setRemoteDescription(new RTCSessionDescription(answer));
+
+            // Drain ICE buffer if any
+            const buffer = this.iceCandidateBuffers.get(senderId) || [];
+            while (buffer.length > 0) {
+                const cand = buffer.shift();
+                await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(e => { });
+            }
         }
     }
 
     async handleIceCandidate(senderId, candidate) {
         const pc = this.peers.get(senderId);
-        if (pc) {
-            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+
+        if (!pc || !pc.remoteDescription) {
+            // Buffer candidate if connection is not ready
+            if (!this.iceCandidateBuffers.has(senderId)) {
+                this.iceCandidateBuffers.set(senderId, []);
+            }
+            this.iceCandidateBuffers.get(senderId).push(candidate);
+            return;
         }
+
+        await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => {
+            console.warn(`[P2P] ICE Error for ${senderId}:`, e.message);
+        });
     }
 
     createPeerConnection(targetId) {
@@ -121,10 +146,15 @@ class P2PMesh {
         };
 
         pc.onconnectionstatechange = () => {
-            console.log(`[P2P] Connection with ${targetId}: ${pc.connectionState}`);
+            console.log(`[P2P] Connection with ${targetId} state: ${pc.connectionState}`);
+            if (pc.connectionState === 'connected') {
+                // Connection successfully established
+                this.iceCandidateBuffers.delete(targetId);
+            }
             if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
                 this.peers.delete(targetId);
                 this.dataChannels.delete(targetId);
+                this.iceCandidateBuffers.delete(targetId);
                 this.stats.delete(targetId);
             }
         };
