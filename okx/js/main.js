@@ -271,6 +271,11 @@ function connect() {
             console.log('[SECURITY] Mesh Edge Active. Sending validation signal...');
             ws.send(JSON.stringify({ type: 'p2p:ready' }));
         };
+
+        if (!p2p.isSuperPeer) {
+            statusText.innerText = 'VALIDATING MESH...';
+            statusText.className = 'text-bb-gold animate-pulse';
+        }
     };
 
     ws.onmessage = async (event) => {
