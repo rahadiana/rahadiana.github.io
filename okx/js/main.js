@@ -15,6 +15,7 @@ import * as InfoView from './modules/viewInfo.js';
 import * as ViewVisual from './modules/viewVisual.js';
 import * as Sidebar from './modules/sidebar.js';
 import * as ViewStrategy from './modules/viewStrategy.js';
+import * as ViewP2P from './modules/viewP2P.js';
 import P2PMesh from './p2p.js';
 
 // Configuration
@@ -118,7 +119,7 @@ function initTabs() {
 }
 
 function switchTab(tabName) {
-    if (!['GLOBAL', 'STRATEGY', 'DETAILS', 'VISUAL', 'INFO'].includes(tabName)) return;
+    if (!['GLOBAL', 'STRATEGY', 'DETAILS', 'VISUAL', 'INFO', 'P2P'].includes(tabName)) return;
 
     // Lifecycle cleanup for outgoing tab/subtab
     if (currentTab === 'DETAILS' && tabName !== 'DETAILS') {
@@ -151,6 +152,9 @@ function switchTab(tabName) {
     } else if (tabName === 'INFO') {
         detailsSubnav.classList.add('hidden');
         InfoView.render(viewContainer);
+    } else if (tabName === 'P2P') {
+        detailsSubnav.classList.add('hidden');
+        ViewP2P.render(viewContainer);
     } else {
         detailsSubnav.classList.add('hidden');
         if (tabName === 'GLOBAL') ViewGlobal.render(viewContainer);
@@ -223,6 +227,10 @@ function updateCurrentView() {
     }
     if (currentTab === 'INFO') {
         if (p2p) InfoView.update(p2p.getStats());
+        return;
+    }
+    if (currentTab === 'P2P') {
+        if (p2p) ViewP2P.update(p2p.getStats());
         return;
     }
 
