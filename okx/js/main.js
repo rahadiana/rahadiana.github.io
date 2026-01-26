@@ -306,7 +306,7 @@ function connect() {
                 console.error('[SERVER ERROR]', payload.msg);
             }
             else if (payload.type === 'peer-update') {
-                p2p.updatePeerList(payload.peers);
+                p2p.updatePeerList(payload.peers, payload.superPeers);
             } else if (payload.type === 'offer') {
                 p2p.handleOffer(payload.senderId, payload.offer);
             } else if (payload.type === 'answer') {
