@@ -397,9 +397,22 @@ class P2PMesh {
             console.error(`[P2P] Channel error (${targetId}):`, err);
         };
 
-        dc.onmessage = (e) => {
+        dc.onmessage = async (e) => {
             try {
-                const packet = JSON.parse(e.data);
+                let rawData;
+                if (typeof e.data === 'string') {
+                    rawData = e.data;
+                } else if (e.data instanceof Blob) {
+                    rawData = await e.data.text();
+                } else if (e.data instanceof ArrayBuffer) {
+                    rawData = new TextDecoder().decode(e.data);
+                } else {
+                    console.warn(`[P2P] Received unknown data format from ${targetId}`);
+                    return;
+                }
+
+                if (!rawData) return;
+                const packet = JSON.parse(rawData);
                 const peerStat = this.stats.get(targetId);
 
                 if (peerStat) {
@@ -410,12 +423,12 @@ class P2PMesh {
                     }
                 }
 
-                // Route packet data to callback
+                // Route packet data to subscriber
                 if (packet.type === 'stream' && packet.data) {
                     this.onData(packet.data);
                 }
             } catch (err) {
-                console.warn(`[P2P] Error parsing message from ${targetId}:`, err.message);
+                console.warn(`[P2P] Parse Error from ${targetId}:`, err.message);
             }
         };
 
