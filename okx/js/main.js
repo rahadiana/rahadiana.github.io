@@ -325,7 +325,11 @@ function connect() {
                 // P2P will broadcast the original raw data for efficiency
                 if (p2p) p2p.broadcast(payload.data);
             } else if (payload.type === 'stream-notify') {
-                // Secondary notification
+                // Lightweight update to keep ticker alive while mesh forms
+                updateTicker({
+                    coin: payload.coin,
+                    PRICE: { price: payload.price, percent_change_1JAM: payload.change }
+                });
             }
         } catch (e) {
             console.error('WS Parse/Decompress Error:', e);

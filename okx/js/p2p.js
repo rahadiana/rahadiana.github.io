@@ -49,19 +49,21 @@ class P2PMesh {
             console.log(`[P2P] Role Change: ${this.isSuperPeer ? 'PROMOTED TO SUPERPEER' : 'DEMOTED TO DATAPEER'}`);
         }
 
-        // SCALABLE RING + STAR TOPOLOGY
-        // Connect to ALL superPeers
-        // Connect to PREVIOUS and NEXT peer in the sorted ID list (The RING)
-        const sortedPeers = [...peers].sort();
-        const myIdx = sortedPeers.indexOf(this.peerId);
+        // HYBRID ADAPTIVE TOPOLOGY
+        let targets = new Set();
 
-        const targets = new Set(superPeers); // Start with Stars
-        if (myIdx !== -1) {
-            // Add neighbors for Ring connectivity
-            const prevIdx = (myIdx - 1 + sortedPeers.length) % sortedPeers.length;
-            const nextIdx = (myIdx + 1) % sortedPeers.length;
-            targets.add(sortedPeers[prevIdx]);
-            targets.add(sortedPeers[nextIdx]);
+        if (peers.length <= 10) {
+            // SMALL GROUP: Full-Mesh (Connect to everyone)
+            peers.forEach(id => { if (id !== this.peerId) targets.add(id); });
+        } else {
+            // LARGE GROUP: Ring + Star (Scalable)
+            superPeers.forEach(id => targets.add(id));
+            const sortedPeers = [...peers].sort();
+            const myIdx = sortedPeers.indexOf(this.peerId);
+            if (myIdx !== -1) {
+                targets.add(sortedPeers[(myIdx - 1 + sortedPeers.length) % sortedPeers.length]);
+                targets.add(sortedPeers[(myIdx + 1) % sortedPeers.length]);
+            }
         }
 
         targets.forEach(id => {
@@ -75,13 +77,15 @@ class P2PMesh {
             }
         });
 
-        // Prune connections to peers that are no longer neighbors or superpeers
-        this.peers.forEach((pc, id) => {
-            if (!targets.has(id)) {
-                console.log(`[P2P] Pruning stale link: ${id}`);
-                this.cleanupPeer(id);
-            }
-        });
+        // Prune connections to peers that are no longer targets (only in large groups)
+        if (peers.length > 10) {
+            this.peers.forEach((pc, id) => {
+                if (!targets.has(id)) {
+                    console.log(`[P2P] Pruning stale link: ${id}`);
+                    this.cleanupPeer(id);
+                }
+            });
+        }
     }
 
     async connectToPeer(targetId) {
@@ -160,7 +164,8 @@ class P2PMesh {
     }
 
     createPeerConnection(targetId) {
-        const pc = new RTCPeerConnection(this.ICE_CONFIG);
+        // Use basic ICE config for better tab-to-tab compatibility
+        const pc = new RTCPeerConnection({ iceServers: this.ICE_CONFIG.iceServers });
 
         // RECEIVE Channel (Responder Only)
         pc.ondatachannel = (event) => {
@@ -195,36 +200,25 @@ class P2PMesh {
 
     cleanupPeer(targetId) {
         const pc = this.peers.get(targetId);
-        if (pc) pc.close();
+        if (pc) try { pc.close(); } catch (e) { }
         this.peers.delete(targetId);
         this.dataChannels.delete(targetId);
         this.iceCandidateBuffers.delete(targetId);
     }
 
     retryConnection(targetId) {
-        // Only retry if target is still relevant in Ring+Star and we are lower ID
-        const sortedPeers = [...this.knownPeers, this.peerId].sort();
-        const myIdx = sortedPeers.indexOf(this.peerId);
-        const prevIdx = (myIdx - 1 + sortedPeers.length) % sortedPeers.length;
-        const nextIdx = (myIdx + 1) % sortedPeers.length;
-
-        const isNeighbor = sortedPeers[prevIdx] === targetId || sortedPeers[nextIdx] === targetId;
-        const isSuper = this.config.superPeers?.includes(targetId);
-
-        if (!(isNeighbor || isSuper) || this.peerId >= targetId) return;
+        if (!this.knownPeers.includes(targetId) || this.peerId >= targetId) return;
 
         const count = this.retryCounts.get(targetId) || 0;
         if (count < this.MAX_RETRIES) {
             const delay = Math.pow(2, count) * 2000;
-            console.log(`[P2P] Retrying Link ${targetId} in ${delay}ms (Attempt ${count + 1}/${this.MAX_RETRIES})...`);
+            console.log(`[P2P] Retrying Link ${targetId} in ${delay}ms...`);
             this.retryCounts.set(targetId, count + 1);
             setTimeout(() => {
-                if (!this.peers.has(targetId)) {
+                if (this.knownPeers.includes(targetId) && !this.peers.has(targetId)) {
                     this.connectToPeer(targetId);
                 }
             }, delay);
-        } else {
-            console.warn(`[P2P] Link ${targetId} Exhausted. Giving up after ${this.MAX_RETRIES} attempts.`);
         }
     }
 
