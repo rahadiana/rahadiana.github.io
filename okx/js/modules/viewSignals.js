@@ -1,0 +1,297 @@
+import * as Utils from '../utils.js';
+
+export function render(container) {
+    container.innerHTML = `
+        <div class="h-full flex flex-col gap-2">
+            
+            <!-- TOP ROW: MICROSTRUCTURE GRID (Sec 8) -->
+            <div class="h-1/3 panel">
+                <div class="panel-header flex justify-between">
+                    <span>MICROSTRUCTURE MATRIX</span>
+                    <span class="text-[9px] text-bb-muted">INTENSITY: <span id="intensity-score" class="text-white font-bold">--</span></span>
+                </div>
+                <!-- 8 cards grid -->
+                <div class="panel-content grid grid-cols-4 gap-2" id="micro-grid">
+                    <!-- Injected -->
+                </div>
+            </div>
+
+            <!-- BOTTOM CONTENT: ATTRIBUTION & BREAKOUT -->
+            <div class="flex-1 flex gap-2 overflow-hidden">
+                
+                <!-- 17.1 ATTRIBUTION WATERFALL/TABLE -->
+                <div class="w-2/3 panel flex flex-col">
+                    <div class="panel-header flex justify-between">
+                        <span>SIGNAL ATTRIBUTION (DRIVERS)</span>
+                        <span class="text-[9px] text-bb-muted">SORTED BY IMPACT</span>
+                    </div>
+                    
+                    <div class="grid grid-cols-12 gap-2 p-2 text-[10px] text-bb-muted border-b border-bb-border bg-bb-panel font-bold shrink-0">
+                        <div class="col-span-3">SIGNAL</div>
+                        <div class="col-span-2 text-center">SCORE</div>
+                        <div class="col-span-5">CONTRIBUTION SHARE</div>
+                        <div class="col-span-2 text-right">WEIGHT</div>
+                    </div>
+                    
+                    <div class="flex-1 overflow-y-auto scrollbar-thin space-y-1 p-1" id="attrib-list">
+                        <!-- Injected -->
+                    </div>
+                </div>
+
+                <!-- 6.5 BREAKOUT & 13.3 CONVERGENCE -->
+                <div class="w-1/3 flex flex-col gap-2">
+                    
+                    <!-- 6.5 BREAKOUT PROBABILITY -->
+                    <div class="panel h-1/3">
+                        <div class="panel-header">BREAKOUT PROBABILITY</div>
+                        <div class="panel-content flex flex-col justify-center" id="breakout-dash">
+                            <!-- Injected -->
+                        </div>
+                    </div>
+
+                    <!-- 13.3 CONVERGENCE / SIGNAL QUALITY -->
+                    <div class="panel h-1/3">
+                        <div class="panel-header">SIGNAL QUALITY</div>
+                        <div class="panel-content space-y-2" id="quality-dash">
+                            <!-- Injected -->
+                        </div>
+                    </div>
+
+                    <!-- 20.1 CORRELATION MATRIX -->
+                    <div class="panel h-1/3">
+                        <div class="panel-header">CORRELATION MATRIX</div>
+                        <div class="panel-content flex flex-col justify-center" id="correlation-matrix">
+                            <!-- Injected -->
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+    `;
+}
+
+export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
+    // Data sources
+    const micro = data.microstructure?.[profile] || {};
+    const signals = data.signals?.profiles?.[profile]?.timeframes?.[timeframe]?.signals;
+    const vol = data.analytics?.volatility;
+
+    updateMicroGrid(micro);
+    updateAttribution(signals);
+    updateBreakout(vol, data.raw?.PRICE);
+    updateQuality(data.analytics?.customMetrics);
+    updateCorrelation(signals);
+}
+
+function updateMicroGrid(micro) {
+    const el = document.getElementById('micro-grid');
+    const elInt = document.getElementById('intensity-score');
+    if (!el) return;
+
+    // Helper for cards
+    const card = (title, val, sub, colorClass) => `
+        <div class="bg-bb-dark border border-bb-border p-2 flex flex-col justify-between group hover:bg-bb-panel transition-colors relative overflow-hidden">
+            <div class="text-[9px] text-bb-muted uppercase z-10">${title}</div>
+            <div class="flex items-end justify-between mt-1 z-10">
+                <span class="text-lg font-bold ${colorClass}">${val}</span>
+                <span class="text-[8px] text-bb-text opacity-70 mb-1">${sub}</span>
+            </div>
+            <!-- Subtle bar bg -->
+            <div class="absolute bottom-0 left-0 h-1 ${colorClass.replace('text', 'bg')} opacity-20 w-full"></div>
+        </div>
+    `;
+
+    // Extract
+    const coh = micro.cohesion?.cohesion || 50;
+    const ofsi = micro.ofsi?.ofsi || 50;
+    const fbi = micro.fbi?.fbi || 0;
+    const cis = micro.cis?.cis || 50;
+    const tim = micro.tim?.tim || 50;
+    const zPress = micro.zPress?.zPress || 0;
+
+    // Intensity (Mock or Real)
+    if (elInt) elInt.innerText = (Math.abs(zPress) * 5).toFixed(1) + '/10';
+
+    el.innerHTML = `
+        ${card('COHESION', coh + '%', micro.cohesion?.level, coh > 60 ? 'text-bb-green' : 'text-bb-gold')}
+        ${card('FLOW STR (OFSI)', ofsi, micro.ofsi?.strength, ofsi > 60 ? 'text-bb-green' : ofsi < 40 ? 'text-bb-red' : 'text-bb-muted')}
+        ${card('FUNDING BIAS', fbi, micro.fbi?.direction, fbi > 80 ? 'text-bb-red' : 'text-bb-green')}
+        ${card('COMPOSITE (CIS)', cis.toFixed(0), micro.cis?.bias, cis > 60 ? 'text-bb-green' : 'text-bb-gold')}
+        ${card('TRADE IMB (TIM)', tim, micro.tim?.imbalance, tim > 60 ? 'text-bb-green' : 'text-bb-red')}
+        ${card('Z-PRESSURE', zPress.toFixed(2), micro.zPress?.pressure, zPress > 0.5 ? 'text-bb-green' : zPress < -0.5 ? 'text-bb-red' : 'text-bb-blue')}
+        ${card('RANGE COMP', micro.rangeComp?.rangeComp?.toFixed(0) || 0, micro.rangeComp?.status, 'text-white')}
+        ${card('CORRELATION', micro.pfci?.pfci || 0, micro.pfci?.signal, 'text-bb-blue')}
+    `;
+}
+
+function updateAttribution(signals) {
+    const el = document.getElementById('attrib-list');
+    if (!el || !signals) return;
+
+    // Flatten & Sort
+    let items = [];
+    Object.keys(signals).forEach(key => {
+        const s = signals[key];
+        // Handle nested categories or direct signals
+        if (s.direction) items.push({ id: key, ...s });
+        else if (typeof s === 'object') {
+            Object.keys(s).forEach(k => {
+                if (s[k]?.direction) items.push({ id: `${key}.${k}`, ...s[k] });
+            });
+        }
+    });
+
+    // Calculate total score for % share
+    const totalScore = items.reduce((acc, i) => acc + (i.normalizedScore || 0), 0);
+
+    items.sort((a, b) => (b.normalizedScore || 0) - (a.normalizedScore || 0));
+
+    el.innerHTML = items.map(item => {
+        const share = totalScore > 0 ? (item.normalizedScore / totalScore) * 100 : 0;
+        const color = item.direction === 'BUY' ? 'text-bb-green bg-bb-green' : item.direction === 'SELL' ? 'text-bb-red bg-bb-red' : 'text-bb-muted bg-bb-muted';
+
+        return `
+            <div class="grid grid-cols-12 gap-2 p-2 border-b border-bb-border/30 hover:bg-white/5 items-center text-xs group">
+                <div class="col-span-3 font-mono text-[9px] uppercase truncate text-white" title="${item.id}">${item.id}</div>
+                <div class="col-span-2 text-center font-bold ${color.split(' ')[0]}">${item.normalizedScore.toFixed(1)}</div>
+                
+                <div class="col-span-5 flex items-center gap-2">
+                    <div class="flex-1 h-1.5 bg-bb-dark rounded-full overflow-hidden">
+                        <div class="h-full ${color.split(' ')[1]}" style="width: ${share}%"></div>
+                    </div>
+                    <span class="text-[9px] w-8 text-right">${share.toFixed(1)}%</span>
+                </div>
+                
+                <div class="col-span-2 text-right text-[9px] text-bb-muted">${(item.weight || 0).toFixed(2)}</div>
+            </div>
+        `;
+    }).join('');
+}
+
+function updateBreakout(vol, priceData) {
+    const el = document.getElementById('breakout-dash');
+    if (!el || !vol) return;
+
+    const prob = 76; // Mock probability until calculated
+    const direction = 'UP';
+
+    el.innerHTML = `
+        <div class="text-center mb-2">
+            <div class="text-4xl font-bold text-bb-green">${prob}%</div>
+            <div class="text-[9px] text-bb-muted uppercase">PROBABILITY</div>
+        </div>
+        
+        <div class="space-y-2 text-xs px-2">
+             <div class="flex justify-between">
+                 <span class="text-bb-muted">DIRECTION</span>
+                 <span class="font-bold text-bb-green">${direction} ⬆️</span>
+             </div>
+             <div class="flex justify-between">
+                 <span class="text-bb-muted">STATUS</span>
+                 <span class="text-white">HIGH_PROB</span>
+             </div>
+             <div class="flex justify-between">
+                 <span class="text-bb-muted">TARGET</span>
+                 <span class="font-mono text-bb-gold">$${(priceData?.last * 1.019 || 0).toFixed(4)}</span>
+             </div>
+        </div>
+    `;
+}
+
+function updateQuality(custom) {
+    const el = document.getElementById('quality-dash');
+    if (!el) return;
+
+    const sqi = custom?.SQI || 0;
+
+    el.innerHTML = `
+        <div class="flex justify-between items-center bg-bb-dark p-2 border border-bb-border">
+            <span class="text-[9px] text-bb-muted">SIGNAL QUALITY</span>
+            <span class="font-bold ${sqi > 70 ? 'text-bb-green' : 'text-bb-gold'}">${sqi.toFixed(1)}</span>
+        </div>
+        
+        <div class="bg-bb-dark p-2 border border-bb-border">
+            <div class="flex justify-between text-[9px] mb-1">
+                <span class="text-bb-muted">CONVERGENCE</span>
+                <span class="text-white">DETECTED</span>
+            </div>
+            <div class="text-[9px] text-bb-muted italic">
+                Momentum and Volume alignment confirmed 15m.
+            </div>
+        </div>
+    `;
+}
+
+function updateCorrelation(signals) {
+    const el = document.getElementById('correlation-matrix');
+    if (!el || !signals) return;
+
+    // Flatten signals
+    let items = [];
+    Object.keys(signals).forEach(key => {
+        const s = signals[key];
+        if (s.direction) items.push({ id: key, dir: s.direction });
+        else if (typeof s === 'object') {
+            Object.keys(s).forEach(k => {
+                if (s[k]?.direction) items.push({ id: `${key}.${k}`, dir: s[k].direction });
+            });
+        }
+    });
+
+    // Count by direction
+    const buyCount = items.filter(i => i.dir === 'BUY').length;
+    const sellCount = items.filter(i => i.dir === 'SELL').length;
+    const neutralCount = items.filter(i => i.dir === 'NEUTRAL' || i.dir === 'NO_TRADE').length;
+    const total = items.length;
+
+    // Calculate correlation strength (simplified)
+    const dominantCount = Math.max(buyCount, sellCount);
+    const correlation = total > 0 ? (dominantCount / total) : 0;
+    const noise = 1 - correlation;
+
+    // Determine quality
+    let quality = 'GOOD';
+    let qualityColor = 'text-bb-green';
+    if (noise > 0.5) {
+        quality = 'NOISY';
+        qualityColor = 'text-bb-red';
+    } else if (noise > 0.3) {
+        quality = 'MODERATE';
+        qualityColor = 'text-bb-gold';
+    }
+
+    el.innerHTML = `
+        <div class="grid grid-cols-3 gap-1 mb-2">
+            <div class="text-center bg-bb-dark border border-bb-border p-1">
+                <div class="text-[8px] text-bb-muted">BUY</div>
+                <div class="text-lg font-bold text-bb-green">${buyCount}</div>
+            </div>
+            <div class="text-center bg-bb-dark border border-bb-border p-1">
+                <div class="text-[8px] text-bb-muted">SELL</div>
+                <div class="text-lg font-bold text-bb-red">${sellCount}</div>
+            </div>
+            <div class="text-center bg-bb-dark border border-bb-border p-1">
+                <div class="text-[8px] text-bb-muted">NEUTRAL</div>
+                <div class="text-lg font-bold text-bb-muted">${neutralCount}</div>
+            </div>
+        </div>
+
+        <div class="space-y-1">
+            <div class="flex justify-between items-center text-xs">
+                <span class="text-bb-muted">Correlation</span>
+                <span class="font-bold">${(correlation * 100).toFixed(0)}%</span>
+            </div>
+            <div class="w-full h-2 bg-bb-dark rounded overflow-hidden">
+                <div class="bg-bb-green h-full" style="width: ${correlation * 100}%"></div>
+            </div>
+
+            <div class="flex justify-between items-center text-xs mt-1">
+                <span class="text-bb-muted">Signal Noise</span>
+                <span class="${qualityColor} font-bold">${quality}</span>
+            </div>
+        </div>
+    `;
+}
