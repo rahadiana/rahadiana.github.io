@@ -46,6 +46,10 @@ let selectedCoin = null;
 let selectedProfile = 'MODERATE';
 let selectedTimeframe = '15MENIT';
 
+// Packet Deduplication Cache
+const seenPackets = new Set();
+const PACKET_CACHE_SIZE = 1000;
+
 // UI Elements
 const statusDot = document.getElementById('status-dot');
 const statusText = document.getElementById('status-text');
@@ -325,11 +329,22 @@ function connect() {
                 // P2P will broadcast the original raw data for efficiency
                 if (p2p) p2p.broadcast(payload.data);
             } else if (payload.type === 'stream-notify') {
-                // Lightweight update to keep ticker alive while mesh forms
+                // Lightweight update to keep ticker alive & populate sidebar while mesh forms
+                const coin = payload.coin;
+                if (!marketState[coin]) marketState[coin] = { coin: coin };
+
+                // Patch Price data for sidebar visualization
+                marketState[coin].raw = {
+                    ...marketState[coin].raw,
+                    PRICE: { last: payload.price, percent_change_1JAM: payload.change }
+                };
+
                 updateTicker({
                     coin: payload.coin,
                     PRICE: { price: payload.price, percent_change_1JAM: payload.change }
                 });
+
+                Sidebar.renderList(coinListContainer, marketState, selectedCoin, selectCoin);
             }
         } catch (e) {
             console.error('WS Parse/Decompress Error:', e);
@@ -346,7 +361,33 @@ function connect() {
 
 function handleIncomingStream(data, source = 'WS') {
     const coin = data.coin;
+
+    // Generate Deterministic Packet ID for Deduplication (coin-price-rounded-time)
+    const price = data.raw?.PRICE?.last || data.PRICE?.price || 0;
+    const packetId = `${coin}-${price}-${Math.floor(Date.now() / 1000)}`;
+
+    if (seenPackets.has(packetId)) {
+        // console.log(`[DEDUPE] Skipping duplicate for ${coin}`);
+        return;
+    }
+
+    // Add to Cache & Enforce Size
+    seenPackets.add(packetId);
+    if (seenPackets.size > PACKET_CACHE_SIZE) {
+        const first = seenPackets.values().next().value;
+        seenPackets.delete(first);
+    }
+
     clockEl.innerText = formatTime(Date.now());
+
+    // Log P2P arrival source for verification
+    if (source === 'P2P') {
+        const stats = p2p.getStats();
+        // console.log(`[DATA] Rx: ${coin} via P2P Mesh`);
+
+        // ⭐ RELAY/FLOOD: Rebroadcast newly seen P2P data to neighbors
+        if (p2p) p2p.broadcast(data);
+    }
 
     if (!marketState[coin]) {
         marketState[coin] = data;
