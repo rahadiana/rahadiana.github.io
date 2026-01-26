@@ -10,6 +10,13 @@ let activeSubscription = null;
 let dataCallback = null;
 let reconnectTimer = null;
 
+function formatInstId(instId) {
+    if (!instId) return null;
+    if (instId.includes('-')) return instId.toUpperCase();
+    // Default fallback for raw ticker names
+    return `${instId.toUpperCase()}-USDT-SWAP`;
+}
+
 /**
  * Initialize WebSocket link
  */
@@ -22,6 +29,7 @@ export function connect() {
     ws.onopen = () => {
         console.log('[OKX-WS] Uplink established (Real-Time Depth)');
         if (activeSubscription) {
+            console.log(`[OKX-WS] Resubscribing to ${activeSubscription.instId}`);
             ws.send(JSON.stringify({ op: 'subscribe', args: [activeSubscription] }));
         }
     };
@@ -61,11 +69,13 @@ export function subscribe(instId, callback) {
     if (!instId) return;
     dataCallback = callback;
 
-    const instType = instId.includes('-SWAP') ? 'SWAP' : 'SPOT';
-    const newSubArr = { channel: 'optimized-books', instId, instType };
+    const formattedId = formatInstId(instId);
+    const instType = formattedId.includes('-SWAP') ? 'SWAP' : 'SPOT';
+    const newSubArr = { channel: 'optimized-books', instId: formattedId, instType };
 
-    // Unsubscribe previous if active
-    if (activeSubscription && activeSubscription.instId !== instId && ws && ws.readyState === 1) {
+    // Unsubscribe previous if active and changed
+    if (activeSubscription && activeSubscription.instId !== formattedId && ws && ws.readyState === 1) {
+        console.log(`[OKX-WS] Terminating stale telemetry for ${activeSubscription.instId}`);
         ws.send(JSON.stringify({
             op: 'unsubscribe',
             args: [activeSubscription]
@@ -76,9 +86,10 @@ export function subscribe(instId, callback) {
 
     if (ws && ws.readyState === 1) {
         ws.send(JSON.stringify({ op: 'subscribe', args: [activeSubscription] }));
-        console.log(`[OKX-WS] Switching telemetry to ${instId}`);
+        console.log(`[OKX-WS] Switching telemetry to ${formattedId}`);
     } else {
         connect();
+        // The onopen handler in connect() will pick up the activeSubscription
     }
 }
 
@@ -87,6 +98,7 @@ export function subscribe(instId, callback) {
  */
 export function unsubscribe() {
     if (activeSubscription && ws && ws.readyState === 1) {
+        console.log(`[OKX-WS] Unsubscribing from ${activeSubscription.instId}`);
         ws.send(JSON.stringify({ op: 'unsubscribe', args: [activeSubscription] }));
     }
     activeSubscription = null;

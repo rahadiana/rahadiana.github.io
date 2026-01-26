@@ -46,9 +46,15 @@ let selectedCoin = null;
 let selectedProfile = 'MODERATE';
 let selectedTimeframe = '15MENIT';
 
-// Packet Deduplication Cache
+// Packet Deduplication & Health Monitoring
 const seenPackets = new Set();
 const PACKET_CACHE_SIZE = 1000;
+const meshStats = {
+    wsCount: 0,
+    p2pCount: 0,
+    isOffloaded: false,
+    lastP2PTime: Date.now()
+};
 
 // UI Elements
 const statusDot = document.getElementById('status-dot');
@@ -58,6 +64,36 @@ const viewContainer = document.getElementById('view-container');
 const tickerTape = document.getElementById('ticker-tape');
 const coinListContainer = document.getElementById('coin-list');
 const detailsSubnav = document.getElementById('details-subnav');
+
+// ⭐ ADAPTIVE MESH HEALTH MONITOR
+setInterval(() => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (p2p && p2p.isSuperPeer) return; // ⭐ Backbone Protection: SuperPeers never offload
+
+    const total = meshStats.wsCount + meshStats.p2pCount;
+    if (total < 10) return; // Wait for enough data
+
+    const p2pRatio = meshStats.p2pCount / total;
+    const staleTime = Date.now() - meshStats.lastP2PTime;
+
+    // 1. MESH IS HEALTHY: Offload server feed
+    if (!meshStats.isOffloaded && p2pRatio > 0.5 && total > 20) {
+        console.log(`[ADAPTIVE] Mesh is healthy (${Math.round(p2pRatio * 100)}%). Requesting Server Offload.`);
+        meshStats.isOffloaded = true;
+        safeSend({ type: 'mesh:healthy' });
+    }
+
+    // 2. MESH IS STARVED: Restore server feed
+    if (meshStats.isOffloaded && (staleTime > 15000 || p2pRatio < 0.2)) {
+        console.warn(`[ADAPTIVE] Mesh starved or slow. Restoring Full Server Feed.`);
+        meshStats.isOffloaded = false;
+        safeSend({ type: 'mesh:starved' });
+    }
+
+    // Reset counters for next window
+    meshStats.wsCount = 0;
+    meshStats.p2pCount = 0;
+}, 10000);
 
 // ============================================
 // TAB MANAGER & UI LOGIC
@@ -197,6 +233,14 @@ function switchSubTab(subTabName) {
 function selectCoin(coin, isManual = false) {
     if (!coin) return;
     selectedCoin = coin;
+
+    // ⭐ TRANSITION GUARD: Force Full Feed on coin change
+    if (meshStats.isOffloaded) {
+        console.log(`[TRANSITION] Asset switch detected (${coin}). Restoring Full Server Feed.`);
+        meshStats.isOffloaded = false;
+        safeSend({ type: 'mesh:starved' });
+    }
+
     if (isManual) {
         const detailsBtn = document.querySelector('[data-tab="DETAILS"]');
         if (detailsBtn) detailsBtn.classList.remove('hidden');
@@ -420,8 +464,14 @@ function handleIncomingStream(data, source = 'WS') {
     const packetId = `${coin}-${price}-${Math.floor(Date.now() / 1000)}`;
 
     if (seenPackets.has(packetId)) {
-        // console.log(`[DEDUPE] Skipping duplicate for ${coin}`);
         return;
+    }
+
+    // ⭐ Health Metrics tracking
+    if (source === 'WS') meshStats.wsCount++;
+    if (source === 'P2P') {
+        meshStats.p2pCount++;
+        meshStats.lastP2PTime = Date.now();
     }
 
     // Add to Cache & Enforce Size
@@ -436,8 +486,6 @@ function handleIncomingStream(data, source = 'WS') {
     // Log P2P arrival source for verification
     if (source === 'P2P') {
         const stats = p2p.getStats();
-        // console.log(`[DATA] Rx: ${coin} via P2P Mesh`);
-
         // ⭐ RELAY/FLOOD: Rebroadcast newly seen P2P data to neighbors
         if (p2p) p2p.broadcast(data);
     }

@@ -147,10 +147,13 @@ export function render(container) {
 }
 
 export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
+    if (!data) return;
     const coinId = data.coin;
+    lastMarketDataReference = data;
 
     // Manage Live WebSocket Subscription
     if (activeCoinId !== coinId) {
+        console.log(`[LIQUIDITY] Activating High-Fidelity stream for: ${coinId}`);
         activeCoinId = coinId;
         localAsks.clear();
         localBids.clear();
