@@ -55,7 +55,9 @@ const meshStats = {
     wsCount: 0,
     p2pCount: 0,
     isOffloaded: false,
-    lastP2PTime: Date.now()
+    lastP2PTime: Date.now(),
+    mps: 0,
+    messageCount: 0
 };
 
 // UI Elements
@@ -67,35 +69,77 @@ const tickerTape = document.getElementById('ticker-tape');
 const coinListContainer = document.getElementById('coin-list');
 const detailsSubnav = document.getElementById('details-subnav');
 
-// ⭐ ADAPTIVE MESH HEALTH MONITOR
+// ⭐ AGGRESSIVE MESH HEALTH MONITOR (3s reaction time)
 setInterval(() => {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    if (p2p && p2p.isSuperPeer) return; // ⭐ Backbone Protection: SuperPeers never offload
+    if (p2p && p2p.isSuperPeer) return;
 
     const total = meshStats.wsCount + meshStats.p2pCount;
-    if (total < 10) return; // Wait for enough data
+    // We check every 3 seconds. 75 updates / 3s = 25 MPS.
+    const averageMPS = total / 3;
 
-    const p2pRatio = meshStats.p2pCount / total;
-    const staleTime = Date.now() - meshStats.lastP2PTime;
-
-    // 1. MESH IS HEALTHY: Offload server feed
-    if (!meshStats.isOffloaded && p2pRatio > 0.5 && total > 20) {
-        console.log(`[ADAPTIVE] Mesh is healthy (${Math.round(p2pRatio * 100)}%). Requesting Server Offload.`);
-        meshStats.isOffloaded = true;
-        safeSend({ type: 'mesh:healthy' });
-    }
-
-    // 2. MESH IS STARVED: Restore server feed
-    if (meshStats.isOffloaded && (staleTime > 15000 || p2pRatio < 0.2)) {
-        console.warn(`[ADAPTIVE] Mesh starved or slow. Restoring Full Server Feed.`);
+    // 1. THROUGHPUT GUARD: Immediate restoration if speed drops
+    if (meshStats.isOffloaded && averageMPS < 25 && total > 5) {
+        console.warn(`[MESH_LOW_SPEED] Fallback: Only ${averageMPS.toFixed(1)} MPS. Restoring server feed.`);
         meshStats.isOffloaded = false;
         safeSend({ type: 'mesh:starved' });
+        updateStatusText('STREAMS RESTORED / LOW SPEED');
     }
 
-    // Reset counters for next window
+    // 2. MESH HEALTHY: Offload if speed is high and mesh is efficient
+    const p2pRatio = meshStats.p2pCount / total;
+    if (!meshStats.isOffloaded && p2pRatio > 0.7 && averageMPS > 35) {
+        console.log(`[MESH_HEALTHY] Offloading: ${Math.round(p2pRatio * 100)}% efficiency at ${averageMPS.toFixed(1)} MPS.`);
+        meshStats.isOffloaded = true;
+        safeSend({ type: 'mesh:healthy' });
+        updateStatusText('MESH ACTIVE / OFFLOADED');
+    }
+
+    // 3. STALE PROTECTION
+    const staleTime = Date.now() - meshStats.lastP2PTime;
+    if (meshStats.isOffloaded && (staleTime > 5000 || p2pRatio < 0.4)) {
+        console.warn(`[MESH_STALE] Restoring due to latency/efficiency drift.`);
+        meshStats.isOffloaded = false;
+        safeSend({ type: 'mesh:starved' });
+        updateStatusText('STREAMS RESTORED / STALE');
+    }
+
+    // Update status text with current mode if not overwritten
+    if (meshStats.isOffloaded) {
+        updateStatusText('READY [P] / OFFLOADED');
+    } else {
+        const prefix = p2p?.isSuperPeer ? 'READY [S] / PROTECTED' : 'READY [P] / FULL FEED';
+        updateStatusText(prefix);
+    }
+
+    // Reset counters
     meshStats.wsCount = 0;
     meshStats.p2pCount = 0;
-}, 10000);
+}, 3000);
+
+function updateStatusText(text) {
+    if (statusText) statusText.innerText = text;
+}
+
+// ⭐ MPS (MESSAGES PER SECOND) MONITOR
+setInterval(() => {
+    const mpsEl = document.getElementById('mps-text');
+    if (mpsEl) {
+        const mps = meshStats.messageCount;
+        mpsEl.innerText = `${mps} MPS`;
+
+        // Dynamic coloring based on health
+        if (mps === 0) {
+            mpsEl.className = 'text-bb-red font-black ml-2 tabular-nums';
+        } else if (mps < 5) {
+            mpsEl.className = 'text-bb-gold font-black ml-2 tabular-nums';
+        } else {
+            mpsEl.className = 'text-bb-blue font-black ml-2 tabular-nums';
+        }
+    }
+    meshStats.messageCount = 0;
+}, 1000);
+
 
 // ============================================
 // TAB MANAGER & UI LOGIC
@@ -371,6 +415,7 @@ function connect() {
     };
 
     ws.onmessage = async (event) => {
+        meshStats.messageCount++; // ⭐ Raw Throughput Accounting
         try {
             let payloadText;
             if (event.data instanceof Blob) {
@@ -426,6 +471,9 @@ function connect() {
                 const coin = payload.coin;
                 if (!marketState[coin]) marketState[coin] = { coin: coin };
 
+                meshStats.wsCount++; // ⭐ Add to health stats
+                startRenderingHeartbeat();
+
                 // Show warning if grace period is running out
                 if (payload.graceRemaining !== undefined && payload.graceRemaining < 120) {
                     statusText.innerText = `MESH PENDING: ${payload.graceRemaining}s`;
@@ -443,7 +491,7 @@ function connect() {
                     PRICE: { price: payload.price, percent_change_1JAM: payload.change }
                 });
 
-                Sidebar.renderList(coinListContainer, marketState, selectedCoin, selectCoin);
+                pendingUpdates.add(coin);
             }
         } catch (e) {
             console.error('WS Parse/Decompress Error:', e);
@@ -458,8 +506,42 @@ function connect() {
     };
 }
 
+const pendingUpdates = new Set();
+let renderingHeartbeat = null;
+
+function startRenderingHeartbeat() {
+    if (renderingHeartbeat) return;
+    renderingHeartbeat = setInterval(() => {
+        if (pendingUpdates.size === 0) return;
+
+        // 1. Process all pending coins
+        pendingUpdates.forEach(coin => {
+            if (currentTab === 'GLOBAL' || coin === selectedCoin) {
+                updateCurrentView();
+            }
+        });
+
+        // 2. Batch Sidebar update (once per heartbeat)
+        Sidebar.renderList(coinListContainer, marketState, selectedCoin, selectCoin);
+
+        pendingUpdates.clear();
+    }, 300); // 300ms Heartbeat: High enough to feel real-time, low enough to save CPU
+}
+
 function handleIncomingStream(data, source = 'WS') {
     const coin = data.coin;
+    if (!coin) return;
+
+    // ⭐ Health Metrics tracking (Move UP to count everything before deduplication)
+    if (source === 'WS') meshStats.wsCount++;
+    if (source === 'P2P') {
+        meshStats.p2pCount++;
+        meshStats.lastP2PTime = Date.now();
+        meshStats.messageCount++; // Count P2P messages separately as they don't hit ws.onmessage
+    }
+
+    // Ensure heartbeat is running
+    startRenderingHeartbeat();
 
     // Generate Deterministic Packet ID for Deduplication (coin-price-rounded-time)
     const price = data.raw?.PRICE?.last || data.PRICE?.price || 0;
@@ -467,13 +549,6 @@ function handleIncomingStream(data, source = 'WS') {
 
     if (seenPackets.has(packetId)) {
         return;
-    }
-
-    // ⭐ Health Metrics tracking
-    if (source === 'WS') meshStats.wsCount++;
-    if (source === 'P2P') {
-        meshStats.p2pCount++;
-        meshStats.lastP2PTime = Date.now();
     }
 
     // Add to Cache & Enforce Size
@@ -485,13 +560,7 @@ function handleIncomingStream(data, source = 'WS') {
 
     clockEl.innerText = formatTime(Date.now());
 
-    // Log P2P arrival source for verification
-    if (source === 'P2P') {
-        const stats = p2p.getStats();
-        // ⭐ RELAY/FLOOD: Rebroadcast newly seen P2P data to neighbors
-        if (p2p) p2p.broadcast(data);
-    }
-
+    // Update global market state silently
     if (!marketState[coin]) {
         marketState[coin] = data;
     } else {
@@ -507,12 +576,11 @@ function handleIncomingStream(data, source = 'WS') {
         };
     }
 
+    // Queue for UI update
+    pendingUpdates.add(coin);
+
     if (!selectedCoin) selectCoin(coin);
     updateTicker(data);
-    Sidebar.renderList(coinListContainer, marketState, selectedCoin, selectCoin);
-    if (currentTab === 'GLOBAL' || coin === selectedCoin) {
-        updateCurrentView();
-    }
 }
 
 function updateTicker(data) {
@@ -521,7 +589,7 @@ function updateTicker(data) {
 
     const coin = data.coin || 'BTC';
     const price = data.raw?.PRICE?.last || data.PRICE?.price || 0;
-    const change = data.raw?.PRICE?.percent_change_1JAM || data.PRICE?.percent_change_1JAM || 0;
+    const change = data.raw?.PRICE?.percent_change_24h || data.PRICE?.percent_change_24h || data.raw?.PRICE?.percent_change_1JAM || 0;
     const vol = (data.raw?.VOL?.vol_buy_1JAM || 0) + (data.raw?.VOL?.vol_sell_1JAM || 0);
     const regime = data.signals?.marketRegime?.currentRegime || 'UNKNOWN';
     const pColor = change >= 0 ? 'text-bb-green' : 'text-bb-red';
@@ -556,7 +624,10 @@ function updateTicker(data) {
 // Peer Refresh Loop
 setInterval(() => {
     if (currentTab === 'INFO' && p2p) {
-        InfoView.update(p2p.getStats());
+        InfoView.update({
+            ...p2p.getStats(),
+            meshStats: { ...meshStats } // Pass real-time throughput & mode
+        });
     }
 }, 1000);
 

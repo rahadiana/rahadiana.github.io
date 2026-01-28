@@ -23,6 +23,8 @@ export function render(container) {
                 <button id="btn-view-funding" class="px-3 h-full flex items-center text-[10px] font-black tracking-tight transition-all ${currentMode === 'FUNDING' ? 'text-bb-gold border-b-2 border-bb-gold bg-bb-gold/10' : 'text-bb-muted border-b-2 border-transparent hover:text-white'}">FUNDING</button>
                 <button id="btn-view-vol" class="px-3 h-full flex items-center text-[10px] font-black tracking-tight transition-all ${currentMode === 'VOLATILITY' ? 'text-bb-gold border-b-2 border-bb-gold bg-bb-gold/10' : 'text-bb-muted border-b-2 border-transparent hover:text-white'}">VOL</button>
                 <button id="btn-view-sizing" class="px-3 h-full flex items-center text-[10px] font-black tracking-tight transition-all ${currentMode === 'SIZING' ? 'text-bb-gold border-b-2 border-bb-gold bg-bb-gold/10' : 'text-bb-muted border-b-2 border-transparent hover:text-white'}">SIZING</button>
+                <button id="btn-view-oieff" class="px-3 h-full flex items-center text-[10px] font-black tracking-tight transition-all ${currentMode === 'OI_EFFICIENCY' ? 'text-bb-gold border-b-2 border-bb-gold bg-bb-gold/10' : 'text-bb-muted border-b-2 border-transparent hover:text-white'}">OI EFF</button>
+                <button id="btn-view-sentz" class="px-3 h-full flex items-center text-[10px] font-black tracking-tight transition-all ${currentMode === 'SENTIMENT_Z' ? 'text-bb-gold border-b-2 border-bb-gold bg-bb-gold/10' : 'text-bb-muted border-b-2 border-transparent hover:text-white'}">SENT Z</button>
 
                 <button id="btn-refresh-heatmap" class="ml-2 px-3 h-full flex items-center text-[9px] font-bold text-bb-muted hover:text-bb-gold transition-colors border-l border-bb-border group">
                     <span class="mr-1 group-active:rotate-180 transition-transform duration-300">↻</span> REFRESH
@@ -66,6 +68,8 @@ export function render(container) {
     container.querySelector('#btn-view-funding').onclick = () => switchMode('FUNDING');
     container.querySelector('#btn-view-vol').onclick = () => switchMode('VOLATILITY');
     container.querySelector('#btn-view-sizing').onclick = () => switchMode('SIZING');
+    container.querySelector('#btn-view-oieff').onclick = () => switchMode('OI_EFFICIENCY');
+    container.querySelector('#btn-view-sentz').onclick = () => switchMode('SENTIMENT_Z');
 
     container.querySelector('#btn-refresh-heatmap').onclick = () => {
         if (lastState) update(lastState, true);
@@ -127,6 +131,12 @@ export function update(marketState, force = false) {
             break;
         case 'SIZING':
             renderSkew(marketState, container);
+            break;
+        case 'OI_EFFICIENCY':
+            renderOIEfficiency(marketState, container);
+            break;
+        case 'SENTIMENT_Z':
+            renderSentimentZ(marketState, container);
             break;
     }
 
@@ -590,4 +600,163 @@ function renderSkew(marketState, container) {
     document.getElementById('legend-text').innerText = 'Institutional Skew = Imbalance in Average Trade sizes. Positive = Institutional Aggression.';
     document.getElementById('heatmap-total-label').innerText = 'TOP WHALE FLOW:';
     document.getElementById('heatmap-total').innerText = coins[0]?.coin || '--';
+}
+
+/**
+ * HELPER: OI Efficiency Matrix (Real Money vs Speculation)
+ */
+function renderOIEfficiency(marketState, container) {
+    const rect = container.getBoundingClientRect();
+    const w = rect.width; const h = rect.height;
+    const padding = 60;
+
+    const coins = Object.keys(marketState).map(id => {
+        const d = marketState[id];
+        const oi = d.raw?.OI || {};
+        const price = d.raw?.PRICE || {};
+        const chgOiPct = oi.oiChange24h || 0;
+        const totalOi = oi.oi || 0;
+        const vol = price.total_vol_fiat || (price.total_vol * price.last) || 1;
+
+        // Efficiency = |$ Change in OI| / $ Volume
+        const dollarChgOi = (Math.abs(chgOiPct) / 100) * totalOi;
+        const eff = (dollarChgOi / vol) * 100; // Percentage efficiency
+
+        return {
+            id, coin: id,
+            eff: eff,
+            oiChgPct: chgOiPct,
+            vol: vol
+        };
+    }).sort((a, b) => b.eff - a.eff);
+
+    const maxOI = Math.max(0.1, ...coins.map(c => Math.abs(c.oiChgPct)));
+    const maxVol = Math.max(1000000, ...coins.map(c => c.vol));
+
+    const mapX = (val) => w / 2 + (val / maxOI) * (w / 2 - padding);
+    const mapY = (val) => h - padding - (val / maxVol) * (h - padding * 2);
+
+    container.innerHTML = `
+        <svg class="w-full h-full">
+            <!-- Quadrant Labels -->
+            <text x="${w - padding}" y="${padding}" text-anchor="end" class="fill-bb-green/20 font-black text-[20px] uppercase pointer-events-none">GENUINE COMMITMENT</text>
+            <text x="${padding}" y="${padding}" text-anchor="start" class="fill-bb-red/20 font-black text-[20px] uppercase pointer-events-none">SPECULATIVE NOISE</text>
+            <text x="${padding}" y="${h - padding - 20}" text-anchor="start" class="fill-white/10 font-black text-[12px] uppercase pointer-events-none">DORMANT ZONE</text>
+
+            <line x1="${padding}" y1="${h - padding}" x2="${w - padding}" y2="${h - padding}" stroke="white" stroke-opacity="0.1" />
+            <line x1="${w / 2}" y1="${padding}" x2="${w / 2}" y2="${h - padding}" stroke="white" stroke-opacity="0.1" />
+            
+            <text x="${w / 2}" y="${h - 20}" text-anchor="middle" class="fill-bb-gold/60 text-[9px] font-black uppercase">OI Change % (24H)</text>
+            <text x="${20}" y="${h / 2}" text-anchor="middle" transform="rotate(-90 20 ${h / 2})" class="fill-bb-gold/60 text-[9px] font-black uppercase">Volume Intensity ($)</text>
+
+            ${coins.map((c, i) => {
+        const cx = mapX(c.oiChgPct); const cy = mapY(c.vol);
+        const color = c.eff > 5 ? '#22c55e' : c.eff > 1 ? '#eab308' : '#6b7280';
+        const labelNeeded = i < 5 || c.eff > 10;
+        return `
+                    <g class="cursor-pointer group" onclick="window.app.selectCoin('${c.id}')">
+                        <circle cx="${cx}" cy="${cy}" r="${Math.min(12, 3 + c.eff)}" fill="${color}" opacity="0.6" class="hover:opacity-100 transition-all" />
+                        <text x="${cx}" y="${cy - 8}" text-anchor="middle" class="fill-white font-bold text-[8px] ${labelNeeded ? 'opacity-70' : 'opacity-0'} group-hover:opacity-100 transition-opacity pointer-events-none">${c.coin}</text>
+                    </g>
+                `;
+    }).join('')}
+        </svg>
+    `;
+
+    document.getElementById('legend-text').innerText = 'OI Efficiency = OI commitment relative to Volume. Green = Genuine Market Commitment.';
+    document.getElementById('heatmap-total-label').innerText = 'TOP EFFICIENCY:';
+    document.getElementById('heatmap-total').innerText = coins[0]?.coin || '--';
+}
+
+/**
+ * HELPER: Sentiment Extremity (Z-Score Map)
+ */
+function renderSentimentZ(marketState, container) {
+    const rect = container.getBoundingClientRect();
+    const w = rect.width; const h = rect.height;
+    const padding = 100;
+
+    const coins = Object.keys(marketState).map(id => {
+        const d = marketState[id];
+        const signals = d.signals?.profiles?.AGGRESSIVE?.timeframes?.['15MENIT']?.signals?.sentiment || {};
+        const z = signals.sentimentAlignment?.metadata?.avgZScore || 0;
+        return { id, coin: id, z: z };
+    }).sort((a, b) => b.z - a.z);
+
+    const mapX = (z) => w / 2 + (z / 4) * (w / 2 - padding);
+
+    container.innerHTML = `
+        <div class="h-full flex flex-col items-center justify-center p-10">
+            <div class="w-full max-w-4xl h-48 bg-bb-panel rounded border border-white/5 relative overflow-hidden flex flex-col justify-end pb-8 shadow-2xl">
+                <!-- BG Gradients -->
+                <div class="absolute inset-y-0 left-0 w-1/4 bg-gradient-to-r from-bb-green/5 to-transparent pointer-events-none"></div>
+                <div class="absolute inset-y-0 right-0 w-1/4 bg-gradient-to-l from-bb-red/5 to-transparent pointer-events-none"></div>
+
+                <!-- Scale labels -->
+                <div class="absolute top-2 left-0 right-0 flex justify-between px-6 text-[9px] font-black text-bb-muted uppercase tracking-widest z-30">
+                    <span class="text-bb-green/80 flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-bb-green animate-pulse"></span> PANIC ZONE</span>
+                    <span class="opacity-40">NEUTRAL BALANCE</span>
+                    <span class="text-bb-red/80 flex items-center gap-2">FOMO EXHAUSTION <span class="w-1.5 h-1.5 rounded-full bg-bb-red animate-pulse"></span></span>
+                </div>
+                
+                <!-- Zero line -->
+                <div class="absolute inset-y-0 left-1/2 w-px bg-white/20"></div>
+                
+                <!-- SD lines -->
+                ${[-3, -2, -1, 1, 2, 3].map(sd => `
+                    <div class="absolute inset-y-10 w-px bg-white/5" style="left: ${mapX(sd)}px"></div>
+                    <text class="absolute bottom-4 text-[7px] text-bb-muted font-mono" style="left: ${mapX(sd)}px; transform: translateX(-50%)">${sd > 0 ? '+' : ''}${sd}σ</text>
+                `).join('')}
+
+                <div class="relative w-full h-32 px-4">
+                    ${coins.map((c, i) => {
+        const x = mapX(c.z);
+        const rows = 12; // More rows for density
+        const yOffset = (i % rows) * 2.5;
+        const isExtreme = Math.abs(c.z) > 2.5;
+        const color = c.z > 2 ? 'bg-bb-red' : c.z < -2 ? 'bg-bb-green' : 'bg-bb-blue/60';
+        const size = isExtreme ? 'w-2.5 h-2.5' : 'w-1.5 h-1.5';
+        return `
+                            <div class="absolute rounded-full cursor-pointer hover:scale-150 border border-black/40 transition-transform ${size} ${color} ${isExtreme ? 'animate-pulse shadow-[0_0_12px_rgba(255,255,255,0.8)] z-20' : 'opacity-30 z-10 hover:opacity-100'}"
+                                 style="left: ${x}px; bottom: ${yOffset}px"
+                                 onclick="window.app.selectCoin('${c.id}')"
+                                 title="${c.coin}: Z=${c.z.toFixed(2)}">
+                                 ${isExtreme ? `<span class="absolute -top-4 left-1/2 -translate-x-1/2 text-[7px] font-black text-white whitespace-nowrap bg-black/80 px-1 rounded border border-white/10 shadow-lg">${c.coin}</span>` : ''}
+                            </div>
+                        `;
+    }).join('')}
+                </div>
+            </div>
+            
+            <div class="mt-8 grid grid-cols-4 gap-4 w-full max-w-5xl">
+                 <div class="panel p-3 flex flex-col items-center justify-center border-bb-green/20">
+                    <span class="text-[8px] text-bb-green font-black">PANIC / BOTTOMING (2σ+)</span>
+                    <span class="text-lg text-white font-black mt-1">${coins.filter(c => c.z < -2.0).length}</span>
+                 </div>
+                 <div class="panel p-3 flex flex-col items-center justify-center border-white/5">
+                    <span class="text-[8px] text-bb-muted font-black">STABLE ZONE</span>
+                    <span class="text-lg text-white/40 font-black mt-1">${coins.filter(c => Math.abs(c.z) <= 2.0).length}</span>
+                 </div>
+                 <div class="panel p-3 flex flex-col items-center justify-center border-bb-red/20">
+                    <span class="text-[8px] text-bb-red font-black">FOMO / EXHAUSTION (2σ+)</span>
+                    <span class="text-lg text-white font-black mt-1">${coins.filter(c => c.z > 2.0).length}</span>
+                 </div>
+                 <div class="panel p-3 flex flex-col gap-1 overflow-hidden">
+                    <span class="text-[8px] text-bb-gold font-black uppercase text-center border-b border-bb-gold/10 pb-1">Relative Outliers</span>
+                    <div class="flex flex-col gap-0.5">
+                        ${coins.slice(0, 3).concat(coins.slice(-3)).sort((a, b) => Math.abs(b.z) - Math.abs(a.z)).slice(0, 4).map(c => `
+                            <div class="flex justify-between text-[7px] font-bold">
+                                <span class="text-white">${c.coin}</span>
+                                <span class="${Math.abs(c.z) > 1.5 ? 'text-bb-gold' : 'text-bb-muted'}">${c.z > 0 ? '+' : ''}${c.z.toFixed(2)}σ</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                 </div>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('legend-text').innerText = 'Sentiment Extremity = Z-Score of Long/Short Ratio. ±3σ indicates extreme statistical exhaustion.';
+    document.getElementById('heatmap-total-label').innerText = 'EXTREME OUTLIERS:';
+    document.getElementById('heatmap-total').innerText = coins.filter(c => Math.abs(c.z) > 2.5).length;
 }

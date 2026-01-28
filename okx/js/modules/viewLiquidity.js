@@ -5,6 +5,11 @@ let activeCoinId = null;
 let lastMarketDataReference = null;
 let localAsks = new Map();
 let localBids = new Map();
+let lastHighBid = 0;
+let lastHighBidSize = 0;
+let lastLowAsk = 0;
+let lastLowAskSize = 0;
+let ofiAccumulator = 0;
 
 export function render(container) {
     container.innerHTML = `
@@ -24,10 +29,14 @@ export function render(container) {
             <div class="grid grid-cols-12 gap-3 shrink-0">
                 <!-- OFI SCORE -->
                 <div class="col-span-3 panel flex flex-col items-center justify-center p-3 relative overflow-hidden h-24">
-                    <div class="absolute top-1 left-2 text-[8px] text-bb-muted uppercase">Pressure</div>
+                    <div class="absolute top-1 left-2 text-[8px] text-bb-muted uppercase flex items-center gap-1">
+                        Pressure
+                        <span class="w-1 h-1 rounded-full bg-bb-green animate-ping"></span>
+                    </div>
                     <div class="text-3xl font-black italic text-white" id="liq-ofi-score">50</div>
                     <div id="liq-ofi-label" class="text-[8px] font-bold mt-1 uppercase tracking-widest px-1.5 rounded border">NEUTRAL</div>
                 </div>
+
 
                 <!-- DEPTH SUMMARY BARS & WALL INTENSITY -->
                 <div class="col-span-6 panel flex flex-col p-3 h-24 gap-2">
@@ -158,7 +167,9 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
         localAsks.clear();
         localBids.clear();
         OkxWs.subscribe(coinId, (wsRes) => {
-            processWsData(wsRes);
+            if (activeCoinId === coinId) {
+                processWsData(wsRes);
+            }
         });
     }
 
@@ -356,7 +367,36 @@ function processWsData(res) {
 
 
     renderLadder();
+    calculateOFI(res.data || []);
     updateRealTimeMetrics();
+}
+
+function calculateOFI(dataItems) {
+    dataItems.forEach(d => {
+        if (!d.bids || !d.asks || d.bids.length === 0 || d.asks.length === 0) return;
+
+        const bestBid = parseFloat(d.bids[0][0]);
+        const bestBidSize = parseFloat(d.bids[0][1]);
+        const bestAsk = parseFloat(d.asks[0][0]);
+        const bestAskSize = parseFloat(d.asks[0][1]);
+
+        let deltaBid = 0;
+        if (bestBid > lastHighBid) deltaBid = bestBidSize;
+        else if (bestBid === lastHighBid) deltaBid = bestBidSize - lastHighBidSize;
+        else deltaBid = -lastHighBidSize;
+
+        let deltaAsk = 0;
+        if (bestAsk < lastLowAsk) deltaAsk = bestAskSize;
+        else if (bestAsk === lastLowAsk) deltaAsk = bestAskSize - lastLowAskSize;
+        else deltaAsk = -lastLowAskSize;
+
+        ofiAccumulator += (deltaBid - deltaAsk);
+
+        lastHighBid = bestBid;
+        lastHighBidSize = bestBidSize;
+        lastLowAsk = bestAsk;
+        lastLowAskSize = bestAskSize;
+    });
 }
 
 function updateRealTimeMetrics() {
@@ -420,10 +460,44 @@ function updateRealTimeMetrics() {
     updateSlipEl('liq-slip-10k', slip10k);
     updateSlipEl('liq-slip-100k', slip100k);
 
-    // 4. Institutional Walls (Live)
-    // Update wall detector if significant changes? 
-    // Usually standard wall detection is fine on update(), but we can override:
-    // ... (Optional, user asked for calculations, metrics are key)
+    // 4. Institutional Walls (Live Detection)
+    const rawWalls = [];
+    const avgSize = (totalBidVal + totalAskVal) / (localBids.size + localAsks.size || 1) / ((sortedBids[0]?.[0] + sortedAsks[0]?.[0]) / 2 || 1);
+
+    // Simple block detection: size > 10x average level size
+    sortedBids.slice(0, 50).forEach(([p, s]) => { if (s > avgSize * 10) rawWalls.push({ price: p, size: s, side: 'BID' }); });
+    sortedAsks.slice(0, 50).forEach(([p, s]) => { if (s > avgSize * 10) rawWalls.push({ price: p, size: s, side: 'ASK' }); });
+
+    const elWalls = document.getElementById('liq-walls-list');
+    if (elWalls && rawWalls.length > 0) {
+        const coinSymbol = (activeCoinId || 'ASSET');
+        elWalls.innerHTML = rawWalls.sort((a, b) => b.size - a.size).slice(0, 5).map(w => `
+            <div class="flex flex-col p-2 bg-bb-blue/5 rounded border-l-2 ${w.side === 'BID' ? 'border-bb-green' : 'border-bb-red'} animate-pulse">
+                <div class="flex justify-between items-center">
+                    <span class="text-[10px] font-black text-white">${Utils.formatPrice(w.price)}</span>
+                    <span class="text-[7px] px-1 bg-bb-blue/20 rounded text-bb-blue font-black tracking-tighter">LIVE WS WALL</span>
+                </div>
+                <div class="flex justify-between items-end mt-1">
+                    <span class="text-[11px] font-bold ${w.side === 'BID' ? 'text-bb-green' : 'text-bb-red'}">${Utils.formatNumber(w.size)} ${coinSymbol}</span>
+                    <span class="text-[8px] text-bb-muted font-mono">$${Utils.formatNumber(w.size * w.price)}</span>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // 5. Update OFI (Pressure) UI
+    const elOfiScore = document.getElementById('liq-ofi-score');
+    const elOfiLabel = document.getElementById('liq-ofi-label');
+    if (elOfiScore) {
+        const normalizedOfi = Math.max(0, Math.min(100, 50 + (ofiAccumulator / 100))); // Scaled for UI
+        elOfiScore.innerText = Math.round(normalizedOfi);
+        elOfiScore.className = `text-3xl font-black italic ${normalizedOfi > 60 ? 'text-bb-green' : normalizedOfi < 40 ? 'text-bb-red' : 'text-white'}`;
+
+        if (elOfiLabel) {
+            elOfiLabel.innerText = normalizedOfi > 60 ? 'BULLISH RADIANCE' : normalizedOfi < 40 ? 'BEARISH PRESSURE' : 'EQUILIBRIUM';
+            elOfiLabel.className = `text-[8px] font-bold mt-1 uppercase tracking-widest px-1.5 rounded border ${normalizedOfi > 60 ? 'border-bb-green text-bb-green bg-bb-green/10' : normalizedOfi < 40 ? 'border-bb-red text-bb-red bg-bb-red/10' : 'border-bb-border text-bb-muted'}`;
+        }
+    }
 }
 
 function renderLadder() {

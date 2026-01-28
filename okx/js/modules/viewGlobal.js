@@ -21,7 +21,7 @@ export function init(selectCoinCallback) {
 export function render(container) {
     const tabs = [
         'ALERTS', 'OVERVIEW', 'DECISION', 'SMART', 'SYNTHESIS', 'VOLATILITY', 'MICROSTRUCTURE', 'LIQUIDITY', 'DERIVATIVES',
-        'REGIME', 'SENTIMENT', 'IO', 'PRICEMOVE',
+        'REGIME', 'SENTIMENT', 'IO', 'PRICEMOVE', 'FREQUENCY',
         'VOLSPIKE', 'VOLDURABILITY', 'VOLRATIO', 'OPENINTEREST', 'FUNDING'
     ];
 
@@ -96,6 +96,7 @@ export function render(container) {
             else if (currentMatrix === 'VOLATILITY') currentSort = { column: 'atrPct', dir: 'desc' };
             else if (currentMatrix === 'SMART') currentSort = { column: 'smi', dir: 'desc' };
             else if (currentMatrix === 'PRICEMOVE') currentSort = { column: 'chg', dir: 'desc' };
+            else if (currentMatrix === 'FREQUENCY') currentSort = { column: 'f15m', dir: 'desc' };
             else if (currentMatrix === 'VOLSPIKE') currentSort = { column: 's15m', dir: 'desc' };
             else if (currentMatrix === 'OPENINTEREST') currentSort = { column: 'oi1h', dir: 'desc' };
             else if (currentMatrix === 'FUNDING') currentSort = { column: 'funding', dir: 'desc' };
@@ -145,6 +146,12 @@ window.globalSortMatrix = (col) => {
     if (cachedMarketState) update(cachedMarketState, cachedProfile, cachedTimeframe);
 };
 
+const getSortVal = (r, col) => {
+    const val = r[col];
+    if (val && typeof val === 'object' && val.total !== undefined) return val.total;
+    if (val && typeof val === 'object' && val.spike !== undefined) return val.spike;
+    return val;
+};
 export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
     cachedMarketState = marketState;
     cachedProfile = profile;
@@ -161,10 +168,10 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
         const signals = tfObj.signals || {};
         const master = tfObj.masterSignal || {};
         const volModule = tfObj.volatility || signals.volatility || {};
-        const price = raw.PRICE || {};
-        const vol = raw.VOL || {};
-        const oiRaw = raw.OI || {};
-        const fundingRaw = raw.FUNDING || {};
+        const price = raw.PRICE || sigRoot.PRICE || {};
+        const vol = raw.VOL || sigRoot.VOL || {};
+        const oiRaw = raw.OI || sigRoot.OI || {};
+        const fundingRaw = raw.FUNDING || sigRoot.FUNDING || {};
         const analytics = data.analytics || {};
         const fundAn = analytics.funding || {};
 
@@ -174,11 +181,11 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
             const t = b + s;
             const h1Base = ((vol.vol_buy_1JAM || 0) + (vol.vol_sell_1JAM || 0)) / 60;
             const ratio = t > 0 ? (b - s) / t : 0;
-            const durability = h1Base > 0 ? Math.min(1.0, (t / mult) / h1Base / 2) : 0;
+            const durability = h1Base > 0 ? Math.min(1.0, (t / mult) / h1Base) : 0;
             const spike = h1Base > 0 ? (t / mult) / h1Base : 0;
 
             // ⭐ Institutional Upgrade: AVG-based Spike (Historical)
-            const avgVal = raw.AVG || {};
+            const avgVal = raw.AVG || sigRoot.AVG || {};
             const histBuy = avgVal[`avg_VOLCOIN_buy_${tf}`] || 0;
             const histSell = avgVal[`avg_VOLCOIN_sell_${tf}`] || 0;
             const histTotal = histBuy + histSell;
@@ -186,6 +193,16 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
             const avgSpike = histPace > 0 ? (t / mult) / histPace : 0;
 
             return { spike, avgSpike, ratio, durability };
+        };
+
+        const getFreqData = (tf) => {
+            const freq = raw.FREQ || sigRoot.FREQ || {};
+            const b = freq[`freq_buy_${tf}`] || 0;
+            const s = freq[`freq_sell_${tf}`] || 0;
+            const t = b + s;
+            const net = b - s;
+            const ratio = t > 0 ? net / t : 0;
+            return { total: t, buy: b, sell: s, net, ratio };
         };
 
         const syn = data.synthesis || {};
@@ -289,13 +306,14 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
             lsr: signals.sentiment?.sentimentAlignment?.normalizedScore || 50,
             lsrZ: signals.sentiment?.sentimentAlignment?.metadata?.avgZScore || 0,
             lsrRatio: (() => {
-                const lsrData = raw.LSR || {};
+                const lsrData = sigRoot.LSR || raw.LSR || {};
                 const tfMap = { '1MENIT': 'timeframes_5min', '5MENIT': 'timeframes_5min', '15MENIT': 'timeframes_15min', '30MENIT': 'timeframes_15min', '1JAM': 'timeframes_1hour', '4JAM': 'timeframes_4hour', '1HARI': 'timeframes_1day' };
                 const key = tfMap[timeframe] || 'timeframes_15min';
                 return lsrData[key]?.longShortRatio || 1.0;
             })(),
             takerBuy: analytics.orderFlow?.takerBuyRatio || 0.5,
             aggressive: analytics.orderFlow?.aggressiveBuyPct || 0.5,
+            tradeSizeImb: analytics.orderFlow?.tradeSizeImbalance || 0,
 
             // Other TF data
             chg1m: price.percent_change_1MENIT || 0,
@@ -317,6 +335,12 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
             oi4h: oiRaw.oiChange4h || 0,
             oi24h: oiRaw.oiChange24h || 0,
             oiAbs: oiRaw.oi || 0,
+            f1m: getFreqData('1MENIT'),
+            f5m: getFreqData('5MENIT'),
+            f15m: getFreqData('15MENIT'),
+            f1h: getFreqData('1JAM'),
+            f2h: getFreqData('2JAM'),
+            f24h: getFreqData('24JAM'),
             vwapDelta: (() => {
                 const vwap = analytics.execution?.vwap || 0;
                 if (vwap > 0 && price.last > 0) return ((price.last - vwap) / vwap) * 100;
@@ -379,20 +403,8 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
     if (countEl) countEl.innerText = `${dataArray.length} Pairs`;
 
     dataArray.sort((a, b) => {
-        let valA = a[currentSort.column];
-        let valB = b[currentSort.column];
-
-        if (typeof valA === 'object' && valA !== null) {
-            if (currentMatrix === 'VOLSPIKE') valA = valA.spike;
-            else if (currentMatrix === 'VOLRATIO') valA = valA.ratio;
-            else valA = valA.durability;
-        }
-        if (typeof valB === 'object' && valB !== null) {
-            if (currentMatrix === 'VOLSPIKE') valB = valB.spike;
-            else if (currentMatrix === 'VOLRATIO') valB = valB.ratio;
-            else valB = valB.durability;
-        }
-
+        const valA = getSortVal(a, currentSort.column);
+        const valB = getSortVal(b, currentSort.column);
         if (typeof valA === 'string') return currentSort.dir === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
         return currentSort.dir === 'asc' ? valA - valB : valB - valA;
     });
@@ -496,6 +508,7 @@ function renderHeader() {
         } else if (currentMatrix === 'IO') {
             html += th('TAKER', 'takerBuy', 'text-center');
             html += th('AGGR', 'aggressive', 'text-center');
+            html += th('IMB', 'tradeSizeImb', 'text-center');
         } else if (currentMatrix === 'PRICEMOVE') {
             html += th('1M%', 'chg1m', 'text-center');
             html += th('5M%', 'chg5m', 'text-center');
@@ -503,6 +516,13 @@ function renderHeader() {
             html += th('24H%', 'chg24h', 'text-center');
             html += th('FROM LOW', 'chgFromLow', 'text-center');
             html += th('FROM HIGH', 'chgFromHigh', 'text-center');
+        } else if (currentMatrix === 'FREQUENCY') {
+            html += th('1M FRQ', 'f1m', 'text-center');
+            html += th('5M FRQ', 'f5m', 'text-center');
+            html += th('15M FRQ', 'f15m', 'text-center');
+            html += th('1H FRQ', 'f1h', 'text-center');
+            html += th('2H FRQ', 'f2h', 'text-center');
+            html += th('24H FRQ', 'f24h', 'text-center');
         } else if (currentMatrix === 'VOLSPIKE') {
             html += th('1M', 's1m', 'text-center');
             html += th('5M', 's5m', 'text-center');
@@ -704,6 +724,8 @@ function renderRows(data) {
             } else if (currentMatrix === 'IO') {
                 rowHtml += wrap(`<div class="h-1 bg-bb-dark rounded overflow-hidden"><div class="h-full bg-bb-green" style="width: ${r.takerBuy * 100}%"></div></div>`, 'text-center');
                 rowHtml += wrap(`<div class="h-1 bg-bb-dark rounded overflow-hidden"><div class="h-full bg-bb-blue" style="width: ${r.aggressive * 100}%"></div></div>`, 'text-center');
+                const imbColor = r.tradeSizeImb > 0.2 ? 'text-bb-green' : r.tradeSizeImb < -0.2 ? 'text-bb-red' : 'text-bb-muted';
+                rowHtml += wrap(`<span class="${imbColor} font-mono">${r.tradeSizeImb > 0 ? '+' : ''}${(r.tradeSizeImb * 100).toFixed(1)}%</span>`, 'text-center');
             } else if (currentMatrix === 'PRICEMOVE') {
                 const c = (v) => v > 0 ? 'text-bb-green' : v < 0 ? 'text-bb-red' : 'text-bb-muted';
                 rowHtml += wrap(`${(r.chg1m || 0).toFixed(2)}%`, 'text-center', c(r.chg1m));
@@ -712,6 +734,23 @@ function renderRows(data) {
                 rowHtml += wrap(`${(r.chg24h || 0).toFixed(2)}%`, 'text-center', c(r.chg24h));
                 rowHtml += wrap(`${(r.chgFromLow || 0).toFixed(2)}%`, 'text-center', 'text-bb-green font-black');
                 rowHtml += wrap(`${(r.chgFromHigh || 0).toFixed(2)}%`, 'text-center', 'text-bb-red font-black');
+            } else if (currentMatrix === 'FREQUENCY') {
+                const fCell = (v) => {
+                    const color = v.ratio > 0.05 ? 'text-bb-green font-bold' : v.ratio < -0.05 ? 'text-bb-red font-bold' : 'text-white opacity-60';
+                    const netColor = v.net > 0 ? 'text-bb-green/60' : v.net < 0 ? 'text-bb-red/60' : 'text-bb-muted/40';
+                    return `
+                        <div class="flex flex-col items-center leading-tight">
+                            <span class="${color}">${Utils.formatNumber(v.total, 0)}</span>
+                            <span class="${netColor} text-[7px] tracking-tighter">${v.net > 0 ? '+' : ''}${Utils.formatNumber(v.net, 0)}</span>
+                        </div>
+                    `;
+                };
+                rowHtml += wrap(fCell(r.f1m), 'text-center');
+                rowHtml += wrap(fCell(r.f5m), 'text-center');
+                rowHtml += wrap(fCell(r.f15m), 'text-center');
+                rowHtml += wrap(fCell(r.f1h), 'text-center');
+                rowHtml += wrap(fCell(r.f2h), 'text-center');
+                rowHtml += wrap(fCell(r.f24h), 'text-center');
             } else if (currentMatrix === 'VOLSPIKE') {
                 const sCell = (v) => {
                     const color = v.spike > 2.0 ? 'text-bb-gold font-black' : v.spike > 1.2 ? 'text-bb-green' : v.spike < 0.5 ? 'text-bb-red opacity-50' : 'text-bb-muted';

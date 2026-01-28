@@ -13,7 +13,10 @@ export function render(container) {
                 </div>
                 
                 <span class="text-[10px] text-bb-muted uppercase font-bold tracking-widest mb-1">Recommended Action</span>
-                <h1 class="text-7xl font-black italic tracking-tighter" id="dec-action">WAIT</h1>
+                <div class="flex items-center gap-3">
+                    <h1 class="text-7xl font-black italic tracking-tighter" id="dec-action">WAIT</h1>
+                    <div id="dec-divergence-badge" class="hidden px-2 py-1 bg-bb-red text-white text-[10px] font-black italic rounded animate-pulse border-2 border-white/20">DIVERGENCE DETECTED</div>
+                </div>
                 
                 <div class="flex items-center gap-6 mt-4">
                     <div class="flex flex-col items-center">
@@ -227,6 +230,16 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
         }
     }
 
+    // 1.5 Pillar Bias & Divergence Guard
+    const pillars = calculatePillars(data, signals, master, syn);
+    const hasDivergence = detectDivergence(pillars);
+
+    const elDiv = document.getElementById('dec-divergence-badge');
+    if (elDiv) {
+        if (hasDivergence) elDiv.classList.remove('hidden');
+        else elDiv.classList.add('hidden');
+    }
+
     // 2. Metrics
     const elConf = document.getElementById('dec-confidence');
     const elConfirm = document.getElementById('dec-confirmations');
@@ -417,10 +430,10 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
     if (elVolRegime) elVolRegime.innerText = volRegime.regime || 'NORMAL';
 
     // 9. Market Narrative Brief
-    updateNarrative(data, signals, master, marketRegime, volRegime, syn);
+    updateNarrative(data, signals, master, marketRegime, volRegime, syn, pillars, hasDivergence);
 }
 
-function updateNarrative(data, signals, master, regime, vol, syn = {}) {
+function updateNarrative(data, signals, master, regime, vol, syn = {}, pillars = {}, hasDivergence = false) {
     const elNarrative = document.getElementById('dec-narrative');
     const elTags = document.getElementById('dec-narrative-tags');
     if (!elNarrative || !elTags) return;
@@ -467,7 +480,14 @@ function updateNarrative(data, signals, master, regime, vol, syn = {}) {
     }
 
     // 4. Tactical Conclusion
-    if (action === 'BUY') {
+    if (hasDivergence) {
+        brief += `**Warning: Logical Divergence Detected.** `;
+        const bullPillars = Object.keys(pillars).filter(k => pillars[k] === 'BULL');
+        const bearPillars = Object.keys(pillars).filter(k => pillars[k] === 'BEAR');
+        brief += `Technical indicators are split: **${bullPillars.join(', ')}** are showing strength, while **${bearPillars.join(', ')}** signal caution or reversal. `;
+        brief += `Standard institutional protocol: **Reduce position size** or wait for one side to capitulate. `;
+        tags.push({ text: 'DIVERGENCE', color: 'bg-bb-red/30 text-white animate-pulse' });
+    } else if (action === 'BUY') {
         if (char === 'ABSORPTION') {
             brief += `**Caution Recommended.** While a BUY signal is present, the current Absorption state suggests a potential Liquidity Trap. Wait for a breakout confirmation.`;
             tags.push({ text: 'LIQUIDITY TRAP!', color: 'bg-bb-red/20 text-bb-red border-bb-red/30 animate-pulse' });
@@ -488,4 +508,25 @@ function updateNarrative(data, signals, master, regime, vol, syn = {}) {
 
     elNarrative.innerHTML = brief.replace(/\*\*(.*?)\*\*/g, '<b class="text-bb-gold">$1</b>');
     elTags.innerHTML = tags.map(t => `<span class="text-[7px] px-1.5 py-0.5 border rounded font-black uppercase ${t.color}">${t.text}</span>`).join('');
+}
+
+function calculatePillars(data, signals, master, syn) {
+    const flow = syn.flow || {};
+    const of = data.analytics?.orderFlow || {};
+    const lsr = data.raw?.LSR?.timeframes_15min?.longShortRatio || 1.0;
+    const bidD = data.raw?.OB?.bidDepth || 0;
+    const askD = data.raw?.OB?.askDepth || 1; // Prevent div by zero
+
+    return {
+        FLOW: flow.net_flow_15MENIT > 10000 ? 'BULL' : flow.net_flow_15MENIT < -10000 ? 'BEAR' : 'NEUT',
+        SENTIMENT: lsr > 1.5 ? 'BEAR' : lsr < 0.7 ? 'BULL' : 'NEUT', // Contrarian
+        LIQUIDITY: (bidD / askD) > 1.5 ? 'BULL' : (askD / (bidD || 1)) > 1.5 ? 'BEAR' : 'NEUT',
+        TECHNICAL: master.action === 'BUY' ? 'BULL' : master.action === 'SELL' ? 'BEAR' : 'NEUT'
+    };
+}
+
+function detectDivergence(pillars) {
+    const values = Object.values(pillars).filter(v => v !== 'NEUT');
+    if (values.length < 2) return false;
+    return values.includes('BULL') && values.includes('BEAR');
 }

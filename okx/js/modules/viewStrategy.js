@@ -485,7 +485,22 @@ export function update(marketState) {
             const px = d.raw?.PRICE?.last || 0;
             const atr = d.raw?.CANDLES?.candle_atr_15m || (px * 0.01);
 
-            let tp, sl;
+            let tp, sl, entry;
+            const vwap = d.analytics?.execution?.vwap || 0;
+            const ob = d.raw?.OB || {};
+
+            // Tactical Entry Selection
+            if (currentCategory === 'WALLS' || currentCategory === 'ICEBERG' || currentCategory === 'ABSORB') {
+                const walls = filterRes.bias === 'LONG' || filterRes.bias === 'BUY' ? (ob.bidWalls || []) : (ob.askWalls || []);
+                entry = walls.length > 0 ? walls[0].price : px;
+            } else if (currentCategory === 'MEAN_REV' || currentCategory === 'COMPOSITE') {
+                entry = vwap || px;
+            } else {
+                // Default: ATR-adjusted Limit
+                const multi = filterRes.bias === 'SHORT' || filterRes.bias === 'SELL' ? 1 : -1;
+                entry = px + (atr * 0.2 * multi);
+            }
+
             if (strat.isFlat) {
                 const multi = filterRes.bias.includes('SHORT') ? -1 : 1;
                 tp = px * (1 + (strat.tpMult * multi));
@@ -499,7 +514,7 @@ export function update(marketState) {
             const volDensity = d.raw?.CANDLES?.candle_volatility_15m || 0;
             const risk = volDensity > 0.02 ? 'CRITICAL' : volDensity > 0.01 ? 'HIGH' : 'STABLE';
 
-            return { id, coin: id, ...filterRes, tp, sl, risk };
+            return { id, coin: id, ...filterRes, tp, sl, entry, risk };
         })
             .filter(r => r !== null)
             .filter(r => currentSearch === '' || r.coin.toUpperCase().includes(currentSearch))
@@ -538,6 +553,10 @@ export function update(marketState) {
                         <!-- RIGHT: EXECUTION TERMINAL (50%) -->
                         <div class="p-3 w-1/2 flex flex-col justify-center gap-1 bg-bb-panel/10">
                             <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-[8px] font-black uppercase text-bb-muted tracking-tight">
+                                <div class="flex flex-col border-l border-bb-gold/30 pl-2">
+                                    <span>Best Entry</span>
+                                    <span class="text-bb-gold font-mono text-[9px]">${Utils.formatPrice(r.entry)}</span>
+                                </div>
                                 <div class="flex flex-col border-l border-bb-green/20 pl-2">
                                     <span>Target TP</span>
                                     <span class="text-bb-green font-mono text-[9px]">${Utils.formatPrice(r.tp)}</span>

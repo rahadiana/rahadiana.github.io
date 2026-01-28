@@ -57,10 +57,10 @@ export function render(container) {
                         </div>
                     </div>
 
-                    <!-- 20.1 CORRELATION MATRIX -->
+                    <!-- CATEGORICAL CONFLUENCE MATRIX -->
                     <div class="panel h-1/3">
-                        <div class="panel-header">CORRELATION MATRIX</div>
-                        <div class="panel-content flex flex-col justify-center" id="correlation-matrix">
+                        <div class="panel-header">CONFLUENCE PILLARS</div>
+                        <div class="panel-content grid grid-cols-2 gap-1" id="confluence-matrix">
                             <!-- Injected -->
                         </div>
                     </div>
@@ -83,7 +83,7 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
     updateAttribution(signals);
     updateBreakout(vol, data.raw?.PRICE);
     updateQuality(data.analytics?.customMetrics);
-    updateCorrelation(signals);
+    updateConfluence(data, signals, data.signals?.profiles?.[profile]?.timeframes?.[timeframe]?.masterSignal || {}, data.synthesis || {});
 }
 
 function updateMicroGrid(micro) {
@@ -225,73 +225,44 @@ function updateQuality(custom) {
     `;
 }
 
-function updateCorrelation(signals) {
-    const el = document.getElementById('correlation-matrix');
-    if (!el || !signals) return;
+function updateConfluence(data, signals, master, syn) {
+    const el = document.getElementById('confluence-matrix');
+    if (!el) return;
 
-    // Flatten signals
-    let items = [];
-    Object.keys(signals).forEach(key => {
-        const s = signals[key];
-        if (s.direction) items.push({ id: key, dir: s.direction });
-        else if (typeof s === 'object') {
-            Object.keys(s).forEach(k => {
-                if (s[k]?.direction) items.push({ id: `${key}.${k}`, dir: s[k].direction });
-            });
+    const flow = syn.flow || {};
+    const lsr = data.raw?.LSR?.timeframes_15min?.longShortRatio || 1.0;
+
+    const pillars = {
+        FLOW: {
+            title: 'FLOW',
+            bias: flow.net_flow_15MENIT > 10000 ? 'BULL' : flow.net_flow_15MENIT < -10000 ? 'BEAR' : 'NEUT',
+            val: (flow.net_flow_15MENIT / 1000).toFixed(1) + 'K'
+        },
+        SENT: {
+            title: 'SENT',
+            bias: lsr > 1.5 ? 'BEAR' : lsr < 0.7 ? 'BULL' : 'NEUT',
+            val: lsr.toFixed(2) + 'r'
+        },
+        LIQ: {
+            title: 'LIQ',
+            bias: (data.raw?.OB?.bidDepth / data.raw?.OB?.askDepth) > 1.2 ? 'BULL' : (data.raw?.OB?.askDepth / data.raw?.OB?.bidDepth) > 1.2 ? 'BEAR' : 'NEUT',
+            val: (data.raw?.OB?.bidDepth / (data.raw?.OB?.askDepth || 1)).toFixed(2) + 'x'
+        },
+        TECH: {
+            title: 'TECH',
+            bias: master.action === 'BUY' ? 'BULL' : master.action === 'SELL' ? 'BEAR' : 'NEUT',
+            val: (master.confidence || 0).toFixed(0) + '%'
         }
-    });
+    };
 
-    // Count by direction
-    const buyCount = items.filter(i => i.dir === 'BUY').length;
-    const sellCount = items.filter(i => i.dir === 'SELL').length;
-    const neutralCount = items.filter(i => i.dir === 'NEUTRAL' || i.dir === 'NO_TRADE').length;
-    const total = items.length;
-
-    // Calculate correlation strength (simplified)
-    const dominantCount = Math.max(buyCount, sellCount);
-    const correlation = total > 0 ? (dominantCount / total) : 0;
-    const noise = 1 - correlation;
-
-    // Determine quality
-    let quality = 'GOOD';
-    let qualityColor = 'text-bb-green';
-    if (noise > 0.5) {
-        quality = 'NOISY';
-        qualityColor = 'text-bb-red';
-    } else if (noise > 0.3) {
-        quality = 'MODERATE';
-        qualityColor = 'text-bb-gold';
-    }
-
-    el.innerHTML = `
-        <div class="grid grid-cols-3 gap-1 mb-2">
-            <div class="text-center bg-bb-dark border border-bb-border p-1">
-                <div class="text-[8px] text-bb-muted">BUY</div>
-                <div class="text-lg font-bold text-bb-green">${buyCount}</div>
+    el.innerHTML = Object.values(pillars).map(p => {
+        const color = p.bias === 'BULL' ? 'text-bb-green border-bb-green/30 bg-bb-green/5' : p.bias === 'BEAR' ? 'text-bb-red border-bb-red/30 bg-bb-red/5' : 'text-bb-muted border-white/5';
+        return `
+            <div class="flex flex-col items-center justify-center p-1 border rounded ${color}">
+                <span class="text-[7px] font-black tracking-tighter opacity-70">${p.title}</span>
+                <span class="text-[10px] font-bold">${p.val}</span>
+                <span class="text-[6px] font-black">${p.bias}</span>
             </div>
-            <div class="text-center bg-bb-dark border border-bb-border p-1">
-                <div class="text-[8px] text-bb-muted">SELL</div>
-                <div class="text-lg font-bold text-bb-red">${sellCount}</div>
-            </div>
-            <div class="text-center bg-bb-dark border border-bb-border p-1">
-                <div class="text-[8px] text-bb-muted">NEUTRAL</div>
-                <div class="text-lg font-bold text-bb-muted">${neutralCount}</div>
-            </div>
-        </div>
-
-        <div class="space-y-1">
-            <div class="flex justify-between items-center text-xs">
-                <span class="text-bb-muted">Correlation</span>
-                <span class="font-bold">${(correlation * 100).toFixed(0)}%</span>
-            </div>
-            <div class="w-full h-2 bg-bb-dark rounded overflow-hidden">
-                <div class="bg-bb-green h-full" style="width: ${correlation * 100}%"></div>
-            </div>
-
-            <div class="flex justify-between items-center text-xs mt-1">
-                <span class="text-bb-muted">Signal Noise</span>
-                <span class="${qualityColor} font-bold">${quality}</span>
-            </div>
-        </div>
-    `;
+        `;
+    }).join('');
 }
