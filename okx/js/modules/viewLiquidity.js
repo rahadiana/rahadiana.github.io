@@ -10,6 +10,7 @@ let lastHighBidSize = 0;
 let lastLowAsk = 0;
 let lastLowAskSize = 0;
 let ofiAccumulator = 0;
+let currentSubscriptionCallback = null;
 
 export function render(container) {
     container.innerHTML = `
@@ -162,15 +163,23 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
 
     // Manage Live WebSocket Subscription
     if (activeCoinId !== coinId) {
+        if (activeCoinId && currentSubscriptionCallback) {
+            console.log(`[LIQUIDITY] Switching stream from ${activeCoinId} to ${coinId}`);
+            OkxWs.unsubscribe(activeCoinId, currentSubscriptionCallback, 'optimized-books');
+        }
+
         console.log(`[LIQUIDITY] Activating High-Fidelity stream for: ${coinId}`);
         activeCoinId = coinId;
         localAsks.clear();
         localBids.clear();
-        OkxWs.subscribe(coinId, (wsRes) => {
+
+        currentSubscriptionCallback = (wsRes) => {
             if (activeCoinId === coinId) {
                 processWsData(wsRes);
             }
-        });
+        };
+
+        OkxWs.subscribe(coinId, currentSubscriptionCallback, 'optimized-books');
     }
 
     const ob = data.raw?.OB || {};
@@ -568,10 +577,13 @@ function getItemPrecision() {
 }
 
 export function stop() {
+    if (activeCoinId && currentSubscriptionCallback) {
+        OkxWs.unsubscribe(activeCoinId, currentSubscriptionCallback, 'optimized-books');
+    }
     activeCoinId = null;
     localAsks.clear();
     localBids.clear();
-    OkxWs.unsubscribe();
+    currentSubscriptionCallback = null;
 }
 
 

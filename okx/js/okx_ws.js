@@ -1,36 +1,27 @@
-/**
- * OKX HIGH-FIDELITY WEBSOCKET UTILITY
- * Optimized for direct, low-latency institutional telemetry.
- */
-
 const OKX_WS_URL = 'wss://wspri.okx.com:8443/ws/v5/ipublic';
 
 let ws = null;
-let activeSubscription = null;
-let dataCallback = null;
+let subscriptions = new Map(); // "instId:channel" -> { arg, callbacks: Set }
 let reconnectTimer = null;
 
 function formatInstId(instId) {
     if (!instId) return null;
     if (instId.includes('-')) return instId.toUpperCase();
-    // Default fallback for raw ticker names
     return `${instId.toUpperCase()}-USDT-SWAP`;
 }
 
-/**
- * Initialize WebSocket link
- */
 export function connect() {
     if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
 
-    console.log('[OKX-WS] Initializing high-fidelity uplink...');
+    console.log('[OKX-WS] Initializing multi-channel telemetry...');
     ws = new WebSocket(OKX_WS_URL);
 
     ws.onopen = () => {
-        console.log('[OKX-WS] Uplink established (Real-Time Depth)');
-        if (activeSubscription) {
-            console.log(`[OKX-WS] Resubscribing to ${activeSubscription.instId}`);
-            ws.send(JSON.stringify({ op: 'subscribe', args: [activeSubscription] }));
+        console.log('[OKX-WS] Multi-channel uplink established');
+        if (subscriptions.size > 0) {
+            const args = Array.from(subscriptions.values()).map(s => s.arg);
+            console.log(`[OKX-WS] Resubscribing to ${args.length} channels...`);
+            ws.send(JSON.stringify({ op: 'subscribe', args }));
         }
     };
 
@@ -38,11 +29,18 @@ export function connect() {
         try {
             const res = JSON.parse(event.data);
             if (res.event === 'subscribe') {
-                console.log(`[OKX-WS] Stream authenticated: ${res.arg?.instId}`);
+                console.log(`[OKX-WS] Authenticated: ${res.arg?.instId} [${res.arg?.channel}]`);
                 return;
             }
-            if (res.data && dataCallback) {
-                dataCallback(res);
+            if (res.data) {
+                const instId = res.arg?.instId;
+                const channel = res.arg?.channel;
+                const key = `${instId}:${channel}`;
+
+                const sub = subscriptions.get(key);
+                if (sub) {
+                    sub.callbacks.forEach(cb => cb(res));
+                }
             }
         } catch (e) {
             console.error('[OKX-WS] Protocol Parse Error', e);
@@ -52,57 +50,59 @@ export function connect() {
     ws.onclose = () => {
         console.warn('[OKX-WS] Link severed. Polling for recovery...');
         ws = null;
-        if (activeSubscription) {
+        if (subscriptions.size > 0) {
             reconnectTimer = setTimeout(connect, 3000);
         }
     };
 
-    ws.onerror = (err) => {
-        console.error('[OKX-WS] Protocol Violation/Error', err);
-    };
+    ws.onerror = (err) => console.error('[OKX-WS] Protocol Violation/Error', err);
 }
 
-/**
- * Subscribe to real-time optimized depth for a specific asset
- */
-export function subscribe(instId, callback) {
-    if (!instId) return;
-    dataCallback = callback;
-
+export function subscribe(instId, callback, channel = 'tickers') {
+    if (!instId || !callback) return;
     const formattedId = formatInstId(instId);
-    const instType = formattedId.includes('-SWAP') ? 'SWAP' : 'SPOT';
-    const newSubArr = { channel: 'optimized-books', instId: formattedId, instType };
+    const key = `${formattedId}:${channel}`;
 
-    // Unsubscribe previous if active and changed
-    if (activeSubscription && activeSubscription.instId !== formattedId && ws && ws.readyState === 1) {
-        console.log(`[OKX-WS] Terminating stale telemetry for ${activeSubscription.instId}`);
-        ws.send(JSON.stringify({
-            op: 'unsubscribe',
-            args: [activeSubscription]
-        }));
+    let sub = subscriptions.get(key);
+    if (!sub) {
+        const arg = { channel, instId: formattedId };
+        sub = { arg, callbacks: new Set() };
+        subscriptions.set(key, sub);
+
+        if (ws && ws.readyState === 1) {
+            ws.send(JSON.stringify({ op: 'subscribe', args: [arg] }));
+        } else {
+            connect();
+        }
     }
 
-    activeSubscription = newSubArr;
-
-    if (ws && ws.readyState === 1) {
-        ws.send(JSON.stringify({ op: 'subscribe', args: [activeSubscription] }));
-        console.log(`[OKX-WS] Switching telemetry to ${formattedId}`);
-    } else {
-        connect();
-        // The onopen handler in connect() will pick up the activeSubscription
-    }
+    sub.callbacks.add(callback);
+    console.log(`[OKX-WS] Subscribed to ${formattedId} [${channel}] (Total Subs: ${subscriptions.size})`);
 }
 
-/**
- * Terminate all active streams
- */
-export function unsubscribe() {
-    if (activeSubscription && ws && ws.readyState === 1) {
-        console.log(`[OKX-WS] Unsubscribing from ${activeSubscription.instId}`);
-        ws.send(JSON.stringify({ op: 'unsubscribe', args: [activeSubscription] }));
+export function unsubscribe(instId, callback, channel = 'tickers') {
+    if (!instId) return;
+    const formattedId = formatInstId(instId);
+
+    // If channel is '*' or not provided, we might want to unsubscribe all? 
+    // For now, adhere to default 'tickers' to support named channel logic, 
+    // unless explicit 'books' passed.
+    const key = `${formattedId}:${channel}`;
+    const sub = subscriptions.get(key);
+    if (!sub) return;
+
+    if (callback) {
+        sub.callbacks.delete(callback);
+    } else {
+        // Force unsubscribe all if no callback provided
+        sub.callbacks.clear();
     }
-    activeSubscription = null;
-    dataCallback = null;
-    if (reconnectTimer) clearTimeout(reconnectTimer);
-    console.log('[OKX-WS] Telemetry dormant');
+
+    if (sub.callbacks.size === 0) {
+        console.log(`[OKX-WS] Terminating telemetry for ${formattedId} [${channel}]`);
+        if (ws && ws.readyState === 1) {
+            ws.send(JSON.stringify({ op: 'unsubscribe', args: [sub.arg] }));
+        }
+        subscriptions.delete(key);
+    }
 }

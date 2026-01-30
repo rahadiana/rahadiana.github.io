@@ -12,7 +12,19 @@ let cachedProfile = 'AGGRESSIVE';
 let cachedTimeframe = '15MENIT';
 
 // Alpha Sniper State
-const signalHistory = {}; // { "COIN:TF:PROF": { action: 'BUY', ts: 1234567 } }
+const SIGNAL_HISTORY_KEY = 'bb_signal_history';
+const signalHistory = (() => {
+    try {
+        const stored = localStorage.getItem(SIGNAL_HISTORY_KEY);
+        return stored ? JSON.parse(stored) : {};
+    } catch (e) {
+        return {};
+    }
+})();
+
+function saveSignalHistory() {
+    localStorage.setItem(SIGNAL_HISTORY_KEY, JSON.stringify(signalHistory));
+}
 
 export function init(selectCoinCallback) {
     onSelectCoin = selectCoinCallback;
@@ -370,6 +382,7 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
                 }
                 if (!signalHistory[key] || signalHistory[key].action !== act) {
                     signalHistory[key] = { action: act, ts: Date.now() };
+                    saveSignalHistory();
                 }
                 return signalHistory[key].ts;
             })(),

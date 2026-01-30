@@ -17,6 +17,8 @@ import * as Sidebar from './modules/sidebar.js';
 import * as ViewStrategy from './modules/viewStrategy.js';
 import * as ViewP2P from './modules/viewP2P.js';
 import * as ViewSynthesis from './modules/viewSynthesis.js';
+import * as ViewAutomation from './modules/viewAutomation.js';
+import * as ViewSimulation from './modules/viewSimulation.js';
 import P2PMesh from './p2p.js';
 
 // Configuration
@@ -33,7 +35,9 @@ const VIEWS = {
     'LIQUIDATIONS': ViewLiquidations,
     'MONITORING': ViewMonitoring,
     'VOL': ViewVol,
-    'SYNTHESIS': ViewSynthesis
+    'SYNTHESIS': ViewSynthesis,
+    'AUTOMATION': ViewAutomation,
+    'SIMULATION': ViewSimulation
 };
 
 // State
@@ -205,7 +209,7 @@ function initTabs() {
 }
 
 function switchTab(tabName) {
-    if (!['GLOBAL', 'STRATEGY', 'DETAILS', 'VISUAL', 'INFO', 'P2P'].includes(tabName)) return;
+    if (!['GLOBAL', 'STRATEGY', 'DETAILS', 'VISUAL', 'INFO', 'P2P', 'AUTOMATION', 'SIMULATION'].includes(tabName)) return;
 
     // Lifecycle cleanup for outgoing tab/subtab
     if (currentTab === 'DETAILS' && tabName !== 'DETAILS') {
@@ -241,6 +245,12 @@ function switchTab(tabName) {
     } else if (tabName === 'P2P') {
         detailsSubnav.classList.add('hidden');
         ViewP2P.render(viewContainer);
+    } else if (tabName === 'AUTOMATION') {
+        detailsSubnav.classList.add('hidden');
+        ViewAutomation.render(viewContainer);
+    } else if (tabName === 'SIMULATION') {
+        detailsSubnav.classList.add('hidden');
+        ViewSimulation.render(viewContainer);
     } else {
         detailsSubnav.classList.add('hidden');
         if (tabName === 'GLOBAL') ViewGlobal.render(viewContainer);
@@ -524,8 +534,40 @@ function startRenderingHeartbeat() {
         // 2. Batch Sidebar update (once per heartbeat)
         Sidebar.renderList(coinListContainer, marketState, selectedCoin, selectCoin);
 
+        // 3. Execution Automation Engine (Webhook Dispatcher)
+        ViewAutomation.runAutomationEngine(marketState);
+
+        // 4. Trade Simulation Engine (Virtual PnL Tracking)
+        ViewSimulation.runSimulationEngine(marketState);
+
         pendingUpdates.clear();
     }, 300); // 300ms Heartbeat: High enough to feel real-time, low enough to save CPU
+}
+
+/**
+ * Deep merge two objects to prevent data clobbering in nested structures (profiles/timeframes)
+ * @param {Object} target - Original object
+ * @param {Object} source - New updates
+ * @returns {Object} Deeply merged object
+ */
+function deepMerge(target, source) {
+    if (!source) return target;
+    if (!target) return source;
+
+    const result = { ...target };
+    for (const key in source) {
+        if (source[key] !== null &&
+            typeof source[key] === 'object' &&
+            key in target &&
+            target[key] !== null &&
+            typeof target[key] === 'object' &&
+            !Array.isArray(source[key])) {
+            result[key] = deepMerge(target[key], source[key]);
+        } else {
+            result[key] = source[key];
+        }
+    }
+    return result;
 }
 
 function handleIncomingStream(data, source = 'WS') {
@@ -567,12 +609,12 @@ function handleIncomingStream(data, source = 'WS') {
         marketState[coin] = {
             ...marketState[coin],
             ...data,
-            raw: { ...marketState[coin].raw, ...data.raw },
-            analytics: { ...marketState[coin].analytics, ...data.analytics },
-            signals: { ...marketState[coin].signals, ...data.signals },
-            microstructure: { ...marketState[coin].microstructure, ...data.microstructure },
+            raw: deepMerge(marketState[coin].raw, data.raw),
+            analytics: deepMerge(marketState[coin].analytics, data.analytics),
+            signals: deepMerge(marketState[coin].signals, data.signals),
+            microstructure: deepMerge(marketState[coin].microstructure, data.microstructure),
             FUNDING: data.FUNDING || marketState[coin].FUNDING,
-            masterSignals: data.masterSignals || marketState[coin].masterSignals
+            masterSignals: deepMerge(marketState[coin].masterSignals, data.masterSignals)
         };
     }
 
@@ -634,5 +676,6 @@ setInterval(() => {
 // Init
 initTabs();
 connect();
-window.app = { selectCoin: (coin) => selectCoin(coin, true) };
+window.app = window.app || {};
+window.app.selectCoin = (coin) => selectCoin(coin, true);
 window.dashboardNavigate = (coin) => selectCoin(coin, true);

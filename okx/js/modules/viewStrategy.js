@@ -28,6 +28,7 @@ export function render(container) {
                     <div class="flex flex-col gap-1">
                         <span class="text-[7px] text-bb-gold font-bold uppercase tracking-widest px-1">01. EXECUTION ALPHA</span>
                         <div class="flex flex-wrap gap-1">
+                             <button id="strat-cat-flash" class="px-1 py-0.5 text-[8px] font-black rounded border border-transparent ${currentCategory === 'FLASH' ? 'bg-bb-gold text-black' : 'text-bb-muted hover:text-white bg-white/5'}">⚡ FLASH</button>
                              <button id="strat-cat-composite" class="px-1 py-0.5 text-[8px] font-black rounded border border-transparent ${currentCategory === 'COMPOSITE' ? 'bg-bb-gold text-black' : 'text-bb-muted hover:text-white bg-white/5'}">👑 COMP</button>
                              <button id="strat-cat-blitz" class="px-1 py-0.5 text-[8px] font-black rounded border border-transparent ${currentCategory === 'BLITZ' ? 'bg-bb-gold text-black' : 'text-bb-muted hover:text-white bg-white/5'}">⚡ BLTZ</button>
                              <button id="strat-cat-mtf_pro" class="px-1 py-0.5 text-[8px] font-black rounded border border-transparent ${currentCategory === 'MTF_PRO' ? 'bg-bb-gold text-black' : 'text-bb-muted hover:text-white bg-white/5'}">📡 MTF</button>
@@ -43,6 +44,7 @@ export function render(container) {
                             <button id="strat-cat-whale" class="px-1 py-0.5 text-[8px] font-black rounded border border-transparent ${currentCategory === 'WHALE' ? 'bg-bb-gold text-black' : 'text-bb-muted hover:text-white bg-white/5'}">🐋 WHAL</button>
                             <button id="strat-cat-diverge" class="px-1 py-0.5 text-[8px] font-black rounded border border-transparent ${currentCategory === 'DIVERGE' ? 'bg-bb-gold text-black' : 'text-bb-muted hover:text-white bg-white/5'}">📈 DIVG</button>
                             <button id="strat-cat-iceberg" class="px-1 py-0.5 text-[8px] font-black rounded border border-transparent ${currentCategory === 'ICEBERG' ? 'bg-bb-gold text-black' : 'text-bb-muted hover:text-white bg-white/5'}">🧊 ICEB</button>
+                            <button id="strat-cat-gamma" class="px-1 py-0.5 text-[8px] font-black rounded border border-transparent ${currentCategory === 'GAMMA' ? 'bg-bb-gold text-black' : 'text-bb-muted hover:text-white bg-white/5'}">🎲 GMM</button>
                         </div>
                     </div>
                     <div class="flex flex-col gap-1">
@@ -54,6 +56,7 @@ export function render(container) {
                             <button id="strat-cat-trap" class="px-1 py-0.5 text-[8px] font-black rounded border border-transparent ${currentCategory === 'TRAP' ? 'bg-bb-gold text-black' : 'text-bb-muted hover:text-white bg-white/5'}">🚨 TRAP</button>
                             <button id="strat-cat-vol" class="px-1 py-0.5 text-[8px] font-black rounded border border-transparent ${currentCategory === 'VOL' ? 'bg-bb-gold text-black' : 'text-bb-muted hover:text-white bg-white/5'}">🌩️ VOL</button>
                             <button id="strat-cat-efficiency" class="px-1 py-0.5 text-[8px] font-black rounded border border-transparent ${currentCategory === 'EFFICIENCY' ? 'bg-bb-gold text-black' : 'text-bb-muted hover:text-white bg-white/5'}">🧬 EFF</button>
+                            <button id="strat-cat-cluster" class="px-1 py-0.5 text-[8px] font-black rounded border border-transparent ${currentCategory === 'CLUSTER' ? 'bg-bb-gold text-black' : 'text-bb-muted hover:text-white bg-white/5'}">🎯 CLST</button>
                         </div>
                     </div>
                     <div class="flex flex-col gap-1">
@@ -75,6 +78,8 @@ export function render(container) {
                             <button id="strat-cat-ignition" class="px-1 py-0.5 text-[8px] font-black rounded border border-transparent ${currentCategory === 'IGNITION' ? 'bg-bb-gold text-black' : 'text-bb-muted hover:text-white bg-white/5'}">📈 IGNT</button>
                             <button id="strat-cat-funding" class="px-1 py-0.5 text-[8px] font-black rounded border border-transparent ${currentCategory === 'FUNDING' ? 'bg-bb-gold text-black' : 'text-bb-muted hover:text-white bg-white/5'}">💸 FUND</button>
                             <button id="strat-cat-safety" class="px-1 py-0.5 text-[8px] font-black rounded border border-transparent ${currentCategory === 'SAFETY' ? 'bg-bb-gold text-black' : 'text-bb-muted hover:text-white bg-white/5'}">🛡️ SAFE</button>
+                            <button id="strat-cat-tape" class="px-1 py-0.5 text-[8px] font-black rounded border border-transparent ${currentCategory === 'TAPE' ? 'bg-bb-gold text-black' : 'text-bb-muted hover:text-white bg-white/5'}">📜 TAPE</button>
+                            <button id="strat-cat-anomaly" class="px-1 py-0.5 text-[8px] font-black rounded border border-transparent ${currentCategory === 'ANOMALY' ? 'bg-bb-gold text-black' : 'text-bb-muted hover:text-white bg-white/5'}">⚠️ ANOM</button>
                         </div>
                     </div>
                 </div>
@@ -109,11 +114,11 @@ export function render(container) {
 
     // Click handlers
     const cats = [
-        'composite', 'blitz', 'mtf_pro', 'alpha', 'breakout',
-        'flow', 'smart_money', 'whale', 'diverge', 'iceberg',
-        'scalp', 'absorb', 'sweep', 'trap', 'vol', 'efficiency',
+        'flash', 'composite', 'blitz', 'mtf_pro', 'alpha', 'breakout',
+        'flow', 'smart_money', 'whale', 'diverge', 'iceberg', 'gamma',
+        'scalp', 'absorb', 'sweep', 'trap', 'vol', 'efficiency', 'cluster',
         'swing', 'basis', 'walls', 'fisher', 'void',
-        'sentiment', 'mean_rev', 'patience', 'ignition', 'funding', 'safety'
+        'sentiment', 'mean_rev', 'patience', 'ignition', 'funding', 'safety', 'tape', 'anomaly'
     ];
     cats.forEach(c => {
         const btn = container.querySelector(`#strat-cat-${c}`);
@@ -136,6 +141,118 @@ export function render(container) {
 }
 
 const STRATEGIES = {
+    'FLASH': {
+        icon: '⚡', lev: '5-10x', hold: '5m-30m', tpMult: 0.8, slMult: 0.25,
+        title: 'Momentum Ignition (Flash Pump Detector)',
+        desc: 'Mendeteksi dan menangkap koin SEBELUM pompa signifikan terjadi (Pre-Ignition). Masuk di 30 detik pertama pergerakan impulsif.',
+        filter: (id, d) => {
+            const m = d.signals?.profiles?.AGGRESSIVE?.timeframes?.['1MENIT']?.masterSignal || {};
+            const vol = d.raw?.VOL?.vol_total_1MENIT || 1;
+            const avgVol = d.raw?.VOL?.vol_total_5MENIT || 5;
+            const surge = vol / (avgVol / 5);
+
+            const syn = d.synthesis || {};
+            const netFlow = syn.flow?.net_flow_1MENIT || 0;
+            const efficiency = syn.efficiency?.efficiency_1MENIT || 0;
+
+            const isEarly = surge > 1.5 && (m.normalizedScore || 0) > 70 && netFlow > 5000;
+            const isCritical = surge > 2.5 && (m.normalizedScore || 0) > 85 && netFlow > 20000 && efficiency > 30;
+
+            if (isCritical) {
+                return { bias: 'CRITICAL', factors: ['Explosive Volume', 'Flow Injection', 'High Efficiency Break'], confidence: 95 };
+            } else if (isEarly) {
+                return { bias: 'WARNING', factors: ['Volume Surge', 'Pre-Pump Activity', 'Inflow Detected'], confidence: 75 };
+            }
+            return null;
+        }
+    },
+    'GAMMA': {
+        icon: '🎲', lev: '5-10x', hold: '1h-4h', tpMult: 1.5, slMult: 0.8,
+        title: 'Gamma Exposure (GEX) Proxy',
+        desc: 'Mendeteksi potensi Gamma Squeeze. Menggunakan korelasi OI dan Volatilitas sebagai proxy untuk hedging dealer options.',
+        filter: (id, d) => {
+            // Proxy: High OI Change + Low Price Change (Positioning) OR High Vol + High OI (Squeeze)
+            const oiData = d.raw?.OI || {};
+            const volData = d.raw?.VOL || {};
+            const oiChange = Math.abs(oiData.oiChange1h || 0);
+            const oiZ = Math.abs(oiData.zScore || 0);
+
+            // Gamma condition: Huge OI buildup
+            const isGamma = oiChange > 5.0 || oiZ > 2.5;
+            if (isGamma) {
+                return {
+                    bias: oiData.oiChange1h > 0 ? 'LONG_VOL' : 'SHORT_VOL',
+                    factors: ['High GEX Proxy', 'OI Squeeze Potential', 'Dealer Hedging'],
+                    confidence: 75
+                };
+            }
+            return null;
+        }
+    },
+    'CLUSTER': {
+        icon: '🎯', lev: '3-5x', hold: '4h-12h', tpMult: 2.0, slMult: 1.0,
+        title: 'Volume Cluster (High Value Zones)',
+        desc: 'Mengidentifikasi zona harga di mana institusi melakukan akumulasi diam-diam (Volume Profile Nodes).',
+        filter: (id, d) => {
+            // Logic: High Volume but Low Price Change (Churn/Absorption)
+            const vol = d.raw?.VOL?.vol_total_1JAM || 0;
+            const pxChange = Math.abs(d.raw?.PRICE?.percent_change_1H || 0);
+
+            // "Cluster" = High Effort, No Result
+            const isCluster = vol > 1000000 && pxChange < 0.5;
+
+            if (isCluster) {
+                return {
+                    bias: 'ACCUMULATION',
+                    factors: ['Volume Node', 'Price Acceptance', 'Consolidation'],
+                    confidence: 70
+                };
+            }
+            return null;
+        }
+    },
+    'TAPE': {
+        icon: '📜', lev: '10-20x', hold: '1m-5m', tpMult: 0.5, slMult: 0.2,
+        title: 'Tape Reading (Microstructure)',
+        desc: 'Membaca agresivitas "Tape" (Trade Feed). Mendeteksi urutan order beli/jual agresif yang tidak terlihat di chart.',
+        filter: (id, d) => {
+            const m = d.signals?.profiles?.AGGRESSIVE?.timeframes?.['1MENIT']?.signals?.microstructure || {};
+            const aggr = d.synthesis?.momentum?.aggression_level_1MENIT || 'RETAIL';
+            const vpin = m.vpin?.rawValue || 0;
+
+            const isTape = aggr === 'INSTITUTIONAL' && vpin > 0.7;
+            if (isTape) {
+                return {
+                    bias: 'SCALP',
+                    factors: ['Tape Aggression', 'High VPIN', 'Order Flow'],
+                    confidence: 85
+                };
+            }
+            return null;
+        }
+    },
+    'ANOMALY': {
+        icon: '⚠️', lev: '2-5x', hold: '1h-6h', tpMult: 3.0, slMult: 1.5,
+        title: 'Statistical Anomaly (Black Swan)',
+        desc: 'Mendeteksi pergerakan "3-Sigma" yang menyimpang secara statistik. Peluang mean reversion atau breakout ekstrim.',
+        filter: (id, d) => {
+            const lsrZ = Math.abs(d.raw?.LSR?.timeframes_15min?.z || 0);
+            const oiZ = Math.abs(d.raw?.OI?.zScore || 0);
+            const volZ = Math.abs(d.raw?.VOL?.zScore || 0);
+
+            const isAnomaly = lsrZ > 3.0 || oiZ > 3.0 || volZ > 3.0; // 3-Sigma event
+
+            if (isAnomaly) {
+                return {
+                    bias: 'ANOMALY',
+                    factors: ['3-Sigma Event', 'Stat Break', 'Outlier Detected'],
+                    confidence: 88,
+                    risk: 'CRITICAL'
+                };
+            }
+            return null;
+        }
+    },
     'COMPOSITE': {
         icon: '👑', lev: '5-15x', hold: '15m-1h', tpMult: 2.5, slMult: 1.2,
         title: 'Composite Alpha Aggregator (The God Signal)',
@@ -533,6 +650,13 @@ export function update(marketState) {
                 const bg = r.bias.includes('LONG') || r.bias.includes('BUY') || r.bias.includes('BUILD') ? 'bg-bb-green/10' : r.bias.includes('STAY') ? 'bg-bb-gold/10' : 'bg-bb-red/10';
                 const riskColor = r.risk === 'CRITICAL' ? 'text-bb-red' : r.risk === 'HIGH' ? 'text-bb-gold' : 'text-bb-green';
 
+                // Market Regime Visualization
+                const regime = r.d?.signals?.marketRegime || { regime: 'ANALYZING...', strategy: 'Wait for Data' };
+                const regimeColor =
+                    ['SLOW_TREND', 'TRENDING', 'VOLATILE_BREAKOUT'].includes(regime.regime) ? 'text-bb-green' :
+                        ['FRAGILE_CALM', 'CHOPPY', 'ACCUMULATION_DISTRIBUTION'].includes(regime.regime) ? 'text-bb-gold' :
+                            'text-bb-red';
+
                 return `
                     <div class="flex items-stretch text-[10px] hover:bg-white/5 transition-colors cursor-pointer group border-b border-bb-border/30" onclick="window.app.selectCoin('${r.id}')">
                         <!-- LEFT: STRATEGIC SETUP (50%) -->
@@ -541,10 +665,22 @@ export function update(marketState) {
                                 <span class="text-xs font-black text-white group-hover:text-bb-gold uppercase">${r.coin}</span>
                                 <span class="px-2 py-0.5 rounded ${bg} ${color} font-black text-[8px] tracking-widest">${r.bias}</span>
                             </div>
+                            
+                            <!-- REGIME INTELLIGENCE -->
+                            <div class="flex flex-col gap-0.5 mt-0.5 mb-1 px-1.5 py-1 bg-black/30 rounded border border-white/5">
+                                <div class="flex justify-between items-center text-[7px] text-bb-muted uppercase tracking-wider">
+                                    <span>Market Regime</span>
+                                    <span class="font-black ${regimeColor}">${regime.regime}</span>
+                                </div>
+                                <div class="flex justify-between items-center text-[7px] text-white/50 italic">
+                                    <span>Rec: ${regime.strategy}</span>
+                                </div>
+                            </div>
+
                             <div class="flex flex-wrap gap-1">
                                 ${r.factors.map(f => `<span class="px-1.5 py-0.5 bg-black/40 border border-white/5 text-[7px] text-bb-muted rounded-sm">${f}</span>`).join('')}
                             </div>
-                            <div class="flex justify-between items-center text-[7px] font-bold uppercase tracking-tighter text-bb-muted">
+                            <div class="flex justify-between items-center text-[7px] font-bold uppercase tracking-tighter text-bb-muted mt-auto">
                                 <span>Risk Assessment: <span class="${riskColor}">${r.risk}</span></span>
                                 <span>Conviction: ${Math.round(r.confidence)}%</span>
                             </div>
