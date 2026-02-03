@@ -31,8 +31,8 @@ class P2PMesh {
             ],
             iceCandidatePoolSize: 10
         };
-        this.MAX_RETRIES = 3; // Reduced untuk avoid spam
-        this.CONNECTION_TIMEOUT = 30000; // 30 detik per attempt
+        this.MAX_RETRIES = 5; // allow more quick retries
+        this.CONNECTION_TIMEOUT = 10000; // 10s per attempt (faster failure)
     }
 
     sendMessage(msg) {
@@ -107,12 +107,12 @@ class P2PMesh {
         // Connect to new targets
         targets.forEach(id => {
             if (id !== this.peerId && !this.peers.has(id)) {
-                // Use lexicographic ordering untuk avoid double connections
-                if (this.peerId < id) {
-                    // console.log(`[P2P] 🔗 Initiating connection to: ${id}`);
+                // More aggressive initiation: initiate if lexicographically smaller
+                // or with a probability to avoid waiting too long for the other side.
+                // This trades occasional duplicate attempts for faster matching.
+                const shouldInitiate = (this.peerId < id) || (Math.random() < 0.6);
+                if (shouldInitiate) {
                     this.connectToPeer(id);
-                } else {
-                    // console.log(`[P2P] ⏳ Awaiting connection from: ${id}`);
                 }
             }
         });
@@ -371,7 +371,7 @@ class P2PMesh {
             return;
         }
 
-        const delay = Math.min(Math.pow(2, count) * 3000, 30000); // Max 30s
+        const delay = Math.min(Math.pow(2, count) * 1000, 10000); // exponential backoff, faster
         console.log(`[P2P] 🔄 Retrying connection to ${targetId} in ${delay / 1000}s (attempt ${count + 1}/${this.MAX_RETRIES})`);
 
         this.retryCounts.set(targetId, count + 1);
