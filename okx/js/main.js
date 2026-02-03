@@ -472,7 +472,16 @@ function connect() {
                 }
             }
             else if (payload.type === 'peer-update') {
-                p2p.updatePeerList(payload.peers, payload.superPeers);
+                // Normalize peer payload for backward/forward compatibility
+                let peersIds = [];
+                if (Array.isArray(payload.peers)) {
+                    // payload.peers may be array of strings or objects {id,...}
+                    peersIds = payload.peers.map(p => (typeof p === 'string') ? p : (p && p.id ? p.id : null)).filter(Boolean);
+                } else if (Array.isArray(payload.peersIds)) {
+                    peersIds = payload.peersIds;
+                }
+                const superPeers = payload.superPeers || [];
+                p2p.updatePeerList(peersIds, superPeers);
             } else if (payload.type === 'offer') {
                 p2p.handleOffer(payload.senderId, payload.offer);
             } else if (payload.type === 'answer') {
