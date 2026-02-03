@@ -6,6 +6,33 @@ const triggeredSignals = new Map(); // key: ruleId + coin + bias, value: timesta
 let editingRuleId = null;
 const AUTO_LOG_KEY = 'bb_automation_logs';
 
+// 🔧 TUNED: Profile-based thresholds matching StrategyProfiles.js
+const PROFILE_THRESHOLDS = {
+    CONSERVATIVE: {
+        minScore: 72, minConfidence: 75, minNetFlow: 50000,
+        vpinThreshold: 0.70, oiZThreshold: 2.0, velocityMin: 15000,
+        cooldownMultiplier: 2.0, // Longer cooldowns
+        leverageMax: 5
+    },
+    MODERATE: {
+        minScore: 58, minConfidence: 62, minNetFlow: 25000,
+        vpinThreshold: 0.55, oiZThreshold: 1.5, velocityMin: 8000,
+        cooldownMultiplier: 1.0,
+        leverageMax: 10
+    },
+    AGGRESSIVE: {
+        minScore: 52, minConfidence: 55, minNetFlow: 15000,
+        vpinThreshold: 0.45, oiZThreshold: 1.2, velocityMin: 3000,
+        cooldownMultiplier: 0.5, // Shorter cooldowns
+        leverageMax: 20
+    }
+};
+
+// Helper to get thresholds for a profile
+function getThresholds(profile = 'MODERATE') {
+    return PROFILE_THRESHOLDS[profile] || PROFILE_THRESHOLDS.MODERATE;
+}
+
 export function render(container) {
     container.innerHTML = `
         <div class="h-full flex flex-col bg-bb-black font-mono overflow-hidden">
@@ -56,11 +83,29 @@ export function render(container) {
                                             <option value="CLUSTER">🎯 VOL CLUSTER</option>
                                             <option value="TAPE">📜 TAPE READER</option>
                                             <option value="ANOMALY">⚠️ STAT ANOMALY</option>
+                                            <option value="EFFICIENCY">🧬 EFFICIENCY</option>
+                                            <option value="MTF_PRO">📡 MTF CONFLUENCE</option>
+                                            <option value="PATIENCE">⌛ PATIENCE SNIPER</option>
                                         </select>
                                     </div>
                                     <div class="flex flex-col gap-1.5">
-                                        <label class="text-[8px] text-bb-muted uppercase font-black tracking-tighter opacity-60">Target Conf. %</label>
-                                        <input id="rule-confidence" type="number" value="80" class="bg-bb-black border border-white/10 p-2.5 text-[10px] text-white focus:border-bb-gold outline-none w-full rounded transition-all">
+                                        <label class="text-[8px] text-bb-muted uppercase font-black tracking-tighter opacity-60">Risk Profile</label>
+                                        <select id="rule-profile" class="bg-bb-black border border-white/10 p-2.5 text-[10px] text-white focus:border-bb-gold outline-none w-full rounded transition-all">
+                                            <option value="CONSERVATIVE">🏛️ CONSERVATIVE</option>
+                                            <option value="MODERATE" selected>⚖️ MODERATE</option>
+                                            <option value="AGGRESSIVE">🎯 AGGRESSIVE</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div class="flex flex-col gap-1.5">
+                                        <label class="text-[8px] text-bb-muted uppercase font-black tracking-tighter opacity-60">Min Confidence %</label>
+                                        <input id="rule-confidence" type="number" value="65" class="bg-bb-black border border-white/10 p-2.5 text-[10px] text-white focus:border-bb-gold outline-none w-full rounded transition-all">
+                                    </div>
+                                    <div class="flex flex-col gap-1.5">
+                                        <label class="text-[8px] text-bb-muted uppercase font-black tracking-tighter opacity-60">Min Signal Quality</label>
+                                        <input id="rule-quality" type="number" value="0.5" step="0.1" min="0" max="1" class="bg-bb-black border border-white/10 p-2.5 text-[10px] text-white focus:border-bb-gold outline-none w-full rounded transition-all">
                                     </div>
                                 </div>
 
@@ -74,7 +119,7 @@ export function render(container) {
                             <div class="p-4 bg-black/40 border border-white/5 rounded-lg space-y-4">
                                 <span class="text-[7px] text-bb-muted uppercase font-black tracking-widest block opacity-50">Logic & Simulation Bridge</span>
                                 
-                                <div class="grid grid-cols-2 gap-4">
+                                <div class="grid grid-cols-3 gap-3">
                                     <div class="flex flex-col gap-1.5">
                                         <label class="text-[8px] text-bb-muted uppercase font-black tracking-tighter opacity-60">Cooldown (Sec)</label>
                                         <input id="rule-cooldown" type="number" value="300" class="bg-bb-black border border-white/10 p-2 text-[10px] text-white focus:border-bb-gold outline-none w-full rounded">
@@ -84,6 +129,13 @@ export function render(container) {
                                         <select id="rule-autosim" class="bg-bb-black border border-white/10 p-2 text-[10px] text-white focus:border-bb-gold outline-none w-full rounded">
                                             <option value="false">NO (Webhook Only)</option>
                                             <option value="true" selected>YES (Sim Trade)</option>
+                                        </select>
+                                    </div>
+                                    <div class="flex flex-col gap-1.5">
+                                        <label class="text-[8px] text-bb-muted uppercase font-black tracking-tighter opacity-60">Trailing Stop</label>
+                                        <select id="rule-trailing" class="bg-bb-black border border-white/10 p-2 text-[10px] text-white focus:border-bb-gold outline-none w-full rounded">
+                                            <option value="false">OFF</option>
+                                            <option value="true" selected>ON</option>
                                         </select>
                                     </div>
                                 </div>
@@ -107,6 +159,22 @@ export function render(container) {
                                     <div class="flex flex-col gap-1.5">
                                         <label class="text-[8px] text-bb-muted uppercase font-black tracking-tighter opacity-60">Default SL (%)</label>
                                         <input id="rule-sim-sl" type="number" value="5" step="0.1" class="bg-bb-black border border-white/10 p-2 text-[10px] text-white focus:border-bb-gold outline-none w-full rounded">
+                                    </div>
+                                </div>
+                                
+                                <!-- 🔧 NEW: Advanced Risk Controls -->
+                                <div class="grid grid-cols-3 gap-3 pt-2 border-t border-white/5">
+                                    <div class="flex flex-col gap-1.5">
+                                        <label class="text-[8px] text-bb-muted uppercase font-black tracking-tighter opacity-60">Max Daily Trades</label>
+                                        <input id="rule-max-daily" type="number" value="10" class="bg-bb-black border border-white/10 p-2 text-[10px] text-white focus:border-bb-gold outline-none w-full rounded">
+                                    </div>
+                                    <div class="flex flex-col gap-1.5">
+                                        <label class="text-[8px] text-bb-muted uppercase font-black tracking-tighter opacity-60">Daily Loss Limit %</label>
+                                        <input id="rule-daily-loss" type="number" value="5" step="0.5" class="bg-bb-black border border-white/10 p-2 text-[10px] text-white focus:border-bb-gold outline-none w-full rounded">
+                                    </div>
+                                    <div class="flex flex-col gap-1.5">
+                                        <label class="text-[8px] text-bb-muted uppercase font-black tracking-tighter opacity-60">Max Consec. Loss</label>
+                                        <input id="rule-max-loss-streak" type="number" value="3" class="bg-bb-black border border-white/10 p-2 text-[10px] text-white focus:border-bb-gold outline-none w-full rounded">
                                     </div>
                                 </div>
                             </div>
@@ -158,20 +226,35 @@ function attachEvents(container) {
     const addBtn = container.querySelector('#add-rule');
     if (addBtn) {
         addBtn.onclick = () => {
+            const profile = container.querySelector('#rule-profile').value;
+            const th = getThresholds(profile);
+            
             const rule = {
                 id: Date.now().toString(),
                 name: container.querySelector('#rule-name').value || 'Unnamed Rule',
                 strategy: container.querySelector('#rule-strategy').value,
-                confidence: parseInt(container.querySelector('#rule-confidence').value) || 80,
+                profile: profile,
+                confidence: parseInt(container.querySelector('#rule-confidence').value) || th.minConfidence,
+                minQuality: parseFloat(container.querySelector('#rule-quality').value) || 0.5,
                 url: container.querySelector('#rule-url').value,
-                cooldown: parseInt(container.querySelector('#rule-cooldown').value) || 300,
+                cooldown: Math.round((parseInt(container.querySelector('#rule-cooldown').value) || 300) * th.cooldownMultiplier),
                 active: true,
                 createdAt: new Date().toISOString(),
                 autoSimulate: container.querySelector('#rule-autosim').value === 'true',
+                trailingStop: container.querySelector('#rule-trailing').value === 'true',
                 simAmount: parseFloat(container.querySelector('#rule-sim-amount').value) || 1000,
-                simLeverage: parseInt(container.querySelector('#rule-sim-leverage').value) || 10,
+                simLeverage: Math.min(parseInt(container.querySelector('#rule-sim-leverage').value) || 10, th.leverageMax),
                 simTp: parseFloat(container.querySelector('#rule-sim-tp').value) || 10,
-                simSl: parseFloat(container.querySelector('#rule-sim-sl').value) || 5
+                simSl: parseFloat(container.querySelector('#rule-sim-sl').value) || 5,
+                // 🔧 NEW: Risk controls
+                maxDailyTrades: parseInt(container.querySelector('#rule-max-daily').value) || 10,
+                dailyLossLimit: parseFloat(container.querySelector('#rule-daily-loss').value) || 5,
+                maxLossStreak: parseInt(container.querySelector('#rule-max-loss-streak').value) || 3,
+                // Runtime tracking
+                dailyTradeCount: 0,
+                dailyPnL: 0,
+                lossStreak: 0,
+                lastTradeDate: null
             };
 
             if (!rule.url) {
@@ -183,13 +266,13 @@ function attachEvents(container) {
                 const idx = rules.findIndex(r => r.id === editingRuleId);
                 if (idx !== -1) {
                     rules[idx] = { ...rules[idx], ...rule, id: editingRuleId }; // Keep original ID and createdAt
-                    log('SYSTEM', `Updated rule: ${rule.name}`, 'gold');
+                    log('SYSTEM', `Updated rule: ${rule.name} [${rule.profile}]`, 'gold');
                 }
                 editingRuleId = null;
                 addBtn.innerText = 'DEPLOY ENGINE ATOM';
             } else {
                 rules.push(rule);
-                log('SYSTEM', `Deployed new rule: ${rule.name}`, 'bb-gold');
+                log('SYSTEM', `Deployed new rule: ${rule.name} [${rule.profile}]`, 'bb-gold');
             }
 
             saveRules();
@@ -278,13 +361,19 @@ function renderRulesList() {
         return;
     }
 
-    list.innerHTML = rules.map(rule => `
+    list.innerHTML = rules.map(rule => {
+        const profileColor = rule.profile === 'CONSERVATIVE' ? 'bb-blue' : rule.profile === 'AGGRESSIVE' ? 'bb-red' : 'bb-gold';
+        const profileIcon = rule.profile === 'CONSERVATIVE' ? '🏛️' : rule.profile === 'AGGRESSIVE' ? '🎯' : '⚖️';
+        
+        return `
         <div class="p-4 flex justify-between items-center group hover:bg-white/5 transition-all border-b border-white/[0.03]">
             <div class="flex flex-col gap-1.5">
                 <div class="flex items-center gap-2">
                     <span class="text-[11px] font-black text-white uppercase tracking-wider">${rule.name}</span>
                     <span class="px-2 py-0.5 bg-bb-gold/10 text-bb-gold text-[7px] font-black rounded border border-bb-gold/20 uppercase">${rule.strategy}</span>
-                    ${rule.autoSimulate ? '<span class="px-2 py-0.5 bg-bb-green/10 text-bb-green text-[7px] font-black rounded border border-bb-green/20 uppercase shadow-lg shadow-bb-green/5">SIM ACTIVE</span>' : ''}
+                    <span class="px-2 py-0.5 bg-${profileColor}/10 text-${profileColor} text-[7px] font-black rounded border border-${profileColor}/20 uppercase">${profileIcon} ${rule.profile || 'MODERATE'}</span>
+                    ${rule.autoSimulate ? '<span class="px-2 py-0.5 bg-bb-green/10 text-bb-green text-[7px] font-black rounded border border-bb-green/20 uppercase shadow-lg shadow-bb-green/5">SIM</span>' : ''}
+                    ${rule.trailingStop ? '<span class="px-2 py-0.5 bg-bb-blue/10 text-bb-blue text-[7px] font-black rounded border border-bb-blue/20 uppercase">TRAIL</span>' : ''}
                 </div>
                 <div class="flex items-center gap-3">
                     <div class="text-[8px] font-mono text-bb-muted flex items-center gap-1.5 opacity-60">
@@ -293,14 +382,20 @@ function renderRulesList() {
                     </div>
                     <div class="h-2.5 w-px bg-white/10"></div>
                     <div class="flex items-center gap-3 text-[8px] font-black uppercase">
-                        <span class="text-bb-muted tracking-tighter">Cooldown <span class="text-white">${rule.cooldown}s</span></span>
+                        <span class="text-bb-muted tracking-tighter">CD <span class="text-white">${rule.cooldown}s</span></span>
+                        <span class="text-bb-muted tracking-tighter">Conf <span class="text-white">${rule.confidence}%</span></span>
                         ${rule.autoSimulate ? `
-                            <span class="text-bb-muted tracking-tighter">Size <span class="text-bb-gold">$${rule.simAmount}</span></span>
-                            <span class="text-bb-muted tracking-tighter">Lev <span class="text-bb-gold">${rule.simLeverage}x</span></span>
-                            <span class="text-bb-muted tracking-tighter">TP <span class="text-bb-green">${rule.simTp}%</span></span>
-                            <span class="text-bb-muted tracking-tighter">SL <span class="text-bb-red">${rule.simSl}%</span></span>
+                            <span class="text-bb-muted tracking-tighter">$<span class="text-bb-gold">${rule.simAmount}</span></span>
+                            <span class="text-bb-muted tracking-tighter"><span class="text-bb-gold">${rule.simLeverage}x</span></span>
+                            <span class="text-bb-green">${rule.simTp}%</span>/<span class="text-bb-red">${rule.simSl}%</span>
                         ` : ''}
                     </div>
+                </div>
+                <!-- 🔧 NEW: Runtime stats -->
+                <div class="flex items-center gap-3 text-[7px] text-bb-muted/50">
+                    <span>Today: ${rule.dailyTradeCount || 0}/${rule.maxDailyTrades || 10} trades</span>
+                    <span>PnL: <span class="${(rule.dailyPnL || 0) >= 0 ? 'text-bb-green' : 'text-bb-red'}">${(rule.dailyPnL || 0) >= 0 ? '+' : ''}${(rule.dailyPnL || 0).toFixed(2)}%</span></span>
+                    <span>Streak: ${rule.lossStreak || 0}</span>
                 </div>
             </div>
             <div class="flex items-center gap-6">
@@ -318,7 +413,7 @@ function renderRulesList() {
                 </button>
             </div>
         </div>
-    `).join('');
+    `}).join('');
 }
 
 // Global exposure for onClick handlers
@@ -357,14 +452,20 @@ window.app.editRule = (id) => {
 
     container.querySelector('#rule-name').value = rule.name;
     container.querySelector('#rule-strategy').value = rule.strategy;
+    container.querySelector('#rule-profile').value = rule.profile || 'MODERATE';
     container.querySelector('#rule-confidence').value = rule.confidence;
+    container.querySelector('#rule-quality').value = rule.minQuality || 0.5;
     container.querySelector('#rule-url').value = rule.url;
     container.querySelector('#rule-cooldown').value = rule.cooldown;
     container.querySelector('#rule-autosim').value = rule.autoSimulate.toString();
+    container.querySelector('#rule-trailing').value = (rule.trailingStop || false).toString();
     container.querySelector('#rule-sim-amount').value = rule.simAmount;
     container.querySelector('#rule-sim-leverage').value = rule.simLeverage;
     container.querySelector('#rule-sim-tp').value = rule.simTp;
     container.querySelector('#rule-sim-sl').value = rule.simSl;
+    container.querySelector('#rule-max-daily').value = rule.maxDailyTrades || 10;
+    container.querySelector('#rule-daily-loss').value = rule.dailyLossLimit || 5;
+    container.querySelector('#rule-max-loss-streak').value = rule.maxLossStreak || 3;
 
     // Change button text
     const addBtn = container.querySelector('#add-rule');
@@ -377,29 +478,79 @@ window.app.editRule = (id) => {
 function resetForm(container) {
     container.querySelector('#rule-name').value = '';
     container.querySelector('#rule-strategy').selectedIndex = 0;
-    container.querySelector('#rule-confidence').value = 80;
+    container.querySelector('#rule-profile').value = 'MODERATE';
+    container.querySelector('#rule-confidence').value = 65;
+    container.querySelector('#rule-quality').value = 0.5;
     container.querySelector('#rule-url').value = '';
     container.querySelector('#rule-cooldown').value = 300;
     container.querySelector('#rule-autosim').value = 'true';
+    container.querySelector('#rule-trailing').value = 'true';
     container.querySelector('#rule-sim-amount').value = 1000;
     container.querySelector('#rule-sim-leverage').value = 10;
     container.querySelector('#rule-sim-tp').value = 10;
     container.querySelector('#rule-sim-sl').value = 5;
+    container.querySelector('#rule-max-daily').value = 10;
+    container.querySelector('#rule-daily-loss').value = 5;
+    container.querySelector('#rule-max-loss-streak').value = 3;
 }
 
 export async function runAutomationEngine(marketState) {
     if (!marketState || rules.length === 0) return;
+    
+    const today = new Date().toISOString().split('T')[0];
 
     for (const rule of rules) {
         if (!rule.active) continue;
+        
+        // Initialize runtime stats if not exists
+        if (!rule.runtimeStats) {
+            rule.runtimeStats = {
+                todayTrades: 0,
+                todayPnL: 0,
+                lossStreak: 0,
+                lastTradeDate: null,
+                totalTrades: 0
+            };
+        }
+        
+        // Reset daily stats if new day
+        if (rule.runtimeStats.lastTradeDate !== today) {
+            rule.runtimeStats.todayTrades = 0;
+            rule.runtimeStats.todayPnL = 0;
+            rule.runtimeStats.lastTradeDate = today;
+        }
+        
+        // 🛡️ CHECK DAILY TRADE LIMIT
+        const maxDaily = rule.maxDailyTrades || 10;
+        if (rule.runtimeStats.todayTrades >= maxDaily) {
+            log('LIMIT', `${rule.name}: Daily trade limit reached (${maxDaily})`, 'yellow');
+            continue;
+        }
+        
+        // 🛡️ CHECK DAILY LOSS LIMIT
+        const dailyLossLimit = rule.dailyLossLimit || 5;
+        if (rule.runtimeStats.todayPnL <= -dailyLossLimit) {
+            log('LIMIT', `${rule.name}: Daily loss limit reached (${dailyLossLimit}%)`, 'red');
+            continue;
+        }
+        
+        // 🛡️ CHECK CONSECUTIVE LOSS STREAK
+        const maxStreak = rule.maxLossStreak || 3;
+        if (rule.runtimeStats.lossStreak >= maxStreak) {
+            log('LIMIT', `${rule.name}: Loss streak limit reached (${maxStreak})`, 'red');
+            continue;
+        }
 
         for (const coin in marketState) {
             const data = marketState[coin];
-            if (!data) continue; // Safety guard
+            if (!data) continue;
 
-            const signalResult = checkSignal(rule.strategy, data);
+            const signalResult = checkSignal(rule.strategy, data, rule);
 
-            if (signalResult && signalResult.confidence >= rule.confidence) {
+            if (signalResult && 
+                signalResult.confidence >= rule.confidence &&
+                (signalResult.quality || 1) >= (rule.minQuality || 0)) {
+                
                 // Check Cooldown
                 const key = `${rule.id}:${coin}:${signalResult.bias}`;
                 const lastTrigger = triggeredSignals.get(key) || 0;
@@ -408,6 +559,10 @@ export async function runAutomationEngine(marketState) {
                 if (now - lastTrigger > rule.cooldown * 1000) {
                     executeWebhook(rule, coin, signalResult, data);
                     triggeredSignals.set(key, now);
+                    
+                    // Update runtime stats
+                    rule.runtimeStats.todayTrades++;
+                    rule.runtimeStats.totalTrades++;
                 }
             }
         }
@@ -417,86 +572,575 @@ export async function runAutomationEngine(marketState) {
 // Empty update for tab compatibility
 export function update() { }
 
-function checkSignal(strategy, data) {
-    if (!data) return null; // Safety guard
-    const timeframe = '15MENIT';
-    const profile = 'AGGRESSIVE';
+// === REAL TRADE SIMULATION HELPERS ===
+const SLIPPAGE_CONFIG = {
+    baseSlippagePct: 0.05,      // 0.05% base slippage
+    volatilityMultiplier: 2.0,  // 2x slippage in high vol
+    lowLiquidityMultiplier: 3.0 // 3x slippage for low liquidity coins
+};
+
+function calculateSlippage(price, side, data) {
+    if (!price || price <= 0) return 0;
+    
+    let slippagePct = SLIPPAGE_CONFIG.baseSlippagePct;
+    
+    // Increase slippage in volatile conditions
+    const volRegime = data?.signals?.marketRegime?.volRegime || 'NORMAL';
+    if (volRegime === 'HIGH_VOL' || volRegime === 'EXTREME_VOL') {
+        slippagePct *= SLIPPAGE_CONFIG.volatilityMultiplier;
+    }
+    
+    // Increase slippage for low liquidity (check OI tier)
+    const oiTier = data?.raw?.OI?.tier || data?.raw?.OI?.oiTier || 2;
+    if (oiTier >= 3) {
+        slippagePct *= SLIPPAGE_CONFIG.lowLiquidityMultiplier;
+    }
+    
+    // Apply slippage: BUY = higher price, SELL = lower price
+    const slippageAmount = price * (slippagePct / 100);
+    return side === 'LONG' || side === 'BUY' ? slippageAmount : -slippageAmount;
+}
+
+function getExecutionPrice(data) {
+    // Priority: last trade price > mark price > index price
+    const price = data?.raw?.PRICE?.last 
+        || data?.PRICE?.price 
+        || data?.raw?.PRICE?.price
+        || data?.masterSignals?.['15MENIT']?.MODERATE?.metadata?.lastPrice
+        || 0;
+    return price;
+}
+
+function validateSignalQuality(master, data) {
+    // Reject stale signals (older than 30 seconds)
+    const signalTime = master?.timestamp || data?.timestamp || 0;
+    const now = Date.now();
+    if (signalTime > 0 && (now - signalTime) > 30000) {
+        return { valid: false, reason: 'STALE_SIGNAL' };
+    }
+    
+    // Reject NO_TRADE or NEUTRAL actions
+    if (!master?.action || master.action === 'NO_TRADE' || master.action === 'NEUTRAL') {
+        return { valid: false, reason: 'NO_ACTIONABLE_SIGNAL' };
+    }
+    
+    // Reject if confidence too low
+    if ((master?.confidence || 0) < 40) {
+        return { valid: false, reason: 'LOW_CONFIDENCE' };
+    }
+    
+    return { valid: true };
+}
+
+function checkSignal(strategy, data, rule = {}) {
+    if (!data) return null;
+    
+    const profile = rule.profile || 'MODERATE';
+    const th = getThresholds(profile);
+    const minQuality = rule.minQuality || 0.5;
+    
+    // === DYNAMIC TIMEFRAME & PROFILE BASED ON STRATEGY ===
+    const strategyConfig = {
+        'COMPOSITE': { timeframes: ['15MENIT', '5MENIT'], useEnhanced: true },
+        'SCALP': { timeframes: ['1MENIT', '5MENIT'], useEnhanced: true },
+        'WHALE': { timeframes: ['15MENIT', '1JAM'], useEnhanced: true },
+        'FLASH': { timeframes: ['1MENIT'], useEnhanced: true },
+        'GAMMA': { timeframes: ['15MENIT', '1JAM'], useEnhanced: false },
+        'CLUSTER': { timeframes: ['1JAM'], useEnhanced: false },
+        'TAPE': { timeframes: ['1MENIT', '5MENIT'], useEnhanced: true },
+        'ANOMALY': { timeframes: ['15MENIT'], useEnhanced: false },
+        'BLITZ': { timeframes: ['5MENIT', '15MENIT'], useEnhanced: true },
+        'FLOW': { timeframes: ['15MENIT', '1JAM'], useEnhanced: true },
+        'BREAKOUT': { timeframes: ['15MENIT', '1JAM'], useEnhanced: true },
+        'SWEEP': { timeframes: ['5MENIT', '15MENIT'], useEnhanced: false },
+        'EFFICIENCY': { timeframes: ['15MENIT', '30MENIT'], useEnhanced: true },
+        'MTF_PRO': { timeframes: ['1MENIT', '5MENIT', '15MENIT', '1JAM'], useEnhanced: true },
+        'PATIENCE': { timeframes: ['15MENIT', '1JAM'], useEnhanced: true }
+    };
+    
+    const config = strategyConfig[strategy] || { timeframes: ['15MENIT'], useEnhanced: true };
     const syn = data.synthesis || {};
     const signals = data.signals || {};
     const profiles = signals.profiles || {};
-    const tfData = profiles[profile]?.timeframes?.[timeframe] || {};
-    const master = tfData.masterSignal || {};
-    const micro = tfData.signals?.microstructure || {};
-
+    const raw = data.raw || {};
+    
+    // Get best available master signal from configured timeframes
+    let master = null;
+    let usedTimeframe = null;
+    let enhanced = {};
+    let micro = {};
+    
+    for (const tf of config.timeframes) {
+        const tfData = profiles[profile]?.timeframes?.[tf];
+        if (tfData?.masterSignal?.action && tfData.masterSignal.action !== 'NO_TRADE' && tfData.masterSignal.action !== 'WAIT') {
+            master = tfData.masterSignal;
+            usedTimeframe = tf;
+            enhanced = tfData?.signals?.enhanced || {};
+            micro = tfData?.signals?.microstructure || {};
+            break;
+        }
+    }
+    
+    // Fallback to masterSignals shortcut
+    if (!master) {
+        for (const tf of config.timeframes) {
+            const ms = data.masterSignals?.[tf]?.[profile];
+            if (ms?.action && ms.action !== 'NO_TRADE' && ms.action !== 'WAIT') {
+                master = ms;
+                usedTimeframe = tf;
+                break;
+            }
+        }
+    }
+    
+    // 🔧 NEW: Calculate signal quality
+    const signalQuality = calculateSignalQuality(master, enhanced, syn);
+    if (signalQuality < minQuality) {
+        return null; // Signal quality below threshold
+    }
+    
+    // Validate signal quality
+    const validation = validateSignalQuality(master, data);
+    
     switch (strategy) {
         case 'COMPOSITE': {
-            const mtf = data.signals?.mtfConfluence?.AGGRESSIVE || {};
-            const netFlow = syn.flow?.net_flow_15MENIT || 0;
-            const score = master.normalizedScore || 0;
-            const isGod = score > 80 && Math.abs(netFlow) > 30000 && mtf.aligned;
-            return isGod ? { bias: master.action, factors: ['Adaptive Confluence'], confidence: score } : null;
-        }
-        case 'SCALP': {
-            const vpin = micro.vpin?.rawValue || 0;
-            const isScalp = vpin > 0.6 && syn.efficiency?.character_15MENIT === 'EFFORTLESS_MOVE';
-            return isScalp ? { bias: master.action, factors: ['VPIN Sniper'], confidence: master.normalizedScore || 80 } : null;
-        }
-        case 'WHALE': {
-            const aggr = syn.momentum?.aggression_level_15MENIT || 'RETAIL';
-            const vel = syn.momentum?.velocity_15MENIT || 0;
-            const isWhale = aggr === 'INSTITUTIONAL' && vel > 10000;
-            return isWhale ? { bias: master.action || 'LONG', factors: ['Whale Footprint'], confidence: 85 } : null;
-        }
-        case 'FLASH': {
-            const m = data.signals?.profiles?.AGGRESSIVE?.timeframes?.['1MENIT']?.masterSignal || {};
-            const vol = data.raw?.VOL?.vol_total_1MENIT || 1;
-            const avgVol = data.raw?.VOL?.vol_total_5MENIT || 5;
-            const surge = vol / (avgVol / 5);
-            return surge > 1.5 ? { bias: 'LONG', factors: ['Ignition Volume'], confidence: 80 } : null;
-        }
-        case 'GAMMA': {
-            const oiData = data.raw?.OI || {};
-            const oiChange = Math.abs(oiData.oiChange1h || 0);
-            return oiChange > 5.0 ? { bias: 'LONG_VOL', factors: ['Gamma Squeeze'], confidence: 75 } : null;
-        }
-        case 'CLUSTER': {
-            const vol = data.raw?.VOL?.vol_total_1JAM || 0;
-            const pxChange = Math.abs(data.raw?.PRICE?.percent_change_1H || 0);
-            return (vol > 1000000 && pxChange < 0.5) ? { bias: 'HOLD', factors: ['Vol Cluster'], confidence: 70 } : null;
-        }
-        case 'TAPE': {
-            const aggr = data.synthesis?.momentum?.aggression_level_1MENIT || 'RETAIL';
-            return aggr === 'INSTITUTIONAL' ? { bias: 'SCALP', factors: ['Tape Aggression'], confidence: 85 } : null;
-        }
-        case 'ANOMALY': {
-            const lsrZ = Math.abs(data.raw?.LSR?.timeframes_15min?.z || 0);
-            return lsrZ > 3.0 ? { bias: 'ANOMALY', factors: ['3-Sigma'], confidence: 88 } : null;
-        }
-        default:
-            if ((master.normalizedScore || 0) >= 80) {
-                return { bias: master.action, factors: ['Master Signal Drive'], confidence: master.normalizedScore };
+            // Multi-factor confluence check with enhanced signals
+            const mtf = signals?.mtfConfluence?.[profile] || {};
+            const netFlow = syn.flow?.net_flow_15MENIT || syn.flow?.net_flow_5MENIT || 0;
+            const score = master?.normalizedScore || 0;
+            const confirmations = master?.confirmations || 0;
+            
+            // 🔧 Enhanced signals
+            const instFootprint = enhanced.institutionalFootprint?.rawValue || 0;
+            const momQuality = enhanced.momentumQuality?.rawValue || 0;
+            const cvd = enhanced.cvd?.rawValue || 0;
+            
+            const hasFlow = Math.abs(netFlow) > th.minNetFlow * 0.5;
+            const hasScore = score >= th.minScore || score <= (100 - th.minScore);
+            const hasConfirmations = confirmations >= 2;
+            const hasMTF = mtf.aligned || mtf.confluence >= 0.6;
+            const hasInstitutional = instFootprint > 0.5;
+            const hasMomentum = momQuality > 0.4;
+            
+            const factors = [];
+            if (hasScore) factors.push(`Score:${score.toFixed(0)}`);
+            if (hasFlow) factors.push(`Flow:${(netFlow/1000).toFixed(1)}K`);
+            if (hasConfirmations) factors.push(`Confirms:${confirmations}`);
+            if (hasMTF) factors.push('MTF');
+            if (hasInstitutional) factors.push(`Inst:${(instFootprint*100).toFixed(0)}%`);
+            if (hasMomentum) factors.push(`MQ:${(momQuality*100).toFixed(0)}%`);
+            
+            // Need at least 3 factors for composite
+            if (factors.length >= 3 && validation.valid) {
+                return { 
+                    bias: master.action, 
+                    factors, 
+                    confidence: Math.min(98, score + (factors.length * 3) + (instFootprint * 10)),
+                    timeframe: usedTimeframe,
+                    quality: signalQuality
+                };
             }
             return null;
+        }
+        
+        case 'SCALP': {
+            const vpin = micro.vpin?.rawValue || micro.vpinBvc?.rawValue || 0;
+            const efficiency = syn.efficiency?.character_15MENIT || syn.efficiency?.character_5MENIT || '';
+            const cvd = enhanced.cvd?.rawValue || 0;
+            const pressureAccel = enhanced.pressureAcceleration?.rawValue || 0;
+            const bookRes = enhanced.bookResilience?.rawValue || 0;
+            
+            const hasVpin = vpin > th.vpinThreshold;
+            const hasEfficiency = efficiency.includes('EFFORTLESS') || efficiency.includes('STRONG');
+            const hasCVD = Math.abs(cvd) > 0.3;
+            const hasBookSupport = bookRes > 0.4;
+            
+            if (hasVpin && (hasEfficiency || hasCVD) && hasBookSupport && master?.action) {
+                const bias = cvd > 0 ? 'LONG' : cvd < 0 ? 'SHORT' : master.action;
+                return { 
+                    bias, 
+                    factors: [`VPIN:${(vpin*100).toFixed(0)}%`, `CVD:${(cvd*100).toFixed(0)}%`, `Book:${(bookRes*100).toFixed(0)}%`], 
+                    confidence: Math.min(95, 70 + (vpin * 20) + (pressureAccel * 10)),
+                    timeframe: usedTimeframe,
+                    quality: signalQuality
+                };
+            }
+            return null;
+        }
+        
+        case 'WHALE': {
+            const aggr = syn.momentum?.aggression_level_15MENIT || syn.momentum?.aggression_level_5MENIT || 'RETAIL';
+            const vel = Math.abs(syn.momentum?.velocity_15MENIT || syn.momentum?.velocity_5MENIT || 0);
+            const instFootprint = enhanced.institutionalFootprint?.rawValue || 0;
+            const amihud = enhanced.amihudIlliquidity?.rawValue || 1;
+            
+            const isInstitutional = aggr === 'INSTITUTIONAL' || aggr === 'WHALE' || instFootprint > 0.6;
+            const hasVelocity = vel > th.velocityMin;
+            const hasLiquidity = amihud < 0.5; // Low illiquidity = can execute large orders
+            
+            if (isInstitutional && hasVelocity && hasLiquidity && master?.action) {
+                return { 
+                    bias: master.action, 
+                    factors: [`Inst:${(instFootprint*100).toFixed(0)}%`, `Vel:${(vel/1000).toFixed(1)}K`, 'LowIlliq'], 
+                    confidence: 85 + (instFootprint * 10),
+                    timeframe: usedTimeframe,
+                    quality: signalQuality
+                };
+            }
+            return null;
+        }
+        
+        case 'EFFICIENCY': {
+            const eff = syn.efficiency?.efficiency_15MENIT || 0;
+            const velocity = syn.momentum?.velocity_15MENIT || 0;
+            const momQuality = enhanced.momentumQuality?.rawValue || 0;
+            const pressureAccel = enhanced.pressureAcceleration?.rawValue || 0;
+            
+            const hasEfficiency = eff > 1.0;
+            const hasVelocity = velocity > th.velocityMin;
+            const hasQuality = momQuality > 0.5;
+            const hasAccel = pressureAccel > 0.3;
+            
+            if (hasEfficiency && hasVelocity && hasQuality && hasAccel && master?.action) {
+                return {
+                    bias: master.action,
+                    factors: [`Eff:${eff.toFixed(1)}`, `MQ:${(momQuality*100).toFixed(0)}%`, `Accel:${(pressureAccel*100).toFixed(0)}%`],
+                    confidence: 80 + (momQuality * 15),
+                    timeframe: usedTimeframe,
+                    quality: signalQuality
+                };
+            }
+            return null;
+        }
+        
+        case 'MTF_PRO': {
+            const p = profiles[profile]?.timeframes || {};
+            const actions = ['1MENIT', '5MENIT', '15MENIT', '1JAM'].map(tf => p[tf]?.masterSignal?.action || 'WAIT');
+            const allLong = actions.every(a => a === 'BUY' || a === 'LONG');
+            const allShort = actions.every(a => a === 'SELL' || a === 'SHORT');
+            
+            if (!allLong && !allShort) return null;
+            
+            // Check momentum quality across TFs
+            const momQualities = ['5MENIT', '15MENIT', '1JAM'].map(tf => 
+                p[tf]?.signals?.enhanced?.momentumQuality?.rawValue || 0
+            );
+            const avgMomQuality = momQualities.reduce((a, b) => a + b, 0) / momQualities.length;
+            
+            if (avgMomQuality < 0.4) return null;
+            
+            return { 
+                bias: allLong ? 'LONG' : 'SHORT', 
+                factors: ['MTF Aligned', `AvgMQ:${(avgMomQuality*100).toFixed(0)}%`], 
+                confidence: 90 + (avgMomQuality * 8),
+                timeframe: '15MENIT',
+                quality: signalQuality
+            };
+        }
+        
+        case 'PATIENCE': {
+            const netFlow = syn.flow?.net_flow_15MENIT || 0;
+            const instFootprint = enhanced.institutionalFootprint?.rawValue || 0;
+            const momQuality = enhanced.momentumQuality?.rawValue || 0;
+            const bookRes = enhanced.bookResilience?.rawValue || 0;
+            const score = master?.normalizedScore || 50;
+            
+            const isPerfect = (score > th.minScore + 20 || score < (100 - th.minScore - 20)) && 
+                             Math.abs(netFlow) > th.minNetFlow * 2 &&
+                             instFootprint > 0.7 &&
+                             momQuality > 0.6 &&
+                             bookRes > 0.6;
+            
+            if (isPerfect && master?.action) {
+                return { 
+                    bias: master.action, 
+                    factors: ['Perfect Storm', `Inst:${(instFootprint*100).toFixed(0)}%`, `MQ:${(momQuality*100).toFixed(0)}%`], 
+                    confidence: 98,
+                    timeframe: usedTimeframe,
+                    quality: signalQuality
+                };
+            }
+            return null;
+        }
+        
+        case 'FLASH': {
+            const vol1m = raw?.VOL?.vol_total_1MENIT || 0;
+            const vol5m = raw?.VOL?.vol_total_5MENIT || 1;
+            const avgVolPerMin = vol5m / 5;
+            const surge = avgVolPerMin > 0 ? vol1m / avgVolPerMin : 0;
+            const priceChange = Math.abs(raw?.PRICE?.percent_change_1MENIT || 0);
+            const cvd = enhanced.cvd?.rawValue || 0;
+            const pressureAccel = enhanced.pressureAcceleration?.rawValue || 0;
+            
+            if (surge > 1.8 && priceChange > 0.3 && Math.abs(cvd) > 0.2) {
+                const bias = cvd > 0 ? 'LONG' : 'SHORT';
+                return { 
+                    bias, 
+                    factors: [`Surge:${surge.toFixed(1)}x`, `Move:${priceChange.toFixed(2)}%`, `CVD:${(cvd*100).toFixed(0)}%`], 
+                    confidence: Math.min(90, 65 + (surge * 5) + (pressureAccel * 10)),
+                    timeframe: '1MENIT',
+                    quality: signalQuality
+                };
+            }
+            return null;
+        }
+        
+        case 'BLITZ': {
+            const netFlow = syn.flow?.net_flow_15MENIT || syn.flow?.net_flow_5MENIT || 0;
+            const char = syn.efficiency?.character_15MENIT || '';
+            const aggr = syn.momentum?.aggression_level_15MENIT || 'RETAIL';
+            const cvd = enhanced.cvd?.rawValue || 0;
+            const cvdDivergence = enhanced.cvd?.divergence || false;
+            
+            const isBlitz = Math.abs(netFlow) > th.minNetFlow && 
+                           char.includes('EFFORTLESS') && 
+                           (aggr === 'INSTITUTIONAL' || aggr === 'WHALE') &&
+                           Math.sign(cvd) === Math.sign(netFlow) &&
+                           !cvdDivergence;
+            
+            if (isBlitz && master?.action) {
+                return {
+                    bias: master.action,
+                    factors: ['Blitz', `Flow:${(netFlow/1000).toFixed(1)}K`, 'CVD Confirmed'],
+                    confidence: 95,
+                    timeframe: usedTimeframe,
+                    quality: signalQuality
+                };
+            }
+            return null;
+        }
+        
+        case 'FLOW': {
+            const netFlow = syn.flow?.net_flow_15MENIT || syn.flow?.net_flow_1JAM || 0;
+            const flowChar = syn.flow?.character_15MENIT || '';
+            const cvd = enhanced.cvd?.rawValue || 0;
+            
+            // Flow + CVD must agree
+            if (Math.abs(netFlow) > th.minNetFlow * 0.8 && flowChar && Math.sign(cvd) === Math.sign(netFlow)) {
+                const bias = netFlow > 0 ? 'LONG' : 'SHORT';
+                return {
+                    bias,
+                    factors: [`Flow:${(netFlow/1000).toFixed(1)}K`, flowChar, 'CVD Confirmed'],
+                    confidence: 80,
+                    timeframe: '15MENIT',
+                    quality: signalQuality
+                };
+            }
+            return null;
+        }
+        
+        case 'BREAKOUT': {
+            const volRatio = raw?.OI?.volumeRatio || 1;
+            const priceChange = raw?.PRICE?.percent_change_15MENIT || 0;
+            const bookRes = enhanced.bookResilience?.rawValue || 0;
+            const vpin = micro.vpin?.rawValue || 0;
+            
+            // Confirmed breakout: Volume + Price + VPIN + Book support
+            if (volRatio > 1.5 && Math.abs(priceChange) > 1.0 && vpin > th.vpinThreshold && bookRes > 0.4) {
+                const bias = priceChange > 0 ? 'LONG' : 'SHORT';
+                return {
+                    bias,
+                    factors: [`VolRatio:${volRatio.toFixed(1)}x`, `Break:${priceChange.toFixed(1)}%`, `Book:${(bookRes*100).toFixed(0)}%`],
+                    confidence: 85 + (bookRes * 10),
+                    timeframe: '15MENIT',
+                    quality: signalQuality
+                };
+            }
+            return null;
+        }
+        
+        case 'TAPE': {
+            const aggr1m = syn.momentum?.aggression_level_1MENIT || 'RETAIL';
+            const aggr5m = syn.momentum?.aggression_level_5MENIT || 'RETAIL';
+            const ofi = micro.ofi?.normalizedScore || 50;
+            const cvd = enhanced.cvd?.rawValue || 0;
+            
+            const isInstitutional = aggr1m === 'INSTITUTIONAL' || aggr5m === 'INSTITUTIONAL';
+            const hasOFI = ofi > 65 || ofi < 35;
+            
+            if (isInstitutional && hasOFI) {
+                const bias = cvd > 0 ? 'LONG' : cvd < 0 ? 'SHORT' : (ofi > 50 ? 'LONG' : 'SHORT');
+                return { 
+                    bias, 
+                    factors: ['Tape:INSTO', `OFI:${ofi.toFixed(0)}`, `CVD:${(cvd*100).toFixed(0)}%`], 
+                    confidence: 85,
+                    timeframe: '5MENIT',
+                    quality: signalQuality
+                };
+            }
+            return null;
+        }
+        
+        case 'GAMMA': {
+            const oiChange = Math.abs(raw?.OI?.oiChange1h || raw?.OI?.oiChange15m || 0);
+            const oiDir = raw?.OI?.marketDirection || '';
+            const priceDir = (raw?.PRICE?.percent_change_1JAM || 0) > 0 ? 'BULLISH' : 'BEARISH';
+            
+            if (oiChange > th.oiZThreshold * 1.5) {
+                const oiUp = (raw?.OI?.oiChange1h || 0) > 0;
+                const priceDown = (raw?.PRICE?.percent_change_1JAM || 0) < 0;
+                const isDivergence = oiUp !== (priceDir === 'BULLISH');
+                
+                return { 
+                    bias: isDivergence ? (priceDown ? 'LONG' : 'SHORT') : (oiDir === 'BULLISH' ? 'LONG' : 'SHORT'), 
+                    factors: [`OI:${oiChange.toFixed(1)}%`, isDivergence ? 'DIVERGENCE' : oiDir], 
+                    confidence: 75 + (oiChange * 2),
+                    timeframe: '1JAM',
+                    quality: signalQuality
+                };
+            }
+            return null;
+        }
+        
+        case 'ANOMALY': {
+            const lsrZ = raw?.LSR?.timeframes_15min?.z || raw?.LSR?.z || 0;
+            const fundingZ = raw?.FUNDING?.zScore || 0;
+            
+            if (Math.abs(lsrZ) > th.lsrZThreshold || Math.abs(fundingZ) > 2.0) {
+                const bias = (lsrZ > 0 || fundingZ > 0) ? 'SHORT' : 'LONG';
+                return { 
+                    bias, 
+                    factors: [`LSR-Z:${lsrZ.toFixed(1)}`, `FADE`], 
+                    confidence: 80 + Math.min(10, Math.abs(lsrZ) * 3),
+                    timeframe: '15MENIT',
+                    quality: signalQuality
+                };
+            }
+            return null;
+        }
+        
+        case 'CLUSTER': {
+            const vol = raw?.VOL?.vol_total_1JAM || 0;
+            const pxChange = Math.abs(raw?.PRICE?.percent_change_1JAM || 0);
+            
+            if (vol > 500000 && pxChange < 0.8) {
+                const buyVol = raw?.VOL?.vol_buy_1JAM || 0;
+                const sellVol = raw?.VOL?.vol_sell_1JAM || 0;
+                const bias = buyVol > sellVol ? 'LONG' : 'SHORT';
+                
+                return { 
+                    bias, 
+                    factors: [`Vol:$${(vol/1e6).toFixed(2)}M`, `Range:${pxChange.toFixed(2)}%`], 
+                    confidence: 70,
+                    timeframe: '1JAM',
+                    quality: signalQuality
+                };
+            }
+            return null;
+        }
+        
+        case 'SWEEP': {
+            const liqData = raw?.LIQ || {};
+            const liqRate = liqData.liqRate || 0;
+            const dominantSide = liqData.dominantSide || 'NONE';
+            
+            if (liqRate > 2.0 && dominantSide !== 'NONE') {
+                const bias = dominantSide === 'LONG' ? 'LONG' : 'SHORT';
+                return {
+                    bias,
+                    factors: [`LiqRate:${liqRate.toFixed(1)}`, `Sweep:${dominantSide}`],
+                    confidence: 82,
+                    timeframe: '15MENIT',
+                    quality: signalQuality
+                };
+            }
+            return null;
+        }
+        
+        default: {
+            if (validation.valid && master) {
+                const score = master.normalizedScore || 50;
+                if (score >= th.minScore || score <= (100 - th.minScore)) {
+                    return { 
+                        bias: master.action, 
+                        factors: ['Master Signal'], 
+                        confidence: master.confidence || score,
+                        timeframe: usedTimeframe,
+                        quality: signalQuality
+                    };
+                }
+            }
+            return null;
+        }
     }
 }
 
+// 🔧 NEW: Calculate signal quality score
+function calculateSignalQuality(master, enhanced, synthesis) {
+    if (!master) return 0;
+    
+    let quality = 0;
+    
+    // Factor 1: Confidence (40%)
+    quality += (master.confidence || 50) / 100 * 0.4;
+    
+    // Factor 2: Confirmations (20%)
+    const confirmations = master.confirmations || 0;
+    quality += Math.min(confirmations / 4, 1) * 0.2;
+    
+    // Factor 3: Enhanced signal alignment (25%)
+    const instFootprint = enhanced?.institutionalFootprint?.rawValue || 0;
+    const momQuality = enhanced?.momentumQuality?.rawValue || 0;
+    quality += ((instFootprint + momQuality) / 2) * 0.25;
+    
+    // Factor 4: Efficiency (15%)
+    const efficiency = synthesis?.efficiency?.efficiency_15MENIT || 0;
+    quality += Math.min(efficiency / 3, 1) * 0.15;
+    
+    return Math.min(1, Math.max(0, quality));
+}
+
 async function executeWebhook(rule, coin, signal, data) {
+    // === REAL TRADE: Get execution price with slippage ===
+    const rawPrice = getExecutionPrice(data);
+    const slippage = calculateSlippage(rawPrice, signal.bias, data);
+    const executionPrice = rawPrice + slippage;
+    
+    if (executionPrice <= 0) {
+        log('ERROR', `No valid price for ${coin}. Skipping execution.`, 'red');
+        return;
+    }
+    
+    // Get profile for leverage caps
+    const profile = rule.profile || 'MODERATE';
+    const profileConfig = PROFILE_THRESHOLDS[profile] || PROFILE_THRESHOLDS.MODERATE;
+    const cappedLeverage = Math.min(rule.simLeverage || 10, profileConfig.maxLeverage);
+    
     const payload = {
         event: "signal_trigger",
         timestamp: new Date().toISOString(),
         ruleName: rule.name,
         strategy: rule.strategy,
+        profile: profile,
         coin: coin,
         bias: signal.bias,
         confidence: signal.confidence,
+        quality: signal.quality || 0,
         factors: signal.factors,
+        timeframe: signal.timeframe || '15MENIT',
+        execution: {
+            rawPrice: rawPrice,
+            slippage: slippage,
+            executionPrice: executionPrice,
+            slippagePct: rawPrice > 0 ? ((slippage / rawPrice) * 100).toFixed(4) : 0
+        },
+        riskParams: {
+            amount: rule.simAmount,
+            leverage: cappedLeverage,
+            tp: rule.simTp,
+            sl: rule.simSl,
+            trailingStop: rule.trailingStop || false,
+            maxDailyTrades: rule.maxDailyTrades,
+            dailyLossLimit: rule.dailyLossLimit
+        },
         metadata: {
             source: "OKX_SIGNAL_TERMINAL_V2_BROWSER",
-            engine: "MissionControl Automation"
+            engine: "MissionControl Automation v3.0 Profile-Aware",
+            regime: data?.signals?.marketRegime?.currentRegime || 'UNKNOWN'
         }
     };
 
-    log('EXECUTE', `Sending ${signal.bias} for ${coin} via ${rule.name}`, 'green');
+    log('EXECUTE', `[${profile}] ${signal.bias} ${coin} @ $${executionPrice.toFixed(4)} (slip: ${slippage >= 0 ? '+' : ''}${slippage.toFixed(4)})`, 'green');
 
     try {
         const response = await fetch(rule.url, {
@@ -505,29 +1149,59 @@ async function executeWebhook(rule, coin, signal, data) {
             body: JSON.stringify(payload)
         });
 
-        // Bridge to Simulation
+        // Bridge to Simulation with REAL execution price
         if (rule.autoSimulate) {
-            ViewSimulation.openPosition(signal.bias, {
-                coin: coin,
-                amount: rule.simAmount || 1000,
-                leverage: rule.simLeverage || 10,
-                tp: rule.simTp || 0,
-                sl: rule.simSl || 0,
-                source: 'AUTOMATION',
-                ruleName: rule.name,
-                entryPrice: data?.raw?.PRICE?.last || data?.PRICE?.price,
-                silent: true
-            });
-            log('BRIDGE', `Auto-position opened in Simulation ($${rule.simAmount})`, 'gold');
+            // Simulate execution delay (50-200ms like real exchange)
+            const execDelay = 50 + Math.random() * 150;
+            
+            setTimeout(() => {
+                ViewSimulation.openPosition(signal.bias, {
+                    coin: coin,
+                    amount: rule.simAmount || 1000,
+                    leverage: cappedLeverage,
+                    tp: rule.simTp || 0,
+                    sl: rule.simSl || 0,
+                    trailingStop: rule.trailingStop || false,
+                    source: 'AUTOMATION',
+                    ruleName: rule.name,
+                    profile: profile,
+                    entryPrice: executionPrice,
+                    signalPrice: rawPrice,
+                    slippage: slippage,
+                    strategy: rule.strategy,
+                    timeframe: signal.timeframe,
+                    factors: signal.factors,
+                    quality: signal.quality,
+                    silent: true
+                });
+                log('BRIDGE', `Position filled @ $${executionPrice.toFixed(4)} (${execDelay.toFixed(0)}ms latency)`, 'gold');
+            }, execDelay);
         }
 
         if (response.ok) {
-            log('SUCCESS', `Webhook delivered to ${rule.url.substring(0, 20)}...`, 'blue');
+            log('SUCCESS', `Webhook OK → ${rule.url.substring(0, 25)}...`, 'blue');
         } else {
             log('ERROR', `Webhook failed (${response.status}): ${response.statusText}`, 'red');
         }
     } catch (err) {
-        log('ERROR', `Network error: ${err.message}`, 'red');
+        // Still execute simulation even if webhook fails
+        if (rule.autoSimulate) {
+            ViewSimulation.openPosition(signal.bias, {
+                coin: coin,
+                amount: rule.simAmount || 1000,
+                leverage: cappedLeverage,
+                tp: rule.simTp || 0,
+                sl: rule.simSl || 0,
+                trailingStop: rule.trailingStop || false,
+                source: 'AUTOMATION',
+                ruleName: rule.name,
+                profile: profile,
+                entryPrice: executionPrice,
+                silent: true
+            });
+            log('BRIDGE', `Webhook failed but sim position opened @ $${executionPrice.toFixed(4)}`, 'gold');
+        }
+        log('ERROR', `Network: ${err.message}`, 'red');
     }
 }
 

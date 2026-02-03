@@ -2,7 +2,32 @@ import * as Utils from '../utils.js';
 
 let currentCategory = 'SCALP';
 let currentSearch = '';
+let currentProfile = 'AGGRESSIVE'; // NEW: Profile selector
 let lastMarketState = null;
+
+// 🔧 TUNED: Profile-based thresholds
+const PROFILE_THRESHOLDS = {
+    CONSERVATIVE: {
+        minScore: 72, minConfidence: 75, minNetFlow: 50000,
+        vpinThreshold: 0.7, oiZThreshold: 2.0, lsrZThreshold: 2.5,
+        efficiencyMin: 2.0, velocityMin: 15000
+    },
+    MODERATE: {
+        minScore: 58, minConfidence: 62, minNetFlow: 25000,
+        vpinThreshold: 0.55, oiZThreshold: 1.5, lsrZThreshold: 2.0,
+        efficiencyMin: 1.2, velocityMin: 8000
+    },
+    AGGRESSIVE: {
+        minScore: 52, minConfidence: 55, minNetFlow: 15000,
+        vpinThreshold: 0.45, oiZThreshold: 1.2, lsrZThreshold: 1.5,
+        efficiencyMin: 0.8, velocityMin: 3000
+    }
+};
+
+// Helper: Get current profile thresholds
+function getThresholds() {
+    return PROFILE_THRESHOLDS[currentProfile] || PROFILE_THRESHOLDS.AGGRESSIVE;
+}
 
 export function render(container) {
     container.innerHTML = `
@@ -13,6 +38,12 @@ export function render(container) {
                 <div class="flex justify-between items-center">
                     <span class="text-bb-gold font-bold uppercase tracking-tighter">TRADE COMMAND CENTER</span>
                     <div class="flex items-center gap-2">
+                        <!-- 🔧 NEW: Profile Selector -->
+                        <div class="flex gap-1">
+                            <button id="prof-conservative" class="px-1.5 py-0.5 text-[7px] font-black rounded ${currentProfile === 'CONSERVATIVE' ? 'bg-bb-blue text-white' : 'bg-white/5 text-bb-muted hover:text-white'}">🏛️ CONS</button>
+                            <button id="prof-moderate" class="px-1.5 py-0.5 text-[7px] font-black rounded ${currentProfile === 'MODERATE' ? 'bg-bb-gold text-black' : 'bg-white/5 text-bb-muted hover:text-white'}">⚖️ MOD</button>
+                            <button id="prof-aggressive" class="px-1.5 py-0.5 text-[7px] font-black rounded ${currentProfile === 'AGGRESSIVE' ? 'bg-bb-red text-white' : 'bg-white/5 text-bb-muted hover:text-white'}">🎯 AGG</button>
+                        </div>
                         <div class="relative">
                             <span class="absolute inset-y-0 left-0 pl-2 flex items-center text-bb-muted pointer-events-none">
                                 <svg class="h-2 w-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
@@ -131,6 +162,18 @@ export function render(container) {
         }
     });
 
+    // 🔧 NEW: Profile button handlers
+    ['conservative', 'moderate', 'aggressive'].forEach(p => {
+        const btn = container.querySelector(`#prof-${p}`);
+        if (btn) {
+            btn.onclick = () => {
+                currentProfile = p.toUpperCase();
+                render(container);
+                if (lastMarketState) update(lastMarketState);
+            };
+        }
+    });
+
     const searchInput = container.querySelector('#strat-search');
     if (searchInput) {
         searchInput.oninput = (e) => {
@@ -146,7 +189,8 @@ const STRATEGIES = {
         title: 'Momentum Ignition (Flash Pump Detector)',
         desc: 'Mendeteksi dan menangkap koin SEBELUM pompa signifikan terjadi (Pre-Ignition). Masuk di 30 detik pertama pergerakan impulsif.',
         filter: (id, d) => {
-            const m = d.signals?.profiles?.AGGRESSIVE?.timeframes?.['1MENIT']?.masterSignal || {};
+            const th = getThresholds();
+            const m = d.signals?.profiles?.[currentProfile]?.timeframes?.['1MENIT']?.masterSignal || {};
             const vol = d.raw?.VOL?.vol_total_1MENIT || 1;
             const avgVol = d.raw?.VOL?.vol_total_5MENIT || 5;
             const surge = vol / (avgVol / 5);
@@ -154,14 +198,19 @@ const STRATEGIES = {
             const syn = d.synthesis || {};
             const netFlow = syn.flow?.net_flow_1MENIT || 0;
             const efficiency = syn.efficiency?.efficiency_1MENIT || 0;
+            
+            // 🔧 NEW: Use enhanced signals
+            const enhanced = d.signals?.profiles?.[currentProfile]?.timeframes?.['1MENIT']?.signals?.enhanced || {};
+            const cvd = enhanced.cvd?.rawValue || 0;
+            const pressureAccel = enhanced.pressureAcceleration?.rawValue || 0;
 
-            const isEarly = surge > 1.5 && (m.normalizedScore || 0) > 70 && netFlow > 5000;
-            const isCritical = surge > 2.5 && (m.normalizedScore || 0) > 85 && netFlow > 20000 && efficiency > 30;
+            const isEarly = surge > 1.5 && (m.normalizedScore || 0) > th.minScore && netFlow > th.minNetFlow * 0.3;
+            const isCritical = surge > 2.5 && (m.normalizedScore || 0) > 85 && netFlow > th.minNetFlow && efficiency > 30 && pressureAccel > 0.5;
 
             if (isCritical) {
-                return { bias: 'CRITICAL', factors: ['Explosive Volume', 'Flow Injection', 'High Efficiency Break'], confidence: 95 };
+                return { bias: cvd > 0 ? 'LONG' : 'SHORT', factors: ['Explosive Volume', 'Flow Injection', 'Pressure Acceleration', 'High Efficiency Break'], confidence: 95 };
             } else if (isEarly) {
-                return { bias: 'WARNING', factors: ['Volume Surge', 'Pre-Pump Activity', 'Inflow Detected'], confidence: 75 };
+                return { bias: m.action || 'LONG', factors: ['Volume Surge', 'Pre-Pump Activity', 'Inflow Detected'], confidence: 75 };
             }
             return null;
         }
@@ -216,15 +265,18 @@ const STRATEGIES = {
         title: 'Tape Reading (Microstructure)',
         desc: 'Membaca agresivitas "Tape" (Trade Feed). Mendeteksi urutan order beli/jual agresif yang tidak terlihat di chart.',
         filter: (id, d) => {
-            const m = d.signals?.profiles?.AGGRESSIVE?.timeframes?.['1MENIT']?.signals?.microstructure || {};
+            const th = getThresholds();
+            const m = d.signals?.profiles?.[currentProfile]?.timeframes?.['1MENIT']?.signals?.microstructure || {};
             const aggr = d.synthesis?.momentum?.aggression_level_1MENIT || 'RETAIL';
             const vpin = m.vpin?.rawValue || 0;
+            const enhanced = d.signals?.profiles?.[currentProfile]?.timeframes?.['1MENIT']?.signals?.enhanced || {};
+            const cvd = enhanced.cvd?.rawValue || 0;
 
-            const isTape = aggr === 'INSTITUTIONAL' && vpin > 0.7;
+            const isTape = aggr === 'INSTITUTIONAL' && vpin > th.vpinThreshold + 0.1;
             if (isTape) {
                 return {
-                    bias: 'SCALP',
-                    factors: ['Tape Aggression', 'High VPIN', 'Order Flow'],
+                    bias: cvd > 0 ? 'LONG' : 'SHORT',
+                    factors: ['Tape Aggression', 'High VPIN', 'CVD Direction', 'Order Flow'],
                     confidence: 85
                 };
             }
@@ -256,52 +308,115 @@ const STRATEGIES = {
     'COMPOSITE': {
         icon: '👑', lev: '5-15x', hold: '15m-1h', tpMult: 2.5, slMult: 1.2,
         title: 'Composite Alpha Aggregator (The God Signal)',
-        desc: 'Framework paling advanced: Menggabungkan bobot adaptif, Net Flow massif, dan Konfluensi MTF. Hanya trigger saat semua parameter institusi selaras 100%.',
+        desc: 'Framework paling advanced: Menggabungkan bobot adaptif, Net Flow massif, Institutional Footprint, dan Konfluensi MTF. Hanya trigger saat semua parameter institusi selaras 100%.',
         filter: (id, d) => {
-            const master = d.signals?.profiles?.AGGRESSIVE?.timeframes?.['15MENIT']?.masterSignal || {};
+            const th = getThresholds();
+            const master = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.masterSignal || {};
             const syn = d.synthesis || {};
-            const mtf = d.signals?.mtfConfluence?.AGGRESSIVE || {};
+            const mtf = d.signals?.mtfConfluence?.[currentProfile] || {};
             const netFlow = syn.flow?.net_flow_15MENIT || 0;
             const score = master.normalizedScore || 0;
-            const isGod = score > 85 && Math.abs(netFlow) > 50000 && mtf.aligned;
-            return isGod ? { bias: master.action, factors: ['Adaptive Weight Confluence', 'Whale Capital Influx', 'Full MTF Alignment'], confidence: score } : null;
+            
+            // 🔧 NEW: Use enhanced signals for institutional detection
+            const enhanced = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.signals?.enhanced || {};
+            const instFootprint = enhanced.institutionalFootprint?.rawValue || 0;
+            const momQuality = enhanced.momentumQuality?.rawValue || 0;
+            const bookRes = enhanced.bookResilience?.rawValue || 0;
+            
+            // God Signal: High score + Massive flow + MTF aligned + Institutional presence
+            const isGod = score > th.minScore + 15 && 
+                          Math.abs(netFlow) > th.minNetFlow * 2 && 
+                          mtf.aligned && 
+                          instFootprint > 0.6 &&
+                          momQuality > 0.5;
+            
+            if (isGod) {
+                return { 
+                    bias: master.action, 
+                    factors: ['Institutional Footprint', 'Whale Capital Influx', 'Full MTF Alignment', 'High Momentum Quality', 'Book Resilience'], 
+                    confidence: Math.min(98, score + 10),
+                    institutional: true
+                };
+            }
+            return null;
         }
     },
     'BLITZ': {
         icon: '⚡', lev: '10-25x', hold: '2m-10m', tpMult: 1.0, slMult: 0.5,
         title: 'Institutional Blitz (Synthesis God Mode)',
-        desc: 'Mencari konfluensi sempurna: Net Flow > $40k, EFFORTLESS MOVE, dan Institutional Aggression. Setup paling murni untuk sniper berkecepatan tinggi.',
+        desc: 'Mencari konfluensi sempurna: Net Flow besar, EFFORTLESS MOVE, CVD konfirmasi, dan Institutional Aggression. Setup paling murni untuk sniper berkecepatan tinggi.',
         filter: (id, d) => {
+            const th = getThresholds();
             const syn = d.synthesis || {};
             const netFlow = syn.flow?.net_flow_15MENIT || 0;
             const char = syn.efficiency?.character_15MENIT || 'NORMAL';
             const aggr = syn.momentum?.aggression_level_15MENIT || 'RETAIL';
-            const master = d.signals?.profiles?.AGGRESSIVE?.timeframes?.['15MENIT']?.masterSignal || {};
-            const isBlitz = Math.abs(netFlow) > 40000 && char === 'EFFORTLESS_MOVE' && aggr === 'INSTITUTIONAL';
-            return isBlitz ? { bias: master.action, factors: ['Whale Blitz Influx', 'Zero Friction Path', 'Institutional Aggression'], confidence: 95 } : null;
+            const master = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.masterSignal || {};
+            
+            // 🔧 NEW: CVD confirmation
+            const enhanced = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.signals?.enhanced || {};
+            const cvd = enhanced.cvd?.rawValue || 0;
+            const cvdDivergence = enhanced.cvd?.divergence || false;
+            
+            const isBlitz = Math.abs(netFlow) > th.minNetFlow * 1.5 && 
+                           char === 'EFFORTLESS_MOVE' && 
+                           aggr === 'INSTITUTIONAL' &&
+                           Math.sign(cvd) === Math.sign(netFlow) && // CVD confirms direction
+                           !cvdDivergence; // No divergence warning
+            
+            return isBlitz ? { 
+                bias: master.action, 
+                factors: ['Whale Blitz Influx', 'Zero Friction Path', 'CVD Confirmed', 'Institutional Aggression'], 
+                confidence: 95 
+            } : null;
         }
     },
     'MTF_PRO': {
         icon: '📡', lev: '3-10x', hold: '1h-4h', tpMult: 2.0, slMult: 1.0,
         title: 'MTF Confluence Pro (Alignment King)',
-        desc: 'Hanya trigger saat 1M, 5M, 15M, dan 1H memberikan sinyal di arah yang sama persis. Menjamin modalitas tren yang sangat kuat.',
+        desc: 'Hanya trigger saat 1M, 5M, 15M, dan 1H memberikan sinyal di arah yang sama persis dengan Momentum Quality tinggi. Menjamin modalitas tren yang sangat kuat.',
         filter: (id, d) => {
-            const p = d.signals?.profiles?.AGGRESSIVE?.timeframes || {};
+            const th = getThresholds();
+            const p = d.signals?.profiles?.[currentProfile]?.timeframes || {};
             const actions = ['1MENIT', '5MENIT', '15MENIT', '1JAM'].map(tf => p[tf]?.masterSignal?.action || 'WAIT');
-            const allBuy = actions.every(a => a === 'BUY');
-            const allSell = actions.every(a => a === 'SELL');
-            return (allBuy || allSell) ? { bias: allBuy ? 'LONG' : 'SHORT', factors: ['Total TF Alignment', 'Congruent Momentum', 'Trend Modality'], confidence: 90 } : null;
+            // Support both legacy (BUY/SELL) and new (LONG/SHORT) formats
+            const allLong = actions.every(a => a === 'BUY' || a === 'LONG');
+            const allShort = actions.every(a => a === 'SELL' || a === 'SHORT');
+            
+            if (!allLong && !allShort) return null;
+            
+            // 🔧 NEW: Check momentum quality across timeframes
+            const momQualities = ['5MENIT', '15MENIT', '1JAM'].map(tf => 
+                p[tf]?.signals?.enhanced?.momentumQuality?.rawValue || 0
+            );
+            const avgMomQuality = momQualities.reduce((a, b) => a + b, 0) / momQualities.length;
+            
+            // Only trigger if momentum is clean across TFs
+            if (avgMomQuality < 0.4) return null;
+            
+            return { 
+                bias: allLong ? 'LONG' : 'SHORT', 
+                factors: ['Total TF Alignment', 'Congruent Momentum', 'High Momentum Quality', 'Trend Modality'], 
+                confidence: 90 + (avgMomQuality * 8) // Bonus for high quality
+            };
         }
     },
     'BREAKOUT': {
         icon: '💥', lev: '10x', hold: '15m-1h', tpMult: 3.0, slMult: 1.5,
         title: 'Institutional Breakout (Confirmed)',
-        desc: 'Mendeteksi ledakan harga yang divalidasi oleh VPIN tinggi dan Arus Kas masuk ($) secara serentak. Menghindari False Breakout.',
+        desc: 'Mendeteksi ledakan harga yang divalidasi oleh VPIN tinggi, Book Resilience kuat, dan Arus Kas masuk ($) secara serentak. Menghindari False Breakout.',
         filter: (id, d) => {
-            const m = d.signals?.profiles?.AGGRESSIVE?.timeframes?.['15MENIT']?.signals?.microstructure || {};
+            const th = getThresholds();
+            const m = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.signals?.microstructure || {};
             const syn = d.synthesis || {};
-            const isBreak = (m.vpin?.rawValue || 0) > 0.6 && Math.abs(syn.flow?.net_flow_15MENIT || 0) > 30000;
-            return isBreak ? { bias: syn.flow?.net_flow_15MENIT > 0 ? 'LONG' : 'SHORT', factors: ['VPIN Confirmation', 'Net Flow Power', 'Volume-OI Spike'], confidence: 88 } : null;
+            const enhanced = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.signals?.enhanced || {};
+            const bookRes = enhanced.bookResilience?.rawValue || 0;
+            const vpin = m.vpin?.rawValue || 0;
+            const netFlow = syn.flow?.net_flow_15MENIT || 0;
+            
+            // Confirmed breakout: VPIN + Flow + Book support
+            const isBreak = vpin > th.vpinThreshold && Math.abs(netFlow) > th.minNetFlow && bookRes > 0.5;
+            return isBreak ? { bias: netFlow > 0 ? 'LONG' : 'SHORT', factors: ['VPIN Confirmation', 'Net Flow Power', 'Book Resilience', 'Volume-OI Spike'], confidence: 88 + (bookRes * 10) } : null;
         }
     },
     'ALPHA': {
@@ -309,23 +424,29 @@ const STRATEGIES = {
         title: 'Independent Alpha (BTC Decorrelated)',
         desc: 'Mencari koin "Outlier" yang bergerak independen (Idiosyncratic). Paling efektif saat BTC sedang sideways.',
         filter: (id, d) => {
+            const th = getThresholds();
             const corr = d.analytics?.correlation || { correlation: 0.8 };
-            const m = d.signals?.profiles?.AGGRESSIVE?.timeframes?.['15MENIT']?.masterSignal || {};
-            const isAlpha = corr.correlation < 0.4 && (m.normalizedScore || 0) > 60;
+            const m = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.masterSignal || {};
+            const isAlpha = corr.correlation < 0.4 && (m.normalizedScore || 0) > th.minScore;
             return isAlpha ? { bias: m.action, factors: ['Idiosyncratic Movement', 'BTC Decorrelation', 'Independent Momentum'], confidence: 75 } : null;
         }
     },
     'FLOW': {
         icon: '🌊', lev: '3-10x', hold: '1h-4h', tpMult: 3.0, slMult: 1.5,
         title: 'Net Flow Directional (Capital Bias)',
-        desc: 'Murni mengikuti arus modal. Trade sesuai Dominant Capital Bias (ACCUMULATION/DISTRIBUTION) yang divalidasi oleh Net Flow Riil ($).',
+        desc: 'Murni mengikuti arus modal dengan konfirmasi CVD. Trade sesuai Dominant Capital Bias yang divalidasi oleh Net Flow Riil ($) dan volume delta.',
         filter: (id, d) => {
+            const th = getThresholds();
             const syn = d.synthesis || {};
             const flow = syn.flow || {};
             const netFlow = flow.net_flow_15MENIT || 0;
             const bias = flow.capital_bias_15MENIT || 'NEUTRAL';
-            const isStrong = Math.abs(netFlow) > 20000 && bias !== 'NEUTRAL';
-            return isStrong ? { bias: bias === 'ACCUMULATION' ? 'LONG' : 'SHORT', factors: ['Institutional Capital Bias', 'High Velocity Inflow', 'Volume-OI Balance'], confidence: 80 } : null;
+            const enhanced = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.signals?.enhanced || {};
+            const cvd = enhanced.cvd?.rawValue || 0;
+            
+            // Flow + CVD must agree
+            const isStrong = Math.abs(netFlow) > th.minNetFlow && bias !== 'NEUTRAL' && Math.sign(cvd) === Math.sign(netFlow);
+            return isStrong ? { bias: bias === 'ACCUMULATION' ? 'LONG' : 'SHORT', factors: ['Institutional Capital Bias', 'CVD Confirmed', 'High Velocity Inflow'], confidence: 80 } : null;
         }
     },
     'SMART_MONEY': {
@@ -336,22 +457,39 @@ const STRATEGIES = {
             const vol = d.raw?.VOL?.vol_total_15MENIT || 0;
             const freq = d.raw?.FREQ?.freq_total_15MENIT || 1;
             const avgSize = vol / freq;
-            const master = d.signals?.profiles?.AGGRESSIVE?.timeframes?.['15MENIT']?.masterSignal || {};
-            const isSmart = avgSize > 5000 && master.action !== 'WAIT';
-            return isSmart ? { bias: master.action, factors: ['Large Block Orders', 'Smart Money Masking', 'Whale Footprint'], confidence: 82 } : null;
+            const master = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.masterSignal || {};
+            const enhanced = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.signals?.enhanced || {};
+            const instFootprint = enhanced.institutionalFootprint?.rawValue || 0;
+            const isSmart = avgSize > 5000 && master.action !== 'WAIT' && instFootprint > 0.4;
+            return isSmart ? { bias: master.action, factors: ['Large Block Orders', 'Institutional Footprint', 'Whale Footprint'], confidence: 82 + (instFootprint * 10) } : null;
         }
     },
     'WHALE': {
         icon: '🐋', lev: '10x', hold: '30m-1h', tpMult: 2.0, slMult: 1.0,
-        title: 'Whale Shadow Tracker (Smart Money Flow)',
-        desc: 'Membuntuti Whale-Pace. Hanya trigger saat rata-rata ukuran transaksi per koin meledak melewati batas normal historical.',
+        title: 'Whale Shadow Tracker (Institutional Footprint)',
+        desc: 'Membuntuti Whale-Pace menggunakan Institutional Footprint Score. Hanya trigger saat aktivitas institusional terdeteksi dengan Amihud Ratio rendah (high liquidity).',
         filter: (id, d) => {
+            const th = getThresholds();
             const syn = d.synthesis || {};
             const aggr = syn.momentum?.aggression_level_15MENIT || 'RETAIL';
             const vel = syn.momentum?.velocity_15MENIT || 0;
-            const master = d.signals?.profiles?.AGGRESSIVE?.timeframes?.['15MENIT']?.masterSignal || {};
-            const isWhale = aggr === 'INSTITUTIONAL' && vel > 10000;
-            return isWhale ? { bias: master.action || 'LONG', factors: ['Whale Intensity', 'Large Order Sizing', 'Aggressive Execution'], confidence: 80 } : null;
+            const master = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.masterSignal || {};
+            
+            // 🔧 NEW: Use institutional footprint and amihud
+            const enhanced = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.signals?.enhanced || {};
+            const instFootprint = enhanced.institutionalFootprint?.rawValue || 0;
+            const amihud = enhanced.amihudIlliquidity?.rawValue || 1;
+            
+            // Whale detected: Institutional aggression + High footprint + Low illiquidity (high liquidity)
+            const isWhale = (aggr === 'INSTITUTIONAL' || instFootprint > 0.7) && 
+                           vel > th.velocityMin &&
+                           amihud < 0.5; // Low illiquidity = can execute large orders
+            
+            return isWhale ? { 
+                bias: master.action || 'LONG', 
+                factors: ['Institutional Footprint', 'Whale Intensity', 'Low Illiquidity', 'Large Order Sizing'], 
+                confidence: 80 + (instFootprint * 15)
+            } : null;
         }
     },
     'DIVERGE': {
@@ -371,36 +509,59 @@ const STRATEGIES = {
         title: 'Iceberg Order Detection (Hidden Liquidity)',
         desc: 'Mendeteksi pesanan raksasa yang dipecah-pecah di order book menggunakan analisa Order Flow Imbalance (OFI) dan Lambda.',
         filter: (id, d) => {
-            const m = d.signals?.profiles?.AGGRESSIVE?.timeframes?.['15MENIT']?.signals?.microstructure || {};
+            const m = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.signals?.microstructure || {};
             const imbal = d.analytics?.orderFlow?.tradeSizeImbalance || 0;
-            const isIce = Math.abs(imbal) > 0.5 && (m.kyleLambda?.rawValue || 0) > 0.01;
-            return isIce ? { bias: imbal > 0 ? 'LONG' : 'SHORT', factors: ['Hidden Size Bias', 'Lambda Execution', 'Iceberg Presence'], confidence: 85 } : null;
+            const enhanced = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.signals?.enhanced || {};
+            const instFootprint = enhanced.institutionalFootprint?.rawValue || 0;
+            const isIce = Math.abs(imbal) > 0.5 && (m.kyleLambda?.rawValue || 0) > 0.01 && instFootprint > 0.3;
+            return isIce ? { bias: imbal > 0 ? 'LONG' : 'SHORT', factors: ['Hidden Size Bias', 'Lambda Execution', 'Institutional Presence', 'Iceberg Detected'], confidence: 85 + (instFootprint * 10) } : null;
         }
     },
     'SCALP': {
         icon: '🎯', lev: '10-20x', hold: '5-15m', tpMult: 1.5, slMult: 1.0,
-        title: 'Microstructure Sniper (VPIN/Lambda)',
-        desc: 'Mencari koin dengan Informed Trading (VPIN tinggi) dan Price Impact (Lambda) rendah. Front-run pergerakan harga sebelum volatilitas merata.',
+        title: 'Microstructure Sniper (VPIN/Lambda/CVD)',
+        desc: 'Mencari koin dengan Informed Trading (VPIN tinggi), CVD momentum, dan Price Impact (Lambda) rendah. Front-run pergerakan harga sebelum volatilitas merata.',
         filter: (id, d) => {
-            const m = d.signals?.profiles?.AGGRESSIVE?.timeframes?.['15MENIT']?.signals?.microstructure || {};
+            const th = getThresholds();
+            const m = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.signals?.microstructure || {};
             const syn = d.synthesis || {};
             const vpin = m.vpin?.rawValue || 0;
-            const isHot = vpin > 0.6 && (syn.efficiency?.character_15MENIT === 'EFFORTLESS_MOVE');
-            const master = d.signals?.profiles?.AGGRESSIVE?.timeframes?.['15MENIT']?.masterSignal || {};
-            return isHot ? { bias: master.action, factors: ['Informed Flow (VPIN)', 'Effortless Discovery', 'Low Friction Path'], confidence: (master.confidence || 70) + 15 } : null;
+            
+            // 🔧 NEW: Enhanced signals for better scalping
+            const enhanced = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.signals?.enhanced || {};
+            const cvd = enhanced.cvd?.rawValue || 0;
+            const pressureAccel = enhanced.pressureAcceleration?.rawValue || 0;
+            const bookRes = enhanced.bookResilience?.rawValue || 0;
+            
+            const isHot = vpin > th.vpinThreshold && 
+                         (syn.efficiency?.character_15MENIT === 'EFFORTLESS_MOVE') &&
+                         Math.abs(cvd) > 0.3 && // CVD showing direction
+                         bookRes > 0.4; // Good support/resistance
+            
+            const master = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.masterSignal || {};
+            const direction = cvd > 0 ? 'LONG' : 'SHORT';
+            
+            return isHot ? { 
+                bias: direction, 
+                factors: ['Informed Flow (VPIN)', 'CVD Momentum', 'Book Resilience', 'Effortless Discovery', 'Pressure Accel'], 
+                confidence: Math.min(95, (master.confidence || 70) + 15 + (pressureAccel * 10))
+            } : null;
         }
     },
     'ABSORB': {
         icon: '🧲', lev: '10x', hold: '1h-3h', tpMult: 2.0, slMult: 1.0,
         title: 'Whale Absorption Hunter (Limit Trap)',
-        desc: 'Mencari zona di mana volume meledak tapi harga tidak bergerak (Paku). Menandakan Paus sedang menyerap semua pesanan ritel.',
+        desc: 'Mencari zona di mana volume meledak tapi harga tidak bergerak (Paku) dengan Book Resilience tinggi. Menandakan Paus sedang menyerap semua pesanan ritel.',
         filter: (id, d) => {
+            const th = getThresholds();
             const syn = d.synthesis || {};
             const char = syn.efficiency?.character_15MENIT || 'NORMAL';
             const netFlow = Math.abs(syn.flow?.net_flow_15MENIT || 0);
-            const isAbs = char === 'ABSORPTION' && netFlow > 30000;
-            const master = d.signals?.profiles?.AGGRESSIVE?.timeframes?.['15MENIT']?.masterSignal || {};
-            return isAbs ? { bias: master.action || 'WAIT', factors: ['Price Pinning', 'Deep Limit Liquidity', 'Whale Absorption'], confidence: 82 } : null;
+            const enhanced = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.signals?.enhanced || {};
+            const bookRes = enhanced.bookResilience?.rawValue || 0;
+            const isAbs = char === 'ABSORPTION' && netFlow > th.minNetFlow && bookRes > 0.5;
+            const master = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.masterSignal || {};
+            return isAbs ? { bias: master.action || 'WAIT', factors: ['Price Pinning', 'Book Resilience', 'Whale Absorption'], confidence: 82 + (bookRes * 12) } : null;
         }
     },
     'SWEEP': {
@@ -428,37 +589,60 @@ const STRATEGIES = {
     'VOL': {
         icon: '🌩️', lev: '3-5x', hold: '4h-8h', tpMult: 5.0, slMult: 2.5,
         title: 'Volatility Breakout (Thunder Hunter)',
-        desc: 'Mendeteksi transisi dari konsolidasi sepi ke ledakan volatilitas tinggi yang divalidasi oleh Volume Spike.',
+        desc: 'Mendeteksi transisi dari konsolidasi sepi ke ledakan volatilitas tinggi yang divalidasi oleh Volume Spike dan Momentum Quality.',
         filter: (id, d) => {
             const c = d.raw?.CANDLES || {};
             const isExp = (c.candle_volatility_1H || 0) < 0.008 && (c.candle_volatility_15m || 0) > 0.006;
-            const master = d.signals?.profiles?.AGGRESSIVE?.timeframes?.['15MENIT']?.masterSignal || {};
-            return isExp ? { bias: master.action, factors: ['Volatility Expansion', 'Momentum Ignition', 'Low-High Transistion'], confidence: master.confidence || 70 } : null;
+            const master = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.masterSignal || {};
+            const enhanced = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.signals?.enhanced || {};
+            const momQuality = enhanced.momentumQuality?.rawValue || 0;
+            return isExp && momQuality > 0.4 ? { bias: master.action, factors: ['Volatility Expansion', 'Momentum Quality', 'Low-High Transition'], confidence: (master.confidence || 70) + (momQuality * 15) } : null;
         }
     },
     'EFFICIENCY': {
         icon: '🧬', lev: '5-10x', hold: '30m-2h', tpMult: 2.0, slMult: 0.8,
         title: 'Efficiency-Momentum (Path Hunter)',
-        desc: 'Menggabungkan sinyal efficiency dan velocity. Menghindari trade saat high friction dan masuk hanya saat harga bergerak efisien terhadap volume.',
+        desc: 'Menggabungkan efficiency, momentum quality, dan pressure acceleration. Masuk hanya saat harga bergerak efisien dengan momentum bersih.',
         filter: (id, d) => {
+            const th = getThresholds();
             const syn = d.synthesis || {};
             const eff = syn.efficiency?.efficiency_15MENIT || 0;
             const velocity = syn.momentum?.velocity_15MENIT || 0;
-            const isEfficient = eff > 1.5 && velocity > 2000;
-            const master = d.signals?.profiles?.AGGRESSIVE?.timeframes?.['15MENIT']?.masterSignal || {};
-            return isEfficient ? { bias: master.action, factors: ['High Efficiency Coefficient', 'Momentum Velocity', 'Low Friction Entry'], confidence: 80 } : null;
+            
+            // 🔧 NEW: Enhanced signals for quality detection
+            const enhanced = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.signals?.enhanced || {};
+            const momQuality = enhanced.momentumQuality?.rawValue || 0;
+            const pressureAccel = enhanced.pressureAcceleration?.rawValue || 0;
+            
+            // High efficiency + Clean momentum + Accelerating pressure
+            const isEfficient = eff > th.efficiencyMin && 
+                               velocity > th.velocityMin &&
+                               momQuality > 0.5 && // Clean move, not choppy
+                               pressureAccel > 0.3; // Accelerating
+            
+            const master = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.masterSignal || {};
+            return isEfficient ? { 
+                bias: master.action, 
+                factors: ['High Efficiency', 'Momentum Quality', 'Pressure Acceleration', 'Clean Path'], 
+                confidence: 80 + (momQuality * 15)
+            } : null;
         }
     },
     'SWING': {
         icon: '🏛️', lev: '3-5x', hold: '1-3d', tpMult: 3.5, slMult: 1.5,
         title: 'Swing Accumulation (Smart Money Follower)',
-        desc: 'Mencari aset yang sedang diakumulasi oleh institusi (High SMI) dengan efisiensi Arus Kas positif. Hold 1-3 hari mengikuti arus uang pintar.',
+        desc: 'Mencari aset yang sedang diakumulasi oleh institusi dengan Institutional Footprint tinggi. Hold 1-3 hari mengikuti arus uang pintar.',
         filter: (id, d) => {
-            const master = d.signals?.profiles?.AGGRESSIVE?.timeframes?.['15MENIT']?.masterSignal || {};
+            const th = getThresholds();
+            const master = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.masterSignal || {};
             const syn = d.synthesis || {};
             const netFlow = syn.flow?.net_flow_15MENIT || 0;
-            const isAccum = (master.normalizedScore || 0) > 70 && netFlow > 5000;
-            return isAccum ? { bias: master.action, factors: ['Institutional Accumulation', 'Positive Net Flow', 'Long-term Bias'], confidence: master.confidence || 70 } : null;
+            const enhanced = d.signals?.profiles?.[currentProfile]?.timeframes?.['1JAM']?.signals?.enhanced || {};
+            const instFootprint = enhanced.institutionalFootprint?.rawValue || 0;
+            
+            // Accumulation: Score + Flow + Institutional presence
+            const isAccum = (master.normalizedScore || 0) > th.minScore && netFlow > th.minNetFlow * 0.3 && instFootprint > 0.5;
+            return isAccum ? { bias: master.action, factors: ['Institutional Footprint', 'Accumulation Phase', 'Positive Net Flow'], confidence: Math.min(90, (master.confidence || 70) + instFootprint * 15) } : null;
         }
     },
     'BASIS': {
@@ -532,25 +716,40 @@ const STRATEGIES = {
     'PATIENCE': {
         icon: '⌛', lev: '2-5x', hold: '12h-48h', tpMult: 5.0, slMult: 2.0,
         title: 'The Patience Sniper (High Conviction)',
-        desc: 'Menunggu setup "Perfect Storm". Hanya trigger saat MTF Pro, Net Flow Whale, dan SMI Alignment mencapai level kritis secara serentak.',
+        desc: 'Menunggu setup "Perfect Storm". Hanya trigger saat semua enhanced signals alignment: MTF Pro, Net Flow, Institutional Footprint, Momentum Quality, dan Book Resilience.',
         filter: (id, d) => {
-            const master = d.signals?.profiles?.AGGRESSIVE?.timeframes?.['15MENIT']?.masterSignal || {};
+            const th = getThresholds();
+            const master = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.masterSignal || {};
             const syn = d.synthesis || {};
             const netFlow = syn.flow?.net_flow_15MENIT || 0;
-            const isPerfect = (master.normalizedScore || 0) > 90 && Math.abs(netFlow) > 60000;
-            return isPerfect ? { bias: master.action, factors: ['Critical SMI Score', 'Giga Influx Inflow', 'Patient Entry Guard'], confidence: 95 } : null;
+            const enhanced = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.signals?.enhanced || {};
+            const instFootprint = enhanced.institutionalFootprint?.rawValue || 0;
+            const momQuality = enhanced.momentumQuality?.rawValue || 0;
+            const bookRes = enhanced.bookResilience?.rawValue || 0;
+            
+            // Perfect storm: All signals aligned at high levels
+            const isPerfect = (master.normalizedScore || 0) > th.minScore + 20 && 
+                             Math.abs(netFlow) > th.minNetFlow * 3 &&
+                             instFootprint > 0.7 &&
+                             momQuality > 0.6 &&
+                             bookRes > 0.6;
+            return isPerfect ? { bias: master.action, factors: ['Perfect Storm', 'All Signals Aligned', 'Institutional Presence', 'High Conviction'], confidence: 98 } : null;
         }
     },
     'IGNITION': {
         icon: '📈', lev: '3x', hold: '3d-7d', tpMult: 10.0, slMult: 5.0,
         title: 'Genuine Momentum Ignition (Trend Starter)',
-        desc: 'Mencari awal trend sehat: OI naik tajam divalidasi oleh Net Capital Inflow raksasa. Bukan koin pump-n-dump.',
+        desc: 'Mencari awal trend sehat: OI naik tajam divalidasi oleh Net Capital Inflow, Pressure Acceleration, dan Momentum Quality.',
         filter: (id, d) => {
+            const th = getThresholds();
             const syn = d.synthesis || {};
             const netFlow = syn.flow?.net_flow_15MENIT || 0;
-            const master = d.signals?.profiles?.AGGRESSIVE?.timeframes?.['15MENIT']?.masterSignal || {};
-            const isIgnition = (master.normalizedScore || 0) > 65 && netFlow > 15000;
-            return isIgnition ? { bias: master.action, factors: ['Trend Incubation', 'Whale Money Entry', 'OI Shift Validation'], confidence: 85 } : null;
+            const master = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.masterSignal || {};
+            const enhanced = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.signals?.enhanced || {};
+            const pressureAccel = enhanced.pressureAcceleration?.rawValue || 0;
+            const momQuality = enhanced.momentumQuality?.rawValue || 0;
+            const isIgnition = (master.normalizedScore || 0) > th.minScore && netFlow > th.minNetFlow * 0.8 && pressureAccel > 0.4 && momQuality > 0.5;
+            return isIgnition ? { bias: master.action, factors: ['Trend Incubation', 'Pressure Acceleration', 'Momentum Quality', 'OI Shift'], confidence: 85 + (momQuality * 10) } : null;
         }
     },
     'FUNDING': {

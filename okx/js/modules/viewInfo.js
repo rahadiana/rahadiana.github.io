@@ -6,20 +6,94 @@ export function render(container) {
             <!-- TOP SUB-NAV -->
             <div class="flex items-stretch bg-bb-panel border-b border-bb-border h-8 shrink-0 px-3 overflow-x-auto scrollbar-none gap-4">
                 <div class="flex items-center gap-2">
-                    <span class="text-bb-gold font-black text-[10px] uppercase tracking-widest">MISSION CONTROL v5.0</span>
+                    <span class="text-bb-gold font-black text-[10px] uppercase tracking-widest">MISSION CONTROL v6.0</span>
                     <span id="telemetry-peer-id" class="px-2 py-0.5 bg-white/5 border border-white/10 text-[8px] font-mono text-bb-muted rounded lowercase">id: ---</span>
                 </div>
                 <div class="flex items-center gap-6">
+                    <a href="#section-features" class="text-[9px] font-black text-bb-muted hover:text-white transition-colors">FEATURES</a>
                     <a href="#section-telemetry" class="text-[9px] font-black text-bb-muted hover:text-white transition-colors">MESH_TELEMETRY</a>
                     <a href="#section-glossary" class="text-[9px] font-black text-bb-muted hover:text-white transition-colors">DATA_GLOSSARY</a>
-                    <a href="#section-strategies" class="text-[9px] font-black text-bb-muted hover:text-white transition-colors">STRATEGY_DATABASE</a>
-                    <a href="#section-risk" class="text-[9px] font-black text-bb-muted hover:text-white transition-colors">RISK_PROTOCOL</a>
+                    <a href="#section-strategies" class="text-[9px] font-black text-bb-muted hover:text-white transition-colors">STRATEGIES</a>
+                    <a href="#section-simulation" class="text-[9px] font-black text-bb-muted hover:text-white transition-colors">SIMULATION</a>
+                    <a href="#section-risk" class="text-[9px] font-black text-bb-muted hover:text-white transition-colors">RISK</a>
                 </div>
             </div>
 
             <!-- CONTENT AREA -->
             <div class="flex-1 overflow-y-auto p-4 space-y-12 scrollbar-thin pb-20 scroll-smooth">
                 
+                <!-- SECTION: FEATURES OVERVIEW -->
+                <section id="section-features" class="max-w-6xl mx-auto">
+                    <div class="flex items-center gap-4 mb-6">
+                        <h2 class="text-bb-gold font-black text-sm uppercase tracking-[0.2em] bg-bb-gold/10 px-3 py-1 border-l-2 border-bb-gold">00. DASHBOARD FEATURES</h2>
+                        <div class="h-px flex-1 bg-bb-border"></div>
+                    </div>
+                    
+                    <p class="text-[11px] text-bb-muted mb-6 max-w-3xl">
+                        Platform analitik trading cryptocurrency real-time dengan data dari OKX Exchange. 
+                        Menggabungkan HFT metrics, order flow analysis, dan AI-powered signals untuk keputusan trading yang presisi.
+                    </p>
+
+                    <!-- MAIN TABS -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+                        ${renderFeatureCard('📊', 'OVERVIEW', 'Dashboard utama menampilkan ringkasan semua coin aktif dengan sorting berdasarkan signal strength, volume, dan metrics kunci.', ['Real-time price updates', 'Signal strength indicators', 'Quick action buttons', 'Multi-coin monitoring'])}
+                        ${renderFeatureCard('⚡', 'SIGNALS', 'Sistem sinyal multi-profile (Conservative/Moderate/Aggressive) dengan 7 timeframe dari 1 menit hingga 24 jam.', ['Composite Alpha Score', 'MTF (Multi-Timeframe) Alignment', 'Confidence levels', 'Entry/Exit recommendations'])}
+                        ${renderFeatureCard('🎯', 'SIMULATION', 'Paper trading simulator dengan fitur lengkap untuk testing strategi tanpa risiko modal nyata.', ['Virtual balance tracking', 'Smart DCA automation', 'TP/SL management', 'Trailing Stop', 'Trade history & analytics'])}
+                        ${renderFeatureCard('🤖', 'AUTOMATION', 'Engine otomatisasi trading berdasarkan signal triggers dengan risk management terintegrasi.', ['Signal-based entry', 'Auto position sizing', 'Drawdown protection', 'Multi-coin parallel trading'])}
+                        ${renderFeatureCard('🧬', 'COMPOSER', 'Signal builder untuk membuat dan mengkustomisasi kondisi entry/exit berdasarkan kombinasi metrics.', ['Custom signal creation', 'Multi-condition logic', 'Per-signal profile/timeframe', 'Real-time evaluation'])}
+                        ${renderFeatureCard('📈', 'ANALYTICS', 'Deep analytics dashboard dengan visualisasi distribusi signal dan performance metrics.', ['Signal distribution charts', 'Timeframe analysis', 'Profile comparison', 'Historical patterns'])}
+                    </div>
+
+                    <!-- ANALYSIS TABS -->
+                    <h3 class="text-bb-blue font-black text-[11px] uppercase tracking-widest mb-4 flex items-center gap-2">
+                        <span class="w-2 h-2 bg-bb-blue rounded-full"></span>
+                        MARKET ANALYSIS MODULES
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
+                        ${renderMiniFeature('🏛️', 'DERIVATIVES', 'Funding rate, OI analysis, LSR tracking untuk futures market')}
+                        ${renderMiniFeature('💧', 'LIQUIDITY', 'Order book depth, bid/ask imbalance, wall detection')}
+                        ${renderMiniFeature('💥', 'LIQUIDATIONS', 'Real-time liquidation heatmap dan cascade detection')}
+                        ${renderMiniFeature('🔬', 'MICROSTRUCTURE', 'VPIN, Kyle Lambda, OFI, dan HFT metrics lainnya')}
+                        ${renderMiniFeature('📊', 'VOL SCANNER', 'Volume anomaly detection dengan multi-timeframe analysis')}
+                        ${renderMiniFeature('📉', 'VOL RATIO', 'Buy/Sell volume ratio dengan trend analysis')}
+                        ${renderMiniFeature('🌊', 'REGIME', 'Hurst exponent, trend/mean-reversion detection')}
+                        ${renderMiniFeature('🎯', 'LEVELS', 'Support/Resistance dan key price levels')}
+                        ${renderMiniFeature('🔗', 'CORRELATION', 'Cross-asset correlation matrix dan BTC beta')}
+                        ${renderMiniFeature('🧮', 'SYNTHESIS', 'Flow, Efficiency, Momentum synthesis scores')}
+                        ${renderMiniFeature('📡', 'MONITORING', 'System health dan connection status')}
+                        ${renderMiniFeature('🌐', 'GLOBAL', 'Market-wide sentiment dan aggregate metrics')}
+                    </div>
+
+                    <!-- SPECIAL FEATURES -->
+                    <h3 class="text-bb-green font-black text-[11px] uppercase tracking-widest mb-4 flex items-center gap-2">
+                        <span class="w-2 h-2 bg-bb-green rounded-full"></span>
+                        SPECIAL FEATURES
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="p-4 bg-bb-panel border border-bb-green/30 rounded-lg">
+                            <h4 class="text-bb-green font-black text-[10px] mb-2 uppercase">🔄 SMART DCA</h4>
+                            <p class="text-[9px] text-bb-muted leading-relaxed">
+                                Dollar Cost Averaging otomatis saat posisi merugi. Configurable step sizes (2%, 4%, 8%, 16%) 
+                                dengan multiplier untuk averaging down yang agresif atau konservatif.
+                            </p>
+                        </div>
+                        <div class="p-4 bg-bb-panel border border-bb-blue/30 rounded-lg">
+                            <h4 class="text-bb-blue font-black text-[10px] mb-2 uppercase">📈 TRAILING STOP</h4>
+                            <p class="text-[9px] text-bb-muted leading-relaxed">
+                                Trailing stop yang mengikuti profit tertinggi. Aktivasi setelah mencapai threshold tertentu,
+                                lock profit saat market reversal dengan callback percentage.
+                            </p>
+                        </div>
+                        <div class="p-4 bg-bb-panel border border-bb-gold/30 rounded-lg">
+                            <h4 class="text-bb-gold font-black text-[10px] mb-2 uppercase">🛡️ DRAWDOWN HALT</h4>
+                            <p class="text-[9px] text-bb-muted leading-relaxed">
+                                Otomatis pause trading saat drawdown mencapai threshold. Cooldown period untuk evaluasi
+                                sebelum melanjutkan trading. Mencegah tilt trading.
+                            </p>
+                        </div>
+                    </div>
+                </section>
+
                 <!-- SECTION: TELEMETRY -->
                 <section id="section-telemetry" class="max-w-5xl mx-auto">
                     <div class="flex items-center gap-4 mb-6">
@@ -93,6 +167,8 @@ export function render(container) {
                         ${renderGlossaryCard('Kyle Lambda (Illiquidity)', 'Pengukur resiko slippage.', 'Mengestimasi pengaruh satu dollar terhadap pergerakan harga. Lambda tinggi = Pasar tipis (Slippage tinggi). Lambda rendah = Likuiditas tebal (Aman untuk posisi besar).')}
                         ${renderGlossaryCard('CVD Momentum (Aggression)', 'Kecepatan agresi pasar.', 'Cumulative Volume Delta. Menunjukkan apakah pembeli atau penjual yang lebih "kebelet" mengeksekusi harga. Diukur dalam delta per satuan waktu.')}
                         ${renderGlossaryCard('OFI (Order Flow Imbalance)', 'Tembok tersembunyi.', 'Mengukur perubahan antara Bid/Ask di berbagai level limit order. Membantu mendeteksi Iceberg Orders (tembok beli/jual yang tidak terlihat di layar luar).')}
+                        ${renderGlossaryCard('Composite Alpha', 'Signal gabungan terkuat.', 'Fusi dari 12+ metrik HFT dengan bobot dinamis berdasarkan market regime. Score > 85 dengan MTF alignment mengindikasikan high-probability setup.')}
+                        ${renderGlossaryCard('LSR (Long/Short Ratio)', 'Posisi retail vs institusi.', 'Rasio posisi long vs short di pasar futures. Z-score > 2 mengindikasikan crowded trade (potensi reversal). Digunakan untuk kontrarian entry.')}
                     </div>
                 </section>
 
@@ -137,33 +213,112 @@ export function render(container) {
                     </div>
                 </section>
 
+                <!-- SECTION: SIMULATION GUIDE -->
+                <section id="section-simulation" class="max-w-5xl mx-auto">
+                    <div class="flex items-center gap-4 mb-6">
+                        <h2 class="text-bb-green font-black text-sm uppercase tracking-[0.2em] bg-bb-green/10 px-3 py-1 border-l-2 border-bb-green">04. SIMULATION_TRADING_GUIDE</h2>
+                        <div class="h-px flex-1 bg-bb-border"></div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                        <div class="p-5 bg-bb-dark border border-bb-border rounded-lg">
+                            <h4 class="text-white font-black text-[11px] mb-4 uppercase flex items-center gap-2">
+                                <span class="text-bb-green">📖</span> CARA MENGGUNAKAN SIMULATOR
+                            </h4>
+                            <ol class="text-[10px] text-bb-text leading-relaxed space-y-3 list-decimal list-inside">
+                                <li><span class="text-bb-muted">Pilih coin dari dropdown atau ketik manual (format: XXX-USDT-SWAP)</span></li>
+                                <li><span class="text-bb-muted">Set position size ($), leverage, TP%, dan SL%</span></li>
+                                <li><span class="text-bb-muted">Klik LONG atau SHORT untuk membuka posisi</span></li>
+                                <li><span class="text-bb-muted">Monitor PnL real-time, klik CLOSE untuk menutup posisi</span></li>
+                                <li><span class="text-bb-muted">Review trade history di panel bawah</span></li>
+                            </ol>
+                        </div>
+                        <div class="p-5 bg-bb-dark border border-bb-border rounded-lg">
+                            <h4 class="text-white font-black text-[11px] mb-4 uppercase flex items-center gap-2">
+                                <span class="text-bb-gold">⚙️</span> KONFIGURASI LANJUTAN
+                            </h4>
+                            <ul class="text-[10px] text-bb-text leading-relaxed space-y-2">
+                                <li><span class="text-bb-gold font-bold">DCA:</span> <span class="text-bb-muted">Enable untuk auto-averaging saat rugi (steps: 2%, 4%, 8%, 16%)</span></li>
+                                <li><span class="text-bb-gold font-bold">TS:</span> <span class="text-bb-muted">Trailing Stop - lock profit setelah mencapai threshold</span></li>
+                                <li><span class="text-bb-gold font-bold">Fees:</span> <span class="text-bb-muted">Simulasikan trading fees (maker 0.02%, taker 0.05%)</span></li>
+                                <li><span class="text-bb-gold font-bold">Halt:</span> <span class="text-bb-muted">Auto-pause saat drawdown > threshold</span></li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="p-4 bg-bb-panel border border-bb-gold/30 rounded-lg">
+                        <h4 class="text-bb-gold font-black text-[10px] mb-3 uppercase">💡 PRO TIPS</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-[9px] text-bb-muted">
+                            <div>
+                                <p class="mb-2">• <span class="text-white">Gunakan DCA dengan bijak</span> - hanya untuk coins dengan fundamental kuat</p>
+                                <p class="mb-2">• <span class="text-white">Set TP lebih besar dari SL</span> - Risk/Reward ratio minimal 1:1.5</p>
+                                <p>• <span class="text-white">Trailing Stop aktif setelah</span> mencapai 50% dari target TP</p>
+                            </div>
+                            <div>
+                                <p class="mb-2">• <span class="text-white">Automation mode</span> - biarkan signal system yang entry/exit</p>
+                                <p class="mb-2">• <span class="text-white">Max 3-5 posisi bersamaan</span> untuk risk management</p>
+                                <p>• <span class="text-white">Review trade history</span> untuk pelajari pattern winning/losing</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
                 <!-- SECTION: RISK PROTOCOL -->
                 <section id="section-risk" class="max-w-5xl mx-auto">
                     <div class="flex items-center gap-4 mb-6">
-                        <h2 class="text-bb-red font-black text-sm uppercase tracking-[0.2em] bg-bb-red/10 px-3 py-1 border-l-2 border-bb-red">04. OPERATIONAL_RISK_PROTOCOL</h2>
+                        <h2 class="text-bb-red font-black text-sm uppercase tracking-[0.2em] bg-bb-red/10 px-3 py-1 border-l-2 border-bb-red">05. OPERATIONAL_RISK_PROTOCOL</h2>
                         <div class="h-px flex-1 bg-bb-border"></div>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div class="p-5 bg-bb-dark border border-bb-red/30 rounded-lg">
                             <h4 class="text-bb-red font-black text-[11px] mb-3 uppercase flex items-center gap-2">⚠️ TOXIC FLOW WARNING</h4>
                             <p class="text-[10px] text-bb-text leading-relaxed">
-                                Jika terminal mendeteksi **"Toxic HFT Flow"**, berarti algoritma robot sedang berperang secara agresif. Dalam kondisi ini, SL Anda sangat mudah terkena karena slippage instan (Whale War). Hindari entry sampai intensitas (VPIN) mereda.
+                                Jika terminal mendeteksi <span class="text-bb-red font-bold">"Toxic HFT Flow"</span>, berarti algoritma robot sedang berperang secara agresif. Dalam kondisi ini, SL Anda sangat mudah terkena karena slippage instan (Whale War). Hindari entry sampai intensitas (VPIN) mereda.
                             </p>
                         </div>
                         <div class="p-5 bg-bb-dark border border-bb-blue/30 rounded-lg">
                             <h4 class="text-bb-blue font-black text-[11px] mb-3 uppercase flex items-center gap-2">🛡️ MESH RELIABILITY</h4>
                             <p class="text-[10px] text-bb-text leading-relaxed">
-                                System berjalan di atas **Adaptive Data Mesh**. Jika koneksi P2P melambat di bawah 25 MPS, terminal akan otomatis beralih ke **Full Server Feed**. Status **OFFLOADED** berarti Anda sedang menghemat CPU server berkat efisiensi P2P.
+                                System berjalan di atas <span class="text-bb-blue font-bold">Adaptive Data Mesh</span>. Jika koneksi P2P melambat di bawah 25 MPS, terminal akan otomatis beralih ke <span class="text-bb-blue font-bold">Full Server Feed</span>. Status <span class="text-bb-gold font-bold">OFFLOADED</span> berarti Anda sedang menghemat CPU server berkat efisiensi P2P.
                             </p>
                         </div>
+                        <div class="p-5 bg-bb-dark border border-bb-gold/30 rounded-lg">
+                            <h4 class="text-bb-gold font-black text-[11px] mb-3 uppercase flex items-center gap-2">📊 SIMULATION DISCLAIMER</h4>
+                            <p class="text-[10px] text-bb-text leading-relaxed">
+                                Simulation mode menggunakan harga real-time dari OKX, tetapi <span class="text-bb-gold font-bold">tidak memperhitungkan slippage aktual</span>, liquidity impact, dan market depth. Hasil simulasi mungkin berbeda dari trading nyata. Gunakan sebagai alat pembelajaran, bukan jaminan profit.
+                            </p>
+                        </div>
+                        <div class="p-5 bg-bb-dark border border-bb-green/30 rounded-lg">
+                            <h4 class="text-bb-green font-black text-[11px] mb-3 uppercase flex items-center gap-2">✅ DATA FRESHNESS</h4>
+                            <p class="text-[10px] text-bb-text leading-relaxed">
+                                Data di-refresh setiap <span class="text-bb-green font-bold">30-100ms</span> tergantung market activity. Cache dibersihkan setiap 60 detik untuk memastikan freshness. Jika data terasa stale, refresh browser atau check koneksi WebSocket di tab Monitoring.
+                            </p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- KEYBOARD SHORTCUTS -->
+                <section class="max-w-5xl mx-auto">
+                    <div class="flex items-center gap-4 mb-6">
+                        <h2 class="text-bb-muted font-black text-sm uppercase tracking-[0.2em] bg-white/5 px-3 py-1 border-l-2 border-bb-muted">06. KEYBOARD_SHORTCUTS</h2>
+                        <div class="h-px flex-1 bg-bb-border"></div>
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        ${renderShortcut('1-9', 'Switch tabs 1-9')}
+                        ${renderShortcut('ESC', 'Close modals')}
+                        ${renderShortcut('R', 'Refresh data')}
+                        ${renderShortcut('/', 'Quick search')}
                     </div>
                 </section>
 
                 <!-- FINAL NOTE -->
                 <div class="max-w-4xl mx-auto pt-10 border-t border-bb-border">
                     <div class="bg-bb-gold/5 p-6 rounded-lg text-[11px] text-bb-gold font-bold italic text-center leading-relaxed font-mono">
-                        "Data provides the edge. Execution determines the legacy." - MISSION CONTROL OPS v5.0
+                        "Data provides the edge. Execution determines the legacy." - MISSION CONTROL OPS v6.0
                     </div>
+                    <p class="text-center text-[8px] text-bb-muted mt-4 uppercase tracking-widest">
+                        Built with ❤️ for Crypto Traders • Real-time OKX Data • P2P Mesh Network
+                    </p>
                 </div>
 
             </div>
@@ -278,6 +433,44 @@ function renderGlossaryCard(title, subtitle, desc) {
                 <span class="text-[8px] text-bb-muted uppercase italic">${subtitle}</span>
             </div>
             <p class="text-[10px] text-bb-text leading-relaxed font-mono opacity-80">${desc}</p>
+        </div>
+    `;
+}
+
+function renderFeatureCard(icon, title, desc, features) {
+    return `
+        <div class="p-4 bg-bb-panel border border-bb-border rounded-lg hover:border-bb-gold/30 transition-all group">
+            <div class="flex items-center gap-2 mb-3">
+                <span class="text-xl">${icon}</span>
+                <h3 class="text-white font-black text-[11px] uppercase group-hover:text-bb-gold transition-colors">${title}</h3>
+            </div>
+            <p class="text-[9px] text-bb-muted leading-relaxed mb-3">${desc}</p>
+            <ul class="space-y-1">
+                ${features.map(f => `<li class="text-[8px] text-bb-text flex items-center gap-1.5">
+                    <span class="w-1 h-1 bg-bb-gold/50 rounded-full"></span>${f}
+                </li>`).join('')}
+            </ul>
+        </div>
+    `;
+}
+
+function renderMiniFeature(icon, title, desc) {
+    return `
+        <div class="p-3 bg-bb-panel border border-bb-border/50 rounded hover:bg-white/5 transition-all">
+            <div class="flex items-center gap-2 mb-1">
+                <span class="text-sm">${icon}</span>
+                <span class="text-white font-black text-[9px] uppercase">${title}</span>
+            </div>
+            <p class="text-[8px] text-bb-muted leading-relaxed">${desc}</p>
+        </div>
+    `;
+}
+
+function renderShortcut(key, action) {
+    return `
+        <div class="p-2 bg-bb-panel border border-bb-border/50 rounded flex items-center gap-2">
+            <kbd class="px-2 py-0.5 bg-black/50 border border-white/20 rounded text-[9px] font-mono text-white">${key}</kbd>
+            <span class="text-[8px] text-bb-muted">${action}</span>
         </div>
     `;
 }

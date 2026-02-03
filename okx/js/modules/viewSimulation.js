@@ -11,13 +11,30 @@ let state = {
         trailingActivationPct: 4,
         trailingCallbackPct: 2,
         maxDrawdownPct: 15,
+        haltCooldownMin: 5,   // Cooldown after drawdown halt (minutes)
         dcaEnabled: false,
         dcaMaxSteps: 3,
         dcaTriggerPct: 2.0,
         dcaMultiplier: 1.0,
-        dcaWaitMin: 3
+        dcaWaitMin: 3,
+        // === REAL TRADE CONFIG ===
+        enableSlippage: true,
+        enableFees: true,
+        makerFeePct: 0.02,    // 0.02% maker fee
+        takerFeePct: 0.05,    // 0.05% taker fee (market orders)
+        fundingEnabled: true  // Simulate funding rate impact
     },
-    lastHaltTime: 0
+    lastHaltTime: 0,
+    // === PERFORMANCE METRICS ===
+    metrics: {
+        totalTrades: 0,
+        winningTrades: 0,
+        losingTrades: 0,
+        totalPnL: 0,
+        totalFeesPaid: 0,
+        maxDrawdown: 0,
+        peakBalance: 10000
+    }
 };
 
 // Internal engine state
@@ -43,6 +60,10 @@ export function render(container) {
                 <div class="flex flex-col">
                     <span class="text-[8px] text-bb-muted uppercase font-black tracking-widest mb-1">Unrealized PnL</span>
                     <span id="sim-unrealized" class="text-2xl font-black text-bb-muted">$0.00</span>
+                </div>
+                <div class="flex flex-col">
+                    <span class="text-[8px] text-bb-muted uppercase font-black tracking-widest mb-1">Closed PnL</span>
+                    <span id="sim-closed-pnl" class="text-2xl font-black ${(state.metrics?.totalPnL || 0) >= 0 ? 'text-bb-green' : 'text-bb-red'}">$${(state.metrics?.totalPnL || 0).toFixed(2)}</span>
                 </div>
                 <div class="ml-auto flex items-center gap-3">
                     <button id="sim-reset" class="px-4 py-1.5 border border-bb-red/30 text-bb-red text-[10px] font-black hover:bg-bb-red/10 transition-all uppercase rounded font-mono active:scale-95">Reset Account</button>
@@ -102,7 +123,7 @@ export function render(container) {
                             <span class="text-[8px] text-bb-gold/50 font-mono">ENGINE V2.1</span>
                         </div>
                         
-                        <div class="grid grid-cols-2 gap-3">
+                        <div class="grid grid-cols-3 gap-3">
                             <div class="flex flex-col gap-1">
                                 <label class="text-[7px] text-bb-muted uppercase font-black">Max Positions</label>
                                 <input id="cfg-max-pos" type="number" value="${state.config.maxOpenPositions}" class="bg-bb-black border border-bb-border p-1.5 text-[10px] text-white focus:border-bb-gold outline-none w-full">
@@ -110,6 +131,10 @@ export function render(container) {
                             <div class="flex flex-col gap-1">
                                 <label class="text-[7px] text-bb-muted uppercase font-black">Drawdown Halt (%)</label>
                                 <input id="cfg-max-dd" type="number" value="${state.config.maxDrawdownPct}" class="bg-bb-black border border-bb-border p-1.5 text-[10px] text-white focus:border-bb-gold outline-none w-full">
+                            </div>
+                            <div class="flex flex-col gap-1">
+                                <label class="text-[7px] text-bb-muted uppercase font-black">Cooldown (min)</label>
+                                <input id="cfg-halt-cooldown" type="number" value="${state.config.haltCooldownMin || 5}" min="1" max="60" class="bg-bb-black border border-bb-border p-1.5 text-[10px] text-white focus:border-bb-gold outline-none w-full">
                             </div>
                         </div>
 
@@ -120,7 +145,7 @@ export function render(container) {
                                     ${state.config.dcaEnabled ? 'ACTIVE' : 'OFF'}
                                 </button>
                             </div>
-                            <div class="grid grid-cols-2 gap-3 pb-1 border-b border-white/5 ${state.config.dcaEnabled ? '' : 'opacity-40'}">
+                            <div data-dca-row class="grid grid-cols-2 gap-3 pb-1 border-b border-white/5 transition-opacity ${state.config.dcaEnabled ? '' : 'opacity-40'}">
                                 <div class="flex flex-col gap-1">
                                     <label class="text-[7px] text-bb-muted uppercase font-black">Max Steps</label>
                                     <input id="cfg-dca-steps" type="number" value="${state.config.dcaMaxSteps}" class="bg-bb-black border border-bb-border p-1.5 text-[10px] text-white focus:border-bb-gold outline-none w-full">
@@ -130,7 +155,7 @@ export function render(container) {
                                     <input id="cfg-dca-trigger" type="number" value="${state.config.dcaTriggerPct}" step="0.1" class="bg-bb-black border border-bb-border p-1.5 text-[10px] text-white focus:border-bb-gold outline-none w-full">
                                 </div>
                             </div>
-                            <div class="grid grid-cols-2 gap-3 pb-1 border-b border-white/5 ${state.config.dcaEnabled ? '' : 'opacity-40'}">
+                            <div data-dca-row class="grid grid-cols-2 gap-3 pb-1 border-b border-white/5 transition-opacity ${state.config.dcaEnabled ? '' : 'opacity-40'}">
                                 <div class="flex flex-col gap-1">
                                     <label class="text-[7px] text-bb-muted uppercase font-black">Wait Time (Min)</label>
                                     <input id="cfg-dca-wait" type="number" value="${state.config.dcaWaitMin || 3}" class="bg-bb-black border border-bb-border p-1.5 text-[10px] text-white focus:border-bb-gold outline-none w-full">
@@ -140,7 +165,7 @@ export function render(container) {
                                     <div class="text-[8px] text-bb-muted italic py-1 leading-tight">Prevents rapid-fire DCA steps during crashes.</div>
                                 </div>
                             </div>
-                            <div class="flex flex-col gap-1 pt-1 ${state.config.dcaEnabled ? '' : 'opacity-40'}">
+                            <div data-dca-row class="flex flex-col gap-1 pt-1 transition-opacity ${state.config.dcaEnabled ? '' : 'opacity-40'}">
                                 <label class="text-[7px] text-bb-muted uppercase font-black flex justify-between">
                                     <span>Step Sizing Multiplier</span>
                                     <span class="text-bb-gold font-mono">${(state.config.dcaMultiplier || 1.0).toFixed(1)}x</span>
@@ -156,7 +181,7 @@ export function render(container) {
                                     ${state.config.trailingStopEnabled ? 'ACTIVE' : 'OFF'}
                                 </button>
                             </div>
-                            <div class="grid grid-cols-2 gap-3 ${state.config.trailingStopEnabled ? '' : 'opacity-40'}">
+                            <div data-ts-row class="grid grid-cols-2 gap-3 transition-opacity ${state.config.trailingStopEnabled ? '' : 'opacity-40'}">
                                 <div class="flex flex-col gap-1">
                                     <label class="text-[7px] text-bb-muted uppercase font-black">Activation %</label>
                                     <input id="cfg-ts-act" type="number" value="${state.config.trailingActivationPct}" step="0.1" class="bg-bb-black border border-bb-border p-1.5 text-[10px] text-white focus:border-bb-gold outline-none w-full">
@@ -229,7 +254,21 @@ function attachEvents(container) {
     if (resetBtn) {
         resetBtn.onclick = () => {
             if (confirm('Reset account to $10,000? All trades will be lost.')) {
-                state = { ...state, balance: 10000, positions: [], history: [] };
+                state = { 
+                    ...state, 
+                    balance: 10000, 
+                    positions: [], 
+                    history: [],
+                    metrics: {
+                        totalTrades: 0,
+                        winningTrades: 0,
+                        losingTrades: 0,
+                        totalPnL: 0,
+                        totalFeesPaid: 0,
+                        maxDrawdown: 0,
+                        peakBalance: 10000
+                    }
+                };
                 saveState();
                 updateUI();
             }
@@ -256,6 +295,10 @@ function attachEvents(container) {
         state.config.maxDrawdownPct = parseFloat(e.target.value) || 15;
         saveState();
     };
+    container.querySelector('#cfg-halt-cooldown').oninput = (e) => {
+        state.config.haltCooldownMin = Math.max(1, Math.min(60, parseInt(e.target.value) || 5));
+        saveState();
+    };
     container.querySelector('#cfg-ts-act').oninput = (e) => {
         state.config.trailingActivationPct = parseFloat(e.target.value) || 4;
         state.positions.forEach(p => { if (p.config) p.config.tsActivation = state.config.trailingActivationPct; });
@@ -271,7 +314,17 @@ function attachEvents(container) {
         // Apply global toggle to all active positions too
         state.positions.forEach(p => { if (p.config) p.config.tsEnabled = state.config.trailingStopEnabled; });
         saveState();
-        render(container); // Refresh UI
+        
+        // ⚡ Update UI without full re-render
+        const btn = container.querySelector('#cfg-ts-toggle');
+        const tsRows = container.querySelectorAll('[data-ts-row]');
+        if (btn) {
+            btn.className = `px-2 py-0.5 rounded text-[7px] font-black uppercase transition-all ${state.config.trailingStopEnabled ? 'bg-bb-green/20 text-bb-green border border-bb-green/30' : 'bg-bb-muted/10 text-bb-muted border border-white/10'}`;
+            btn.innerText = state.config.trailingStopEnabled ? 'ACTIVE' : 'OFF';
+        }
+        tsRows.forEach(row => {
+            row.classList.toggle('opacity-40', !state.config.trailingStopEnabled);
+        });
     };
 
     // DCA Listeners
@@ -280,7 +333,17 @@ function attachEvents(container) {
         // Apply global toggle to all active positions too
         state.positions.forEach(p => { if (p.config) p.config.dcaEnabled = state.config.dcaEnabled; });
         saveState();
-        render(container);
+        
+        // ⚡ Update UI without full re-render
+        const btn = container.querySelector('#cfg-dca-toggle');
+        const dcaRows = container.querySelectorAll('[data-dca-row]');
+        if (btn) {
+            btn.className = `px-2 py-0.5 rounded text-[7px] font-black uppercase transition-all ${state.config.dcaEnabled ? 'bg-bb-gold/20 text-bb-gold border border-bb-gold/30' : 'bg-bb-muted/10 text-bb-muted border border-white/10'}`;
+            btn.innerText = state.config.dcaEnabled ? 'ACTIVE' : 'OFF';
+        }
+        dcaRows.forEach(row => {
+            row.classList.toggle('opacity-40', !state.config.dcaEnabled);
+        });
     };
     container.querySelector('#cfg-dca-steps').oninput = (e) => {
         state.config.dcaMaxSteps = parseInt(e.target.value) || 3;
@@ -315,8 +378,44 @@ export function openPosition(side, metadata = {}) {
     const asset = (metadata.coin || document.getElementById('sim-asset')?.value || '').toUpperCase();
     const amount = metadata.amount || parseFloat(document.getElementById('sim-amount')?.value || 1000);
     const leverage = metadata.leverage || parseInt(document.getElementById('sim-leverage')?.value || 10);
-    const tpPerc = metadata.tp || parseFloat(document.getElementById('sim-tp')?.value || 0);
-    const slPerc = metadata.sl || parseFloat(document.getElementById('sim-sl')?.value || 0);
+    // FIX: Use !== undefined to handle 0 values correctly
+    const tpPerc = metadata.tp !== undefined ? parseFloat(metadata.tp) : parseFloat(document.getElementById('sim-tp')?.value || 10);
+    const slPerc = metadata.sl !== undefined ? parseFloat(metadata.sl) : parseFloat(document.getElementById('sim-sl')?.value || 5);
+
+    // ⚡ Pre-subscribe to this coin's ticker before checking price
+    if (asset && !window._simSubs?.has(asset)) {
+        console.log(`[SIM-WS] Pre-subscribing to ${asset} for position entry`);
+        OkxWs.connect();
+        const callback = (res) => {
+            if (res.data && res.data[0]) {
+                livePriceCache[asset] = parseFloat(res.data[0].last);
+            }
+        };
+        OkxWs.subscribe(asset, callback);
+        if (!window._simSubs) window._simSubs = new Map();
+        window._simSubs.set(asset, callback);
+    }
+
+    // === REAL TRADE: Validate entry price BEFORE anything else ===
+    let entryPrice = metadata.entryPrice || 0;
+    if (entryPrice <= 0) {
+        // Try to get from live cache first (OKX WS direct)
+        entryPrice = livePriceCache[asset] || 0;
+    }
+    if (entryPrice <= 0) {
+        // Fallback to marketState (from SIGNAL_BOT)
+        const coinData = marketState[asset];
+        if (coinData?.PRICE?.last) {
+            entryPrice = parseFloat(coinData.PRICE.last);
+        }
+    }
+    
+    if (entryPrice <= 0) {
+        if (!metadata.silent) {
+            console.warn(`[SIM] Cannot open position for ${asset}: No valid entry price`);
+        }
+        return; // CRITICAL: Do not open position without valid price
+    }
 
     if (!asset || isNaN(amount) || amount <= 0) {
         if (!metadata.silent) alert('Invalid Asset or Amount');
@@ -324,16 +423,28 @@ export function openPosition(side, metadata = {}) {
     }
 
     // HALT COOLDOWN CHECK
-    const haltWaitMs = 3 * 60 * 1000;
+    const cooldownMin = state.config.haltCooldownMin || 5;
+    const haltWaitMs = cooldownMin * 60 * 1000;
     const timeSinceHalt = Date.now() - (state.lastHaltTime || 0);
     if (timeSinceHalt < haltWaitMs) {
-        const remainingMin = Math.ceil((haltWaitMs - timeSinceHalt) / 60000);
-        if (!metadata.silent) alert(`Sim is in Drawdown Halt Cooldown. Try again in ${remainingMin} minutes.`);
+        const remainingSec = Math.ceil((haltWaitMs - timeSinceHalt) / 1000);
+        const remainingMin = Math.floor(remainingSec / 60);
+        const remainingSecOnly = remainingSec % 60;
+        const timeStr = remainingMin > 0 ? `${remainingMin}m ${remainingSecOnly}s` : `${remainingSecOnly}s`;
+        if (!metadata.silent) alert(`⏸️ Drawdown Halt Cooldown\n\nTrading paused for evaluation.\nResumes in: ${timeStr}`);
         return;
     }
 
-    if (amount > state.balance) {
-        if (!metadata.silent) console.warn('Insufficient balance');
+    // === REAL TRADE: Calculate entry fee ===
+    let entryFee = 0;
+    if (state.config.enableFees) {
+        const feePct = metadata.source === 'AUTOMATION' ? state.config.takerFeePct : state.config.makerFeePct;
+        entryFee = (amount * leverage) * (feePct / 100);
+    }
+    
+    const totalCost = amount + entryFee;
+    if (totalCost > state.balance) {
+        if (!metadata.silent) console.warn(`[SIM] Insufficient balance (need $${totalCost.toFixed(2)}, have $${state.balance.toFixed(2)})`);
         return;
     }
 
@@ -351,26 +462,40 @@ export function openPosition(side, metadata = {}) {
             const dcaEnabled = (existing.config && existing.config.dcaEnabled !== undefined) ? existing.config.dcaEnabled : state.config.dcaEnabled;
 
             if (dcaEnabled && existing.dcaStep < (dcaCfg.dcaMaxSteps || 3)) {
-                // DCA COOLDOWN CHECK
+                // DCA COOLDOWN CHECK - skip cooldown for first DCA (step 0 → 1)
+                const isFirstDca = existing.dcaStep === 0;
                 const lastDcaTime = existing.lastDcaTime || existing.timestamp || 0;
                 const waitMin = parseFloat(dcaCfg.dcaWaitMin !== undefined ? dcaCfg.dcaWaitMin : state.config.dcaWaitMin) || 0;
                 const waitMs = waitMin * 60 * 1000;
+                const timeSinceLastDca = Date.now() - lastDcaTime;
+                
+                // ⚡ First DCA triggers immediately, subsequent ones respect cooldown
+                const cooldownPassed = isFirstDca || waitMs === 0 || timeSinceLastDca >= waitMs;
 
-                if (waitMs > 0 && (Date.now() - lastDcaTime < waitMs)) {
-                    if (!metadata.silent) console.log(`[SIM] DCA Cooldown active for ${asset}. Wait: ${((waitMs - (Date.now() - lastDcaTime)) / 1000).toFixed(0)}s`);
+                if (!cooldownPassed) {
+                    if (!metadata.silent) console.log(`[SIM] DCA Cooldown active for ${asset}. Wait: ${((waitMs - timeSinceLastDca) / 1000).toFixed(0)}s`);
                     return;
                 }
 
                 // Perform DCA Averaging using initialAmount as base
                 const dcaSize = (existing.initialAmount || amount) * (dcaCfg.dcaMultiplier || 1.0);
-                if (dcaSize > state.balance) {
-                    if (!metadata.silent) console.warn(`[SIM] Insufficient balance for DCA Step ${existing.dcaStep + 1} on ${asset}`);
+                
+                // === REAL TRADE: Calculate DCA fee ===
+                let dcaFee = 0;
+                if (state.config.enableFees) {
+                    const feePct = state.config.takerFeePct;
+                    dcaFee = (dcaSize * existing.leverage) * (feePct / 100);
+                }
+                
+                const dcaTotalCost = dcaSize + dcaFee;
+                if (dcaTotalCost > state.balance) {
+                    if (!metadata.silent) console.warn(`[SIM] Insufficient balance for DCA Step ${existing.dcaStep + 1} on ${asset} (need $${dcaTotalCost.toFixed(2)})`);
                     return;
                 }
 
                 const currentEntry = existing.entryPrice;
                 const currentAmount = existing.amount;
-                const newEntry = metadata.entryPrice || 0;
+                const newEntry = entryPrice; // Use validated entry price
 
                 if (newEntry > 0 && currentEntry > 0) {
                     // Weighted Average Entry Price
@@ -383,6 +508,10 @@ export function openPosition(side, metadata = {}) {
                     existing.dcaStep += 1;
                     existing.peakRoe = -999; // Reset peak for Trailing Stop after DCA
                     existing.lastDcaTime = Date.now();
+                    existing.totalFees = (existing.totalFees || 0) + dcaFee; // Track cumulative fees
+                    
+                    // ⚡ Clear _dcaPending flag to allow future DCA triggers
+                    delete existing._dcaPending;
 
                     if (!existing.logs) existing.logs = [];
                     existing.logs.push({
@@ -390,19 +519,20 @@ export function openPosition(side, metadata = {}) {
                         step: existing.dcaStep,
                         price: newEntry,
                         amount: dcaSize,
+                        fee: dcaFee,
                         time: Date.now()
                     });
 
-                    state.balance -= dcaSize;
+                    state.balance -= dcaTotalCost;
                     saveState();
-                    if (!metadata.silent) console.log(`[SIM] DCA Step ${existing.dcaStep} executed for ${asset}. New Entry: ${avgPrice.toFixed(4)}`);
+                    if (!metadata.silent) console.log(`[SIM] DCA Step ${existing.dcaStep} @ $${newEntry.toFixed(4)} | Size: $${dcaSize} | Fee: $${dcaFee.toFixed(2)} | New Avg: $${avgPrice.toFixed(4)}`);
                     updateUI();
                 }
                 return; // Stop here, we merged into existing
             }
 
-            if (metadata.source === 'AUTOMATION') {
-                if (!metadata.silent) console.log(`[SIM] Already have a ${side} position on ${asset} from AUTOMATION (DCA Disabled/Maxed). Ignoring repeat.`);
+            if (metadata.source === 'AUTOMATION' || metadata.source === 'AUTO-DCA') {
+                if (!metadata.silent) console.log(`[SIM] Already have a ${side} position on ${asset} from ${metadata.source} (DCA Disabled/Maxed). Ignoring repeat.`);
                 return; // Prevent duplicate auto-positions
             }
             // If manual, we allow scaling/doubling for now
@@ -424,11 +554,19 @@ export function openPosition(side, metadata = {}) {
         side: side,
         amount: amount,
         leverage: leverage,
-        entryPrice: metadata.entryPrice || 0,
+        entryPrice: entryPrice, // USE VALIDATED ENTRY PRICE
         source: metadata.source || 'MANUAL',
         ruleName: metadata.ruleName || '',
+        strategy: metadata.strategy || '',
         timestamp: Date.now(),
-        logs: metadata.logs || [{ type: 'ENTRY', price: metadata.entryPrice || 0, amount: amount, time: Date.now() }],
+        logs: [{ 
+            type: 'ENTRY', 
+            price: entryPrice, 
+            amount: amount, 
+            fee: entryFee,
+            time: Date.now(),
+            factors: metadata.factors || []
+        }],
         // PER-POSITION CONFIG (Cloned from global at entry)
         config: {
             tp: tpPerc,
@@ -445,19 +583,29 @@ export function openPosition(side, metadata = {}) {
         dcaStep: 0,
         lastDcaTime: Date.now(),
         initialAmount: amount,
-        initialEntry: metadata.entryPrice || 0
+        initialEntry: entryPrice,
+        // === REAL TRADE TRACKING ===
+        signalPrice: metadata.signalPrice || entryPrice,
+        slippage: metadata.slippage || 0,
+        totalFees: entryFee,
+        timeframe: metadata.timeframe || '15MENIT'
     };
 
     state.positions.push(pos);
-    state.balance -= amount;
+    state.balance -= totalCost; // Deduct amount + fees
 
-    // Record ENTRY in history
+    // Record ENTRY in history with full details
     state.history.unshift({
         ...pos,
         type: 'ENTRY',
         ts: Date.now(),
-        reason: metadata.reason || 'MANUAL'
+        reason: metadata.source || 'MANUAL',
+        entryFee: entryFee
     });
+    
+    // Log for debugging
+    const slipInfo = metadata.slippage ? ` (slip: ${metadata.slippage >= 0 ? '+' : ''}$${metadata.slippage.toFixed(4)})` : '';
+    console.log(`[SIM-OPEN] ${side} ${asset} @ $${entryPrice.toFixed(4)}${slipInfo} | Size: $${amount} | Lev: ${leverage}x | Fee: $${entryFee.toFixed(2)} | TP: ${tpPerc}% SL: ${slPerc}%`);
 
     saveState();
     updateUI();
@@ -465,35 +613,82 @@ export function openPosition(side, metadata = {}) {
 }
 
 let livePriceCache = {};
+let _simPriceUpdateInterval = null;
 
 function syncLiveSubscriptions() {
     const activeCoins = new Set(state.positions.map(p => p.coin));
 
-    if (!window._simSubs) window._simSubs = new Set();
+    if (!window._simSubs) window._simSubs = new Map(); // Changed to Map to store callbacks
+
+    // Ensure OKX WS is connected
+    OkxWs.connect();
 
     // Subscribe to new ones
     activeCoins.forEach(coin => {
         if (!window._simSubs.has(coin)) {
             console.log(`[SIM-WS] Auto-subscribing to ${coin}`);
-            OkxWs.subscribe(coin, (res) => {
+            const callback = (res) => {
                 if (res.data && res.data[0]) {
                     const p = parseFloat(res.data[0].last);
                     livePriceCache[coin] = p;
+                    // console.log(`[SIM-WS] Price update: ${coin} = ${p}`);
                 }
-            });
-            window._simSubs.add(coin);
+            };
+            OkxWs.subscribe(coin, callback);
+            window._simSubs.set(coin, callback);
         }
     });
 
     // Unsubscribe from removed ones
-    window._simSubs.forEach(coin => {
+    window._simSubs.forEach((callback, coin) => {
         if (!activeCoins.has(coin)) {
             console.log(`[SIM-WS] Auto-unsubscribing from ${coin}`);
-            OkxWs.unsubscribe(coin);
+            OkxWs.unsubscribe(coin, callback);
             window._simSubs.delete(coin);
             delete livePriceCache[coin];
         }
     });
+
+    // Start/stop periodic UI update based on active positions
+    if (activeCoins.size > 0 && !_simPriceUpdateInterval) {
+        console.log('[SIM] Starting price update interval (500ms)');
+        let tickCount = 0;
+        _simPriceUpdateInterval = setInterval(() => {
+            if (state.positions.length > 0) {
+                tickCount++;
+                // Log every 10 ticks (5 seconds) to confirm interval is running
+                if (tickCount % 10 === 0) {
+                    console.log(`[SIM-TICK] Interval running, livePriceCache keys: ${Object.keys(livePriceCache).length}, positions: ${state.positions.length}`);
+                }
+                
+                // Ensure OKX WS stays connected
+                OkxWs.connect();
+                
+                // Re-subscribe if livePriceCache is empty (connection was lost)
+                if (Object.keys(livePriceCache).length === 0 && window._simSubs && window._simSubs.size > 0) {
+                    console.log('[SIM] LivePriceCache empty, re-subscribing...');
+                    window._simSubs.clear();
+                    syncLiveSubscriptions();
+                    return;
+                }
+                
+                // Build minimal marketState from livePriceCache for standalone operation
+                const liveMarketState = {};
+                Object.keys(livePriceCache).forEach(coin => {
+                    liveMarketState[coin] = {
+                        coin,
+                        raw: { PRICE: { last: livePriceCache[coin] } }
+                    };
+                });
+                // Run simulation engine with live prices (works even when SIGNAL_BOT is offline)
+                runSimulationEngine(liveMarketState);
+            }
+        }, 500);
+    } else if (activeCoins.size === 0 && _simPriceUpdateInterval) {
+        console.log('[SIM] Stopping price update interval');
+        clearInterval(_simPriceUpdateInterval);
+        _simPriceUpdateInterval = null;
+    }
 }
 
 function closePosition(id, currentPrice, reason = 'MANUAL') {
@@ -502,28 +697,103 @@ function closePosition(id, currentPrice, reason = 'MANUAL') {
 
     const p = state.positions[idx];
     const exitPrice = currentPrice || 0;
-
-    let pnl = 0;
-    if (p.entryPrice > 0 && exitPrice > 0) {
-        const diff = (exitPrice - p.entryPrice) / p.entryPrice;
-        pnl = p.amount * diff * (p.side === 'LONG' ? 1 : -1) * p.leverage;
+    
+    // === REAL TRADE: Validate exit price ===
+    if (exitPrice <= 0) {
+        console.warn(`[SIM] Cannot close ${p.coin}: No valid exit price`);
+        return;
     }
 
-    state.balance += (p.amount + pnl);
+    // === REAL TRADE: Calculate exit fee ===
+    let exitFee = 0;
+    if (state.config.enableFees) {
+        const feePct = state.config.takerFeePct; // Exit is typically taker
+        exitFee = (p.amount * p.leverage) * (feePct / 100);
+    }
+    
+    const totalFees = (p.totalFees || 0) + exitFee;
+
+    let grossPnl = 0;
+    let netPnl = 0;
+    if (p.entryPrice > 0 && exitPrice > 0) {
+        const diff = (exitPrice - p.entryPrice) / p.entryPrice;
+        grossPnl = p.amount * diff * (p.side === 'LONG' ? 1 : -1) * p.leverage;
+        netPnl = grossPnl - totalFees; // Deduct all fees from PnL
+    }
+
+    // Return margin + net PnL (after fees)
+    state.balance += (p.amount + netPnl);
+
+    // === REAL TRADE: Update performance metrics ===
+    if (!state.metrics) {
+        state.metrics = { totalTrades: 0, winningTrades: 0, losingTrades: 0, totalPnL: 0, totalFeesPaid: 0, maxDrawdown: 0, peakBalance: 10000 };
+    }
+    state.metrics.totalTrades++;
+    state.metrics.totalPnL += netPnl;
+    state.metrics.totalFeesPaid += totalFees;
+    
+    if (netPnl >= 0) {
+        state.metrics.winningTrades++;
+    } else {
+        state.metrics.losingTrades++;
+    }
+    
+    // Track peak balance and max drawdown
+    if (state.balance > state.metrics.peakBalance) {
+        state.metrics.peakBalance = state.balance;
+    }
+    const currentDrawdown = ((state.metrics.peakBalance - state.balance) / state.metrics.peakBalance) * 100;
+    if (currentDrawdown > state.metrics.maxDrawdown) {
+        state.metrics.maxDrawdown = currentDrawdown;
+    }
+
+    const holdTime = Date.now() - p.timestamp;
+    const holdTimeStr = holdTime < 60000 ? `${(holdTime/1000).toFixed(0)}s` : 
+                        holdTime < 3600000 ? `${(holdTime/60000).toFixed(1)}m` : 
+                        `${(holdTime/3600000).toFixed(1)}h`;
 
     const finalLogs = [...(p.logs || [])];
-    finalLogs.push({ type: 'EXIT', price: exitPrice, pnl: pnl, amount: p.amount, time: Date.now(), reason: reason });
+    finalLogs.push({ 
+        type: 'EXIT', 
+        price: exitPrice, 
+        grossPnl: grossPnl,
+        netPnl: netPnl,
+        fee: exitFee,
+        totalFees: totalFees,
+        amount: p.amount, 
+        time: Date.now(), 
+        reason: reason,
+        holdTime: holdTimeStr
+    });
 
     state.history.unshift({
         ...p,
         logs: finalLogs,
         type: 'EXIT',
         exitPrice: exitPrice,
-        pnl: pnl,
+        grossPnl: grossPnl,
+        pnl: netPnl, // Use net PnL as the main PnL
+        totalFees: totalFees,
         reason: reason,
+        holdTime: holdTimeStr,
         closedAt: Date.now(),
-        ts: Date.now()
+        ts: Date.now(),
+        // === REAL TRADE: Trade summary ===
+        summary: {
+            entry: p.entryPrice,
+            exit: exitPrice,
+            side: p.side,
+            leverage: p.leverage,
+            grossPnl: grossPnl,
+            fees: totalFees,
+            netPnl: netPnl,
+            roe: p.entryPrice > 0 ? ((netPnl / p.amount) * 100).toFixed(2) + '%' : '0%',
+            holdTime: holdTimeStr,
+            slippage: p.slippage || 0
+        }
     });
+
+    console.log(`[SIM-CLOSE] ${p.coin} ${p.side} | Entry: $${p.entryPrice.toFixed(4)} → Exit: $${exitPrice.toFixed(4)} | Gross: $${grossPnl.toFixed(2)} | Fees: $${totalFees.toFixed(2)} | Net: $${netPnl.toFixed(2)} | Hold: ${holdTimeStr}`);
 
     state.positions.splice(idx, 1);
     saveState();
@@ -571,7 +841,16 @@ function loadState() {
                 state.positions.forEach(p => {
                     if (p.side === 'BUY' || p.side === 'B') p.side = 'LONG';
                     if (p.side === 'SELL' || p.side === 'S') p.side = 'SHORT';
+                    
+                    // ⚡ Clear any stuck flags from previous session
+                    delete p._dcaPending;
+                    
+                    // ⚡ Force sync position config with current global config
+                    // This ensures toggling DCA on/off affects all positions
                     if (p.config) {
+                        // Sync DCA enabled state with global
+                        p.config.dcaEnabled = state.config.dcaEnabled;
+                        // Backfill missing properties
                         if (p.config.dcaWaitMin === undefined) p.config.dcaWaitMin = state.config.dcaWaitMin;
                         if (p.config.dcaTriggerPct === undefined) p.config.dcaTriggerPct = state.config.dcaTriggerPct;
                         if (p.config.dcaMaxSteps === undefined) p.config.dcaMaxSteps = state.config.dcaMaxSteps;
@@ -587,19 +866,70 @@ function loadState() {
 function updateUI() {
     const balEl = document.getElementById('sim-balance');
     const histEl = document.getElementById('sim-history');
+    const closedPnlEl = document.getElementById('sim-closed-pnl');
     if (!balEl) return;
 
     const safeBalance = state.balance || 0;
     balEl.innerText = `$${safeBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
 
+    // Update closed PnL in header
+    if (closedPnlEl) {
+        const closedPnl = state.metrics?.totalPnL || 0;
+        const sign = closedPnl >= 0 ? '+' : '';
+        closedPnlEl.innerText = `${sign}$${Math.abs(closedPnl).toFixed(2)}`;
+        closedPnlEl.className = `text-2xl font-black ${closedPnl >= 0 ? 'text-bb-green' : 'text-bb-red'}`;
+    }
+
     if (histEl) {
         if (state.history.length === 0) {
             histEl.innerHTML = `<div class="text-[8px] text-bb-muted italic opacity-30 text-center py-4">No trade history.</div>`;
         } else {
-            histEl.innerHTML = state.history.slice(0, 50).map(h => {
+            // Calculate win rate for display
+            const wins = state.metrics?.winningTrades || 0;
+            const total = state.metrics?.totalTrades || 0;
+            const winRate = total > 0 ? ((wins / total) * 100).toFixed(1) : 0;
+            const totalFees = state.metrics?.totalFeesPaid || 0;
+            
+            let statsHtml = '';
+            if (total > 0) {
+                // NOTE: state.metrics.totalPnL is already NET (after fees deducted)
+                // So we need to calculate GROSS by adding fees back
+                const netPnl = state.metrics?.totalPnL || 0;
+                const grossPnl = netPnl + totalFees; // Gross = Net + Fees
+                
+                const grossClass = grossPnl >= 0 ? 'text-bb-green' : 'text-bb-red';
+                const grossSign = grossPnl >= 0 ? '+' : '';
+                const netClass = netPnl >= 0 ? 'text-bb-green' : 'text-bb-red';
+                const netSign = netPnl >= 0 ? '+' : '';
+                
+                statsHtml = `
+                    <div class="p-3 bg-bb-gold/5 border border-bb-gold/20 rounded mb-2 space-y-2">
+                        <div class="flex justify-between text-[10px]">
+                            <span class="text-bb-muted">Gross PnL:</span>
+                            <span class="${grossClass} font-black">${grossSign}$${Math.abs(grossPnl).toFixed(2)}</span>
+                        </div>
+                        <div class="flex justify-between text-[8px]">
+                            <span class="text-bb-muted">Fees Paid:</span>
+                            <span class="text-bb-red">-$${totalFees.toFixed(2)}</span>
+                        </div>
+                        <div class="flex justify-between text-[10px] border-t border-white/10 pt-2">
+                            <span class="text-bb-muted">Net PnL:</span>
+                            <span class="${netClass} font-black">${netSign}$${Math.abs(netPnl).toFixed(2)}</span>
+                        </div>
+                        <div class="flex justify-between text-[8px] pt-1">
+                            <span class="text-bb-muted">Win Rate:</span>
+                            <span class="text-bb-gold font-bold">${winRate}% <span class="text-bb-muted">(${wins}/${total})</span></span>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            histEl.innerHTML = statsHtml + state.history.slice(0, 50).map(h => {
                 const isEntry = h.type === 'ENTRY';
                 const colorClass = isEntry ? 'text-bb-muted' : (h.pnl >= 0 ? 'text-bb-green' : 'text-bb-red');
                 const sign = isEntry ? '' : (h.pnl >= 0 ? '+' : '');
+                const holdTime = h.holdTime || '';
+                const fees = h.totalFees ? ` (fees: $${h.totalFees.toFixed(2)})` : '';
 
                 return `
                 <div class="p-2 bg-black/20 border border-white/5 rounded text-[8px] flex justify-between items-center group cursor-pointer hover:bg-white/5 transition-all" onclick="window.app.showTradeDetails(${h.id || h.ts})">
@@ -608,12 +938,16 @@ function updateUI() {
                             <span class="font-bold text-white">${h.coin}</span>
                             <span class="${h.side === 'LONG' ? 'text-bb-green' : 'text-bb-red'} font-bold opacity-70">${h.side}</span>
                             <span class="text-[7px] px-1 bg-white/5 rounded text-bb-muted">${isEntry ? 'OPEN' : 'CLOSE'}</span>
+                            ${holdTime ? `<span class="text-[6px] text-bb-muted">${holdTime}</span>` : ''}
                         </div>
-                        <span class="text-bb-muted">${new Date(h.ts || h.closedAt).toLocaleTimeString()}</span>
+                        <div class="flex items-center gap-2">
+                            <span class="text-bb-muted">${new Date(h.ts || h.closedAt).toLocaleTimeString()}</span>
+                            ${h.strategy ? `<span class="text-[6px] text-bb-gold/60">${h.strategy}</span>` : ''}
+                        </div>
                     </div>
                     <div class="text-right">
-                        <div class="${colorClass} font-black">${isEntry ? '$' + h.entryPrice.toFixed(2) : sign + '$' + h.pnl.toFixed(2)}</div>
-                        <div class="text-[7px] text-bb-muted uppercase">${h.reason || 'MANUAL'}</div>
+                        <div class="${colorClass} font-black">${isEntry ? '$' + (h.entryPrice || 0).toFixed(2) : sign + '$' + (h.pnl || 0).toFixed(2)}</div>
+                        <div class="text-[7px] text-bb-muted uppercase">${h.reason || 'MANUAL'}${!isEntry ? fees : ''}</div>
                     </div>
                 </div>
                 `;
@@ -664,7 +998,7 @@ export async function runSimulationEngine(marketState) {
                     <th class="p-3 font-black text-right pr-6">TARGETS (TP/SL)</th>
                     <th class="p-3 font-black text-center">DCA STEP</th>
                     <th class="p-3 font-black text-center">TS PROTECT</th>
-                    <th class="p-3 font-black text-right pr-6">ROE %</th>
+                    <th class="p-3 font-black text-right pr-6" title="Net ROE (after fees)">ROE %</th>
                     <th class="p-3 font-black text-right pr-6">PNL ($)</th>
                     <th class="p-3 font-black text-center">ACTION</th>
                 </tr>
@@ -674,15 +1008,26 @@ export async function runSimulationEngine(marketState) {
 
     state.positions.forEach(p => {
         const data = marketState[p.coin];
-        const currentPrice = data?.raw?.PRICE?.last || data?.PRICE?.price || 0;
+        // Prioritize livePriceCache (direct OKX WS) over marketState (from SIGNAL_BOT)
+        // This ensures price updates even when SIGNAL_BOT is offline
+        const currentPrice = livePriceCache[p.coin] || data?.raw?.PRICE?.last || data?.PRICE?.price || 0;
 
-        // If entryPrice was 0 (just opened), set it now
-        if (p.entryPrice === 0 && currentPrice > 0) {
-            p.entryPrice = currentPrice;
-            saveState();
+        // === REAL TRADE: Entry price should already be set, skip if not ===
+        // This should not happen anymore after the fix
+        if (p.entryPrice === 0 || p.entryPrice === undefined) {
+            console.warn(`[SIM] Position ${p.coin} has no entry price - this indicates a bug`);
+            return; // Skip this position in rendering
+        }
+        
+        // Skip trade logic if no current price, but still render the position
+        const hasValidPrice = currentPrice > 0;
+        
+        if (!hasValidPrice) {
+            console.warn(`[SIM] No price for ${p.coin} - OKX WS may not be connected`);
         }
 
         let roe = 0;
+        let grossRoe = 0;
         let pnl = 0;
         const tsCfg = p.config || state.config;
         const tsEnabled = (p.config && p.config.tsEnabled !== undefined) ? p.config.tsEnabled : state.config.trailingStopEnabled;
@@ -690,19 +1035,28 @@ export async function runSimulationEngine(marketState) {
         if (p.entryPrice > 0 && currentPrice > 0) {
             const diff = (currentPrice - p.entryPrice) / p.entryPrice;
             const direction = p.side === 'LONG' ? 1 : -1;
-            roe = diff * direction * p.leverage * 100;
+            grossRoe = diff * direction * p.leverage * 100;
             pnl = p.amount * (diff * direction * p.leverage);
+            
+            // ⚡ Calculate Net ROE (including fees)
+            // Entry fee already paid, estimate exit fee (taker)
+            const entryFee = p.totalFees || 0;
+            const exitFeePct = state.config.enableFees ? (state.config.takerFeePct / 100) : 0;
+            const estimatedExitFee = (p.amount * p.leverage) * exitFeePct;
+            const totalEstimatedFees = entryFee + estimatedExitFee;
+            const netPnlEstimate = pnl - totalEstimatedFees;
+            roe = (netPnlEstimate / p.amount) * 100; // Net ROE as % of margin
 
             // TRAILING STOP LOGIC (Priority: Position-specific config)
-
+            // Note: Use grossRoe for trailing stop (tracks raw price movement)
             if (tsEnabled) {
-                p.peakRoe = Math.max(p.peakRoe || 0, roe);
+                p.peakRoe = Math.max(p.peakRoe || 0, grossRoe);
 
                 const activation = tsCfg.tsActivation || state.config.trailingActivationPct || 4;
                 const callback = tsCfg.tsCallback || state.config.trailingCallbackPct || 2;
 
                 if (p.peakRoe >= activation) {
-                    const dropFromPeak = p.peakRoe - roe;
+                    const dropFromPeak = p.peakRoe - grossRoe;
                     if (dropFromPeak >= callback) {
                         setTimeout(() => closePosition(p.id, currentPrice, 'TRAILING-STOP'), 0);
                     }
@@ -710,50 +1064,100 @@ export async function runSimulationEngine(marketState) {
             }
 
             // AUTO-EXIT LOGIC (TP/SL - Priority: p.config)
-            const targetTp = (p.config && p.config.tp !== undefined) ? p.config.tp : p.tp;
-            const targetSl = (p.config && p.config.sl !== undefined) ? p.config.sl : p.sl;
+            // ⚡ TP/SL now uses Net ROE (consistent with display)
+            const targetTp = (p.config && p.config.tp !== undefined) ? parseFloat(p.config.tp) : parseFloat(p.tp || 0);
+            const targetSl = (p.config && p.config.sl !== undefined) ? parseFloat(p.config.sl) : parseFloat(p.sl || 0);
+
+            // Debug TP/SL logic (only log when close to target)
+            if (targetTp > 0 && roe >= targetTp * 0.8) {
+                console.log(`[SIM-TPSL] ${p.coin} Net ROE: ${roe.toFixed(2)}% approaching TP: ${targetTp}%`);
+            }
+            if (targetSl > 0 && roe <= -targetSl * 0.8) {
+                console.log(`[SIM-TPSL] ${p.coin} Net ROE: ${roe.toFixed(2)}% approaching SL: -${targetSl}%`);
+            }
 
             if (targetTp > 0 && roe >= targetTp) {
+                console.log(`[SIM-TPSL] 🎯 ${p.coin} HIT TP! Net ROE: ${roe.toFixed(2)}% >= Target: ${targetTp}%`);
                 setTimeout(() => closePosition(p.id, currentPrice, 'AUTO-TP'), 0);
             } else if (targetSl > 0 && roe <= -targetSl) {
+                setTimeout(() => closePosition(p.id, currentPrice, 'AUTO-TP'), 0);
+            } else if (targetSl > 0 && grossRoe <= -targetSl) {
                 // Only trigger SL if DCA is disabled or maxed out
                 const dcaEnabled = (p.config && p.config.dcaEnabled !== undefined) ? p.config.dcaEnabled : state.config.dcaEnabled;
                 const dcaMaxSteps = (p.config && p.config.dcaMaxSteps !== undefined) ? p.config.dcaMaxSteps : state.config.dcaMaxSteps;
 
                 if (!dcaEnabled || p.dcaStep >= dcaMaxSteps) {
+                    console.log(`[SIM-TPSL] 🛑 ${p.coin} HIT SL! ROE: ${roe.toFixed(2)}% <= Target: -${targetSl}%`);
                     setTimeout(() => closePosition(p.id, currentPrice, 'AUTO-SL'), 0);
+                } else {
+                    console.log(`[SIM-TPSL] ${p.coin} SL triggered but DCA enabled (step ${p.dcaStep}/${dcaMaxSteps})`);
                 }
             }
 
-            // SMART DCA TRIGGER (If ROE is negative)
+            // SMART DCA TRIGGER (If ROE is negative) - uses Net ROE for consistency
             if (roe < 0) {
                 const dcaEnabled = (p.config && p.config.dcaEnabled !== undefined) ? p.config.dcaEnabled : state.config.dcaEnabled;
                 const dcaTrigger = parseFloat((p.config && p.config.dcaTriggerPct !== undefined) ? p.config.dcaTriggerPct : state.config.dcaTriggerPct) || 2.0;
                 const dcaMaxSteps = (p.config && p.config.dcaMaxSteps !== undefined) ? p.config.dcaMaxSteps : state.config.dcaMaxSteps;
+                const dcaWaitMin = parseFloat((p.config && p.config.dcaWaitMin !== undefined) ? p.config.dcaWaitMin : state.config.dcaWaitMin) || 0;
 
-                // Debug trigger logic (only if close to triggering)
-                if (dcaEnabled && p.dcaStep < dcaMaxSteps && roe <= -(dcaTrigger * 0.8)) {
-                    console.log(`[SIM-DCA-UI] ${p.coin} ROE: ${roe.toFixed(2)}%, Trigger: -${dcaTrigger}%`);
+                // Debug: Log why DCA is not triggering
+                if (!dcaEnabled) {
+                    console.log(`[SIM-DCA] ${p.coin} DCA disabled (p.config.dcaEnabled=${p.config?.dcaEnabled}, global=${state.config.dcaEnabled})`);
+                } else if (p.dcaStep >= dcaMaxSteps) {
+                    console.log(`[SIM-DCA] ${p.coin} Max DCA steps reached (${p.dcaStep}/${dcaMaxSteps})`);
+                } else if (roe > -dcaTrigger) {
+                    // Only log if close to trigger
+                    if (roe <= -(dcaTrigger * 0.7)) {
+                        console.log(`[SIM-DCA] ${p.coin} ROE ${roe.toFixed(2)}% not at trigger -${dcaTrigger}% yet`);
+                    }
                 }
 
                 if (dcaEnabled && p.dcaStep < dcaMaxSteps && roe <= -dcaTrigger) {
-                    // Logic: Trigger openPosition with same side to average down
-                    // We use silent:true to avoid duplicate alerts
-                    setTimeout(() => {
-                        openPosition(p.side, {
-                            coin: p.coin,
-                            entryPrice: currentPrice,
-                            amount: p.initialAmount || (p.amount / (p.dcaStep + 1)),
-                            leverage: p.leverage,
-                            source: 'AUTO-DCA',
-                            silent: true
-                        });
-                    }, 0);
+                    // DCA COOLDOWN CHECK - skip cooldown for first DCA (step 0 → 1)
+                    const isFirstDca = p.dcaStep === 0;
+                    const lastDcaTime = p.lastDcaTime || p.timestamp || 0;
+                    const waitMs = dcaWaitMin * 60 * 1000;
+                    const timeSinceLastDca = Date.now() - lastDcaTime;
+                    
+                    // ⚡ First DCA triggers immediately, subsequent ones respect cooldown
+                    const cooldownPassed = isFirstDca || waitMs === 0 || timeSinceLastDca >= waitMs;
+                    
+                    if (!cooldownPassed) {
+                        // Optionally log cooldown status (uncomment for debug)
+                        // console.log(`[SIM-DCA] ${p.coin} Cooldown: ${((waitMs - timeSinceLastDca) / 1000).toFixed(0)}s remaining`);
+                    } else {
+                        // Prevent double-trigger by marking position
+                        if (!p._dcaPending) {
+                            p._dcaPending = true;
+                            
+                            console.log(`[SIM-DCA] ${p.coin} Triggering DCA step ${p.dcaStep} → ${p.dcaStep + 1} at Net ROE: ${roe.toFixed(2)}%`);
+                            
+                            // Logic: Trigger openPosition with same side to average down
+                            // We use silent:true to avoid duplicate alerts
+                            setTimeout(() => {
+                                openPosition(p.side, {
+                                    coin: p.coin,
+                                    entryPrice: currentPrice,
+                                    amount: p.initialAmount || (p.amount / (p.dcaStep + 1)),
+                                    leverage: p.leverage,
+                                    source: 'AUTO-DCA',
+                                    silent: true
+                                });
+                                // Clear pending flag after a short delay
+                                setTimeout(() => { p._dcaPending = false; }, 1000);
+                            }, 0);
+                        }
+                    }
                 }
             }
         }
 
         totalUnrealized += pnl;
+        
+        // Calculate net PnL (accounting for fees)
+        const currentFees = p.totalFees || 0;
+        const netPnl = pnl - currentFees;
 
         html += `
             <tr class="hover:bg-white/[0.03] transition-all group/row">
@@ -762,21 +1166,41 @@ export async function runSimulationEngine(marketState) {
                         <span class="font-black text-white text-[11px]">${p.coin}</span>
                         <div class="flex items-center gap-1 opacity-50">
                             <span class="text-[7px] font-black uppercase text-bb-gold/80">${p.source === 'MANUAL' ? 'MANUAL' : 'AUTO'}</span>
-                            <span class="text-[7px] text-bb-muted uppercase">${p.source === 'MANUAL' ? 'Direct Entry' : p.ruleName}</span>
+                            <span class="text-[7px] text-bb-muted uppercase">${p.source === 'MANUAL' ? 'Direct' : (p.strategy || p.ruleName || 'AUTO')}</span>
+                            ${p.slippage ? `<span class="text-[6px] text-bb-red/60">slip:${p.slippage > 0 ? '+' : ''}${p.slippage.toFixed(2)}</span>` : ''}
                         </div>
                     </div>
                 </td>
                 <td class="p-3 align-middle"><span class="px-2 py-0.5 rounded-sm text-[8px] font-black ${p.side === 'LONG' ? 'bg-bb-green/20 text-bb-green border border-bb-green/30' : 'bg-bb-red/20 text-bb-red border border-bb-red/30'} uppercase">${p.side === 'LONG' ? 'BUY' : 'SELL'} ${p.leverage}x</span></td>
-                <td class="p-3 text-right pr-6 align-middle font-black text-white/80">$${p.amount.toLocaleString()}</td>
+                <td class="p-3 text-right pr-6 align-middle">
+                    <div class="flex flex-col items-end">
+                        <span class="font-black text-white/80">$${p.amount.toLocaleString()}</span>
+                        ${currentFees > 0 ? `<span class="text-[7px] text-bb-red/50">fee: $${currentFees.toFixed(2)}</span>` : ''}
+                    </div>
+                </td>
                 <td class="p-3 text-right pr-6 align-middle font-mono text-bb-muted/80">${p.entryPrice.toFixed(p.entryPrice < 1 ? 4 : 2)}</td>
                 <td class="p-3 text-right pr-6 align-middle">
-                    <div class="flex flex-col items-end group/item cursor-pointer hover:bg-white/10 p-1 rounded transition-all active:scale-95" onclick="window.app.editSimPositionSettings(${p.id})">
-                        <div class="flex items-center gap-1.5 min-w-[60px] justify-end">
-                            <span class="text-[9px] font-black text-bb-green drop-shadow-[0_0_5px_rgba(34,197,94,0.3)]">${p.config?.tp > 0 ? '🎯 +' + p.config.tp + '%' : '–'}</span>
+                    <div class="flex flex-col items-end gap-1 group/item cursor-pointer hover:bg-white/10 p-1 rounded transition-all active:scale-95" onclick="window.app.editSimPositionSettings(${p.id})">
+                        <!-- TP Target with progress -->
+                        <div class="flex items-center gap-2 min-w-[100px] justify-end">
+                            ${p.config?.tp > 0 ? `
+                                <div class="w-12 h-1 bg-white/10 rounded-full overflow-hidden">
+                                    <div class="h-full bg-bb-green transition-all" style="width: ${Math.min(100, Math.max(0, (roe / p.config.tp) * 100))}%"></div>
+                                </div>
+                                <span class="text-[9px] font-black text-bb-green drop-shadow-[0_0_5px_rgba(34,197,94,0.3)]">🎯 +${p.config.tp}%</span>
+                            ` : '<span class="text-[9px] text-bb-muted/30">TP: OFF</span>'}
                         </div>
-                        <div class="flex items-center gap-1.5 min-w-[60px] justify-end">
-                            <span class="text-[9px] font-black text-bb-red drop-shadow-[0_0_5px_rgba(239,68,68,0.3)]">${p.config?.sl > 0 ? '🛑 -' + p.config.sl + '%' : '–'}</span>
+                        <!-- SL Target with progress -->
+                        <div class="flex items-center gap-2 min-w-[100px] justify-end">
+                            ${p.config?.sl > 0 ? `
+                                <div class="w-12 h-1 bg-white/10 rounded-full overflow-hidden">
+                                    <div class="h-full bg-bb-red transition-all" style="width: ${Math.min(100, Math.max(0, (Math.abs(Math.min(0, roe)) / p.config.sl) * 100))}%"></div>
+                                </div>
+                                <span class="text-[9px] font-black text-bb-red drop-shadow-[0_0_5px_rgba(239,68,68,0.3)]">🛑 -${p.config.sl}%</span>
+                            ` : '<span class="text-[9px] text-bb-muted/30">SL: OFF</span>'}
                         </div>
+                        <!-- Current Price Display -->
+                        <div class="text-[7px] text-bb-muted mt-0.5">Now: $${currentPrice.toFixed(p.entryPrice < 1 ? 4 : 2)}</div>
                     </div>
                 </td>
                 <td class="p-3 text-center align-middle">
@@ -799,7 +1223,12 @@ export async function runSimulationEngine(marketState) {
                         </div>
                     </div>
                 </td>
-                <td class="p-3 text-right pr-6 align-middle font-black ${roe >= 0 ? 'text-bb-green drop-shadow-[0_0_8px_rgba(34,197,94,0.2)]' : 'text-bb-red drop-shadow-[0_0_8px_rgba(239,68,68,0.2)]'} text-xs">${roe > 0 ? '+' : ''}${roe.toFixed(2)}%</td>
+                <td class="p-3 text-right pr-6 align-middle text-xs" title="Gross: ${grossRoe > 0 ? '+' : ''}${grossRoe.toFixed(2)}%">
+                    <div class="flex flex-col items-end">
+                        <span class="font-black ${roe >= 0 ? 'text-bb-green drop-shadow-[0_0_8px_rgba(34,197,94,0.2)]' : 'text-bb-red drop-shadow-[0_0_8px_rgba(239,68,68,0.2)]'}">${roe > 0 ? '+' : ''}${roe.toFixed(2)}%</span>
+                        <span class="text-[6px] text-bb-muted/50">net</span>
+                    </div>
+                </td>
                 <td class="p-3 text-right pr-6 align-middle font-black ${pnl >= 0 ? 'text-bb-green' : 'text-bb-red'} text-xs">${pnl > 0 ? '+' : ''}$${pnl.toFixed(2)}</td>
                 <td class="p-3 text-center align-middle">
                     <button class="px-3 py-1 bg-bb-red/10 border border-bb-red/30 text-bb-red text-[9px] font-black hover:bg-bb-red hover:text-white transition-all uppercase rounded active:scale-90" 

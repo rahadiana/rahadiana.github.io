@@ -143,12 +143,12 @@ function updateExecutionTerminal(data, profile, timeframe) {
         tpMult = 1.2; slMult = 0.8; lev = '10x'; hold = '30m-1h';
     }
 
-    // Calculation
+    // Calculation - support both BUY/SELL (legacy) and LONG/SHORT (new)
     let tpPx, slPx;
-    if (action === 'BUY') {
+    if (action === 'BUY' || action === 'LONG') {
         tpPx = px + (atr * tpMult);
         slPx = px - (atr * slMult);
-    } else if (action === 'SELL') {
+    } else if (action === 'SELL' || action === 'SHORT') {
         tpPx = px - (atr * tpMult);
         slPx = px + (atr * slMult);
     } else {
@@ -168,11 +168,14 @@ function updateMasterSignal(sig, regime) {
     if (!el) return;
 
     const action = sig.action || 'NEUTRAL';
-    const color = action === 'BUY' ? 'text-bb-green' : action === 'SELL' ? 'text-bb-red' : 'text-bb-muted';
-    const bg = action === 'BUY' ? 'from-green-900/20' : action === 'SELL' ? 'from-red-900/20' : 'from-gray-900/20';
+    // Support both BUY/SELL (legacy) and LONG/SHORT (new) formats
+    const isLong = action === 'BUY' || action === 'LONG';
+    const isShort = action === 'SELL' || action === 'SHORT';
+    const color = isLong ? 'text-bb-green' : isShort ? 'text-bb-red' : 'text-bb-muted';
+    const bg = isLong ? 'from-green-900/20' : isShort ? 'from-red-900/20' : 'from-gray-900/20';
 
     // Update parent glow
-    el.parentElement.style.background = `radial-gradient(circle at 0% 50%, ${action === 'BUY' ? '#14532d' : action === 'SELL' ? '#7f1d1d' : '#333'} 0%, transparent 70%)`;
+    el.parentElement.style.background = `radial-gradient(circle at 0% 50%, ${isLong ? '#14532d' : isShort ? '#7f1d1d' : '#333'} 0%, transparent 70%)`;
 
     el.innerHTML = `
         <div class="flex flex-col gap-1">
@@ -181,7 +184,7 @@ function updateMasterSignal(sig, regime) {
             <div class="flex items-center gap-2 mt-2">
                 <span class="text-bb-text text-sm">CONFIDENCE</span>
                 <div class="h-2 w-24 bg-bb-dark rounded-full overflow-hidden border border-bb-border">
-                    <div class="h-full ${action === 'BUY' ? 'bg-bb-green' : 'bg-bb-red'}" style="width: ${sig.confidence}%"></div>
+                    <div class="h-full ${isLong ? 'bg-bb-green' : 'bg-bb-red'}" style="width: ${sig.confidence}%"></div>
                 </div>
                 <span class="font-bold text-bb-gold">${sig.confidence}%</span>
             </div>
@@ -254,8 +257,11 @@ function updateTopSignals(signals) {
     html += '<tbody class="text-xs">';
 
     items.slice(0, 5).forEach(item => {
-        const iColor = item.direction === 'BUY' ? 'text-bb-green' : item.direction === 'SELL' ? 'text-bb-red' : 'text-bb-muted';
-        const barColor = item.direction === 'BUY' ? 'bg-bb-green' : item.direction === 'SELL' ? 'bg-bb-red' : 'bg-bb-muted';
+        // Support both BUY/SELL (legacy) and LONG/SHORT (new)
+        const isLongDir = item.direction === 'BUY' || item.direction === 'LONG';
+        const isShortDir = item.direction === 'SELL' || item.direction === 'SHORT';
+        const iColor = isLongDir ? 'text-bb-green' : isShortDir ? 'text-bb-red' : 'text-bb-muted';
+        const barColor = isLongDir ? 'bg-bb-green' : isShortDir ? 'bg-bb-red' : 'bg-bb-muted';
 
         html += `
             <tr class="border-b border-bb-border/50 hover:bg-white/5">
@@ -356,7 +362,8 @@ function updateMTF(master, profile) {
     const tf5 = master['5MENIT']?.[profile]?.action || 'NEUT';
     const tf15 = master['15MENIT']?.[profile]?.action || 'NEUT';
 
-    const color = (a) => a === 'BUY' ? 'bg-bb-green text-black' : a === 'SELL' ? 'bg-bb-red text-white' : 'bg-bb-dark text-bb-muted';
+    // Support both BUY/SELL (legacy) and LONG/SHORT (new) formats
+    const color = (a) => (a === 'BUY' || a === 'LONG') ? 'bg-bb-green text-black' : (a === 'SELL' || a === 'SHORT') ? 'bg-bb-red text-white' : 'bg-bb-dark text-bb-muted';
 
     el.innerHTML = `
         <div class="flex gap-2 h-full items-center">
@@ -427,7 +434,10 @@ function updateMasterPanel(sig, allSignals, profile, data) {
     if (elRec) {
         const action = sig?.action || 'WAIT';
         elRec.innerText = action;
-        elRec.className = `text-xl font-black font-mono ${action === 'BUY' ? 'text-bb-green' : action === 'SELL' ? 'text-bb-red' : 'text-bb-gold'}`;
+        // Support both BUY/SELL (legacy) and LONG/SHORT (new)
+        const isLongAct = action === 'BUY' || action === 'LONG';
+        const isShortAct = action === 'SELL' || action === 'SHORT';
+        elRec.className = `text-xl font-black font-mono ${isLongAct ? 'text-bb-green' : isShortAct ? 'text-bb-red' : 'text-bb-gold'}`;
     }
 
     if (elMast) {

@@ -11,6 +11,23 @@ let cachedMarketState = null;
 let cachedProfile = 'AGGRESSIVE';
 let cachedTimeframe = '15MENIT';
 
+// ⚡ Export settings for other modules (like Composer)
+window.globalViewSettings = { 
+    get profile() { return cachedProfile; },
+    get timeframe() { return cachedTimeframe; }
+};
+
+// Table Limit State (for performance)
+const TABLE_LIMIT_KEY = 'bb_global_table_limit';
+let tableLimit = (() => {
+    try {
+        const stored = localStorage.getItem(TABLE_LIMIT_KEY);
+        return stored ? parseInt(stored, 10) : 50; // Default 50 rows
+    } catch (e) {
+        return 50;
+    }
+})();
+
 // Alpha Sniper State
 const SIGNAL_HISTORY_KEY = 'bb_signal_history';
 const signalHistory = (() => {
@@ -59,6 +76,19 @@ export function render(container) {
                         </span>
                         <input type="text" id="global-search" placeholder="Search asset..." value="${currentSearch}"
                             class="w-full bg-bb-black border border-bb-border/50 rounded pl-7 pr-3 py-1 text-[10px] text-white focus:outline-none focus:border-bb-gold transition-colors placeholder-bb-muted font-bold">
+                    </div>
+                    
+                    <!-- Row Limit Selector -->
+                    <div class="flex items-center gap-1">
+                        <span class="text-[8px] text-bb-muted">SHOW:</span>
+                        <select id="table-limit" class="bg-bb-black border border-bb-border/50 rounded px-1 py-0.5 text-[9px] text-white font-bold focus:outline-none focus:border-bb-gold cursor-pointer">
+                            <option value="25" ${tableLimit === 25 ? 'selected' : ''}>25</option>
+                            <option value="50" ${tableLimit === 50 ? 'selected' : ''}>50</option>
+                            <option value="100" ${tableLimit === 100 ? 'selected' : ''}>100</option>
+                            <option value="200" ${tableLimit === 200 ? 'selected' : ''}>200</option>
+                            <option value="500" ${tableLimit === 500 ? 'selected' : ''}>500</option>
+                            <option value="0" ${tableLimit === 0 ? 'selected' : ''}>ALL</option>
+                        </select>
                     </div>
                     
                     <div class="flex items-center gap-4 ml-auto">
@@ -139,6 +169,16 @@ export function render(container) {
             if (cachedMarketState) update(cachedMarketState, cachedProfile, cachedTimeframe);
         });
     });
+
+    // 3. Table Limit Handler
+    const limitSelect = container.querySelector('#table-limit');
+    if (limitSelect) {
+        limitSelect.addEventListener('change', (e) => {
+            tableLimit = parseInt(e.target.value, 10);
+            localStorage.setItem(TABLE_LIMIT_KEY, tableLimit.toString());
+            if (cachedMarketState) update(cachedMarketState, cachedProfile, cachedTimeframe);
+        });
+    }
 
     renderHeader();
 }
@@ -363,7 +403,7 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
                 const checkTfs = ['1MENIT', '5MENIT', '15MENIT', '1JAM'];
                 checkTfs.forEach(t => {
                     const act = profileObj.timeframes?.[t]?.masterSignal?.action || 'WAIT';
-                    if (act === 'BUY') buys++; else if (act === 'SELL') sells++;
+                    if (act === 'LONG') buys++; else if (act === 'SHORT') sells++;
                 });
                 if (buys === checkTfs.length) return 'BULL';
                 if (sells === checkTfs.length) return 'BEAR';
@@ -386,24 +426,25 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
                 }
                 return signalHistory[key].ts;
             })(),
-            isTrap: (master.action === 'BUY' && eff.character_15MENIT === 'ABSORPTION') || (master.action === 'SELL' && eff.character_15MENIT === 'ABSORPTION'),
-            isAlpha: (master.action === 'BUY' && flow.capital_bias_15MENIT === 'ACCUMULATION') || (master.action === 'SELL' && flow.capital_bias_15MENIT === 'DISTRIBUTION')
+            isTrap: (master.action === 'LONG' && eff.character_15MENIT === 'ABSORPTION') || (master.action === 'SHORT' && eff.character_15MENIT === 'ABSORPTION'),
+            isAlpha: (master.action === 'LONG' && flow.capital_bias_15MENIT === 'ACCUMULATION') || (master.action === 'SHORT' && flow.capital_bias_15MENIT === 'DISTRIBUTION')
         };
     });
 
     if (currentSearch) dataArray = dataArray.filter(r => r.id.includes(currentSearch) || r.coin.includes(currentSearch));
 
     // Matrix-level Filtering
+    // Note: masterSignal.action uses LONG/SHORT/NEUTRAL, not BUY/SELL
     if (currentMatrix === 'ALERTS') {
-        dataArray = dataArray.filter(r => (r.action === 'BUY' || r.action === 'SELL') && r.dashboard > 50);
+        dataArray = dataArray.filter(r => (r.action === 'LONG' || r.action === 'SHORT') && r.dashboard > 50);
     }
 
     if (activeFilterChip !== 'ALL') {
         dataArray = dataArray.filter(r => {
             if (activeFilterChip === 'TRENDING') return r.marketRegime.includes('TREND');
             if (activeFilterChip === 'HIGH_VOL') return r.volRegime === 'HIGH_VOL' || r.volRegime === 'EXTREME_VOL';
-            if (activeFilterChip === 'BUY_SIGNAL') return r.action === 'BUY';
-            if (activeFilterChip === 'SELL_SIGNAL') return r.action === 'SELL';
+            if (activeFilterChip === 'BUY_SIGNAL') return r.action === 'LONG';
+            if (activeFilterChip === 'SELL_SIGNAL') return r.action === 'SHORT';
             if (activeFilterChip === 'CONVERGENCE') return r.mtf === 'BULL' || r.mtf === 'BEAR';
             if (activeFilterChip === 'DISCOUNT') return r.vwapDelta < -1.0;
             if (activeFilterChip === 'ARB_OPP') return r.fundingDiv?.hasDivergence === true || r.payout8h > 100;
@@ -412,15 +453,29 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
         });
     }
 
-    const countEl = document.getElementById('global-count');
-    if (countEl) countEl.innerText = `${dataArray.length} Pairs`;
-
+    // Sort before limiting
     dataArray.sort((a, b) => {
         const valA = getSortVal(a, currentSort.column);
         const valB = getSortVal(b, currentSort.column);
         if (typeof valA === 'string') return currentSort.dir === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
         return currentSort.dir === 'asc' ? valA - valB : valB - valA;
     });
+
+    // Apply table limit for performance (after sort, before render)
+    const totalFiltered = dataArray.length;
+    if (tableLimit > 0 && dataArray.length > tableLimit) {
+        dataArray = dataArray.slice(0, tableLimit);
+    }
+
+    // Update count display
+    const countEl = document.getElementById('global-count');
+    if (countEl) {
+        if (tableLimit > 0 && totalFiltered > tableLimit) {
+            countEl.innerText = `${dataArray.length} of ${totalFiltered} Pairs`;
+        } else {
+            countEl.innerText = `${dataArray.length} Pairs`;
+        }
+    }
 
     renderRows(dataArray);
 }
@@ -659,8 +714,8 @@ function renderRows(data) {
             rowHtml += wrap(r.breakout ? `${r.breakout.toFixed(0)}%` : '0%', 'text-center', r.breakout > 70 ? 'text-bb-gold font-bold' : 'text-bb-muted');
             rowHtml += wrap(r.lsi ? r.lsi.toFixed(0) : '-', 'text-center', r.lsi > 65 ? 'text-bb-green' : r.lsi < 35 ? 'text-bb-red' : 'text-bb-muted');
             rowHtml += wrap(r.mode, 'text-center', 'text-[8px] opacity-70');
-            const sigColor = r.signal === 'BUY' ? 'text-bb-green' : r.signal === 'SELL' ? 'text-bb-red' : 'text-bb-muted';
-            const sigText = r.signal === 'BUY' ? 'LONG' : r.signal === 'SELL' ? 'SHORT' : 'WAIT';
+            const sigColor = r.signal === 'LONG' ? 'text-bb-green' : r.signal === 'SHORT' ? 'text-bb-red' : 'text-bb-muted';
+            const sigText = r.signal === 'LONG' ? 'LONG' : r.signal === 'SHORT' ? 'SHORT' : 'WAIT';
             rowHtml += wrap(sigText, 'text-center', `font-black ${sigColor}`);
             rowHtml += wrap(`<div class="w-8 h-1 bg-bb-border/20 mx-auto rounded-full overflow-hidden"><div class="h-full ${getDurColor(r.volQuality)}" style="width: ${r.volQuality}%"></div></div>`, 'text-center');
 
@@ -678,11 +733,11 @@ function renderRows(data) {
 
             if (currentMatrix === 'DECISION') {
                 const action = r.action || 'WAIT';
-                const sigColor = action === 'BUY' ? 'text-bb-green' : action === 'SELL' ? 'text-bb-red' : 'text-bb-muted';
-                const sigText = action === 'BUY' ? 'LONG' : action === 'SELL' ? 'SHORT' : 'WAIT';
+                const sigColor = action === 'LONG' ? 'text-bb-green' : action === 'SHORT' ? 'text-bb-red' : 'text-bb-muted';
+                const sigText = action === 'LONG' ? 'LONG' : action === 'SHORT' ? 'SHORT' : 'WAIT';
 
                 // Color bar based on conviction AND direction
-                const barColor = action === 'BUY' ? 'bg-bb-green' : action === 'SELL' ? 'bg-bb-red' : 'bg-bb-muted opacity-30';
+                const barColor = action === 'LONG' ? 'bg-bb-green' : action === 'SHORT' ? 'bg-bb-red' : 'bg-bb-muted opacity-30';
 
                 rowHtml += wrap(sigText, 'text-center', `font-black ${sigColor}`);
                 rowHtml += wrap(`<div class="h-1 bg-bb-border/20 rounded overflow-hidden"><div class="h-full ${barColor}" style="width: ${r.dashboard}%"></div></div>`, 'text-center');
@@ -788,11 +843,11 @@ function renderRows(data) {
                 const action = r.action || 'WAIT';
                 const urgency = r.dashboard >= 80 ? 'CRITICAL' : r.dashboard >= 60 ? 'HIGH' : 'NORMAL';
                 const urgColor = urgency === 'CRITICAL' ? 'text-bb-red animate-pulse' : urgency === 'HIGH' ? 'text-bb-gold' : 'text-white opacity-40';
-                const sigColor = action === 'BUY' ? 'text-bb-green' : action === 'SELL' ? 'text-bb-red' : 'text-bb-muted';
-                const barColor = action === 'BUY' ? 'bg-bb-green' : action === 'SELL' ? 'bg-bb-red' : 'bg-bb-muted';
+                const sigColor = action === 'LONG' ? 'text-bb-green' : action === 'SHORT' ? 'text-bb-red' : 'text-bb-muted';
+                const barColor = action === 'LONG' ? 'bg-bb-green' : action === 'SHORT' ? 'bg-bb-red' : 'bg-bb-muted';
 
                 rowHtml += wrap(`<span class="${urgColor} font-black text-[8px]">${urgency}</span>`, 'text-center');
-                rowHtml += wrap(`<span class="${sigColor} font-black">${action === 'BUY' ? 'LONG' : action === 'SELL' ? 'SHORT' : 'WAIT'}</span>`, 'text-center');
+                rowHtml += wrap(`<span class="${sigColor} font-black">${action === 'LONG' ? 'LONG' : action === 'SHORT' ? 'SHORT' : 'WAIT'}</span>`, 'text-center');
                 rowHtml += wrap(`<div class="h-1 w-full bg-bb-border/20 rounded overflow-hidden mt-1"><div class="h-full ${barColor}" style="width: ${r.dashboard}%"></div></div>`, 'text-center');
                 rowHtml += wrap(`${r.confCount}/${r.confRequired}`, 'text-center', 'font-bold text-white');
 

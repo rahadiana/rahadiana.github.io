@@ -287,14 +287,46 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
             }
 
             const factors = detail?.adjustmentFactors || [];
-            // Find most significant factor (furthest from 1.0)
-            const topFactor = factors.reduce((prev, curr) => {
+            
+            // Skip universal/coin-level factors that are the same for all signals
+            const UNIVERSAL_FACTORS = ['coinTier', 'coin_tier', 'tier'];
+            const signalSpecificFactors = factors.filter(f => 
+                !UNIVERSAL_FACTORS.includes(f.factor) && 
+                f.factor !== undefined
+            );
+            
+            // Find most significant signal-specific factor (furthest from 1.0)
+            // Fall back to any factor if no signal-specific ones exist
+            const factorsToCheck = signalSpecificFactors.length > 0 ? signalSpecificFactors : factors;
+            const topFactor = factorsToCheck.reduce((prev, curr) => {
                 if (!prev) return curr;
                 return Math.abs(curr.multiplier - 1) > Math.abs(prev.multiplier - 1) ? curr : prev;
             }, null);
 
             const weight = s.weight || 1.0;
-            const factorText = topFactor ? `${topFactor.factor}: ${topFactor.multiplier}x` : 'Neutral';
+            // Format factor name to be more readable and limit decimal places
+            const formatFactorName = (name) => {
+                if (!name) return 'FACTOR';
+                return name
+                    .replace(/([a-z])([A-Z])/g, '$1 $2')
+                    .replace(/_/g, ' ')
+                    .toUpperCase()
+                    .trim();
+            };
+            
+            // Build factor text with additional context for agreement
+            let factorText = 'Neutral';
+            if (topFactor) {
+                const factorName = formatFactorName(topFactor.factor);
+                const multiplierStr = Number(topFactor.multiplier).toFixed(2);
+                
+                // Add context for agreement factor
+                if (topFactor.factor === 'agreement' && topFactor.agreements !== undefined) {
+                    factorText = `${topFactor.agreements}/${topFactor.total} AGREE: ${multiplierStr}X`;
+                } else {
+                    factorText = `${factorName}: ${multiplierStr}X`;
+                }
+            }
             const factorColor = topFactor?.multiplier > 1 ? 'text-bb-green' : topFactor?.multiplier < 1 ? 'text-bb-red' : 'text-bb-muted';
 
             const formattedName = s.key
@@ -311,7 +343,7 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
                     </div>
                     <div class="flex flex-col items-end">
                         <div class="flex items-center gap-1.5">
-                             <span class="text-[8px] font-bold ${s.direction === 'BUY' ? 'text-bb-green' : 'text-bb-red'}">${s.score.toFixed(0)}</span>
+                             <span class="text-[8px] font-bold ${s.direction === 'BUY' ? 'text-bb-green' : s.direction === 'SELL' ? 'text-bb-red' : 'text-bb-muted'}">${s.score.toFixed(0)}</span>
                              <span class="text-[9px] font-black text-bb-gold">${weight.toFixed(2)}w</span>
                         </div>
                         <span class="text-[7px] font-bold ${factorColor} uppercase tracking-tight">${factorText}</span>

@@ -343,12 +343,13 @@ function renderConvergence(marketState, container) {
             tfs: ['1MENIT', '5MENIT', '15MENIT', '1JAM'].map(tf => tfData[tf]?.masterSignal?.action || 'WAIT')
         };
     }).sort((a, b) => {
-        const countA = a.tfs.filter(t => t === 'BUY').length - a.tfs.filter(t => t === 'SELL').length;
-        const countB = b.tfs.filter(t => t === 'BUY').length - b.tfs.filter(t => t === 'SELL').length;
+        // Support both BUY/SELL (legacy) and LONG/SHORT (new) format
+        const countA = a.tfs.filter(t => t === 'BUY' || t === 'LONG').length - a.tfs.filter(t => t === 'SELL' || t === 'SHORT').length;
+        const countB = b.tfs.filter(t => t === 'BUY' || t === 'LONG').length - b.tfs.filter(t => t === 'SELL' || t === 'SHORT').length;
         return Math.abs(countB) - Math.abs(countA);
     });
 
-    const bullishCount = coins.filter(c => c.tfs.filter(t => t === 'BUY').length > c.tfs.filter(t => t === 'SELL').length).length;
+    const bullishCount = coins.filter(c => c.tfs.filter(t => t === 'BUY' || t === 'LONG').length > c.tfs.filter(t => t === 'SELL' || t === 'SHORT').length).length;
     const breadthPct = (bullishCount / coins.length) * 100;
 
     container.innerHTML = `
@@ -358,7 +359,7 @@ function renderConvergence(marketState, container) {
                     <span class="text-[9px] font-black text-white group-hover:text-bb-gold transition-colors">${c.coin}</span>
                     <div class="flex gap-1">
                         ${c.tfs.map(act => `
-                            <div class="w-1.5 h-3 rounded-full ${act === 'BUY' ? 'bg-bb-green shadow-[0_0_4px_#22c55e]' : act === 'SELL' ? 'bg-bb-red shadow-[0_0_4px_#ef4444]' : 'bg-white/10'}"></div>
+                            <div class="w-1.5 h-3 rounded-full ${(act === 'BUY' || act === 'LONG') ? 'bg-bb-green shadow-[0_0_4px_#22c55e]' : (act === 'SELL' || act === 'SHORT') ? 'bg-bb-red shadow-[0_0_4px_#ef4444]' : 'bg-white/10'}"></div>
                         `).join('')}
                     </div>
                 </div>

@@ -141,7 +141,8 @@ function updateTable() {
 
     const createProfileCell = (m) => {
         const rColor = getRatioColor(m.ratio);
-        const rLabel = m.ratio >= 0.10 ? 'BUY' : m.ratio <= -0.10 ? 'SELL' : 'NEUT';
+        // Use LONG/SHORT to match signal output format
+        const rLabel = m.ratio >= 0.10 ? 'LONG' : m.ratio <= -0.10 ? 'SHORT' : 'NEUT';
 
         // mini bar and spike
         const avgTag = m.avgSpike > 1.5 ? `<span class="text-bb-gold">${m.avgSpike.toFixed(1)}x</span>` : `<span class="text-bb-muted/30">AVG</span>`;

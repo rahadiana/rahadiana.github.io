@@ -210,8 +210,11 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
 
     if (elSmiLabel) {
         const dir = smi.direction || 'NEUTRAL';
-        elSmiLabel.innerText = dir === 'BUY' ? 'HEAVY ACCUMULATION' : dir === 'SELL' ? 'HEAVY DISTRIBUTION' : 'EQUILIBRIUM';
-        elSmiLabel.className = `text-[8px] font-bold tracking-widest uppercase ${dir === 'BUY' ? 'text-bb-green' : dir === 'SELL' ? 'text-bb-red' : 'text-bb-blue'}`;
+        // Support both BUY/SELL (legacy) and LONG/SHORT (new)
+        const isLong = dir === 'BUY' || dir === 'LONG';
+        const isShort = dir === 'SELL' || dir === 'SHORT';
+        elSmiLabel.innerText = isLong ? 'HEAVY ACCUMULATION' : isShort ? 'HEAVY DISTRIBUTION' : 'EQUILIBRIUM';
+        elSmiLabel.className = `text-[8px] font-bold tracking-widest uppercase ${isLong ? 'text-bb-green' : isShort ? 'text-bb-red' : 'text-bb-blue'}`;
     }
 
     if (elSmiActivity) {

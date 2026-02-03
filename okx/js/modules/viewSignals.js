@@ -151,7 +151,10 @@ function updateAttribution(signals) {
 
     el.innerHTML = items.map(item => {
         const share = totalScore > 0 ? (item.normalizedScore / totalScore) * 100 : 0;
-        const color = item.direction === 'BUY' ? 'text-bb-green bg-bb-green' : item.direction === 'SELL' ? 'text-bb-red bg-bb-red' : 'text-bb-muted bg-bb-muted';
+        // Support both BUY/SELL (legacy) and LONG/SHORT (new)
+        const isLong = item.direction === 'BUY' || item.direction === 'LONG';
+        const isShort = item.direction === 'SELL' || item.direction === 'SHORT';
+        const color = isLong ? 'text-bb-green bg-bb-green' : isShort ? 'text-bb-red bg-bb-red' : 'text-bb-muted bg-bb-muted';
 
         return `
             <div class="grid grid-cols-12 gap-2 p-2 border-b border-bb-border/30 hover:bg-white/5 items-center text-xs group">
@@ -250,7 +253,8 @@ function updateConfluence(data, signals, master, syn) {
         },
         TECH: {
             title: 'TECH',
-            bias: master.action === 'BUY' ? 'BULL' : master.action === 'SELL' ? 'BEAR' : 'NEUT',
+            // Support both BUY/SELL (legacy) and LONG/SHORT (new)
+            bias: (master.action === 'BUY' || master.action === 'LONG') ? 'BULL' : (master.action === 'SELL' || master.action === 'SHORT') ? 'BEAR' : 'NEUT',
             val: (master.confidence || 0).toFixed(0) + '%'
         }
     };

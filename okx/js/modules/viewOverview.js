@@ -145,8 +145,11 @@ function updateTable(items) {
 
     tbody.innerHTML = items.map(item => {
         const pColor = item.chg24h >= 0 ? 'text-bb-green' : 'text-bb-red';
-        const sColor = item.action === 'BUY' ? 'text-bb-green' : item.action === 'SELL' ? 'text-bb-red' : 'text-bb-muted';
-        const bgRow = item.action === 'BUY' ? 'hover:bg-green-900/10' : item.action === 'SELL' ? 'hover:bg-red-900/10' : 'hover:bg-white/5';
+        // Support both BUY/SELL (legacy) and LONG/SHORT (new)
+        const isLong = item.action === 'BUY' || item.action === 'LONG';
+        const isShort = item.action === 'SELL' || item.action === 'SHORT';
+        const sColor = isLong ? 'text-bb-green' : isShort ? 'text-bb-red' : 'text-bb-muted';
+        const bgRow = isLong ? 'hover:bg-green-900/10' : isShort ? 'hover:bg-red-900/10' : 'hover:bg-white/5';
 
         return `
             <tr class="cursor-pointer transition-colors ${bgRow} group border-b border-bb-border/30" onclick="window.dashboardNavigate('${item.fullCoin}')">
@@ -159,7 +162,7 @@ function updateTable(items) {
                 <td class="p-3 font-mono text-white">$${item.price.toFixed(item.price < 1 ? 5 : 2)}</td>
                 <td class="p-3 font-mono text-right ${pColor}">${item.chg24h > 0 ? '+' : ''}${item.chg24h.toFixed(2)}%</td>
                 <td class="p-3 text-center">
-                    <span class="px-2 py-0.5 rounded text-[10px] font-bold border ${item.action === 'BUY' ? 'border-green-800 bg-green-900/40 text-green-300' : item.action === 'SELL' ? 'border-red-800 bg-red-900/40 text-red-300' : 'border-gray-700 text-gray-400'}">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold border ${isLong ? 'border-green-800 bg-green-900/40 text-green-300' : isShort ? 'border-red-800 bg-red-900/40 text-red-300' : 'border-gray-700 text-gray-400'}">
                         ${item.action}
                     </span>
                 </td>

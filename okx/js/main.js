@@ -19,10 +19,12 @@ import * as ViewP2P from './modules/viewP2P.js';
 import * as ViewSynthesis from './modules/viewSynthesis.js';
 import * as ViewAutomation from './modules/viewAutomation.js';
 import * as ViewSimulation from './modules/viewSimulation.js';
+import * as ViewSignalComposer from './modules/viewSignalComposer.js';
 import P2PMesh from './p2p.js';
 
 // Configuration
 const WS_URL = 'wss://eofficev2.bekasikota.go.id/okx-ws';
+// const WS_URL = 'ws://localhost:8020';
 const VIEWS = {
     'GLOBAL': ViewGlobal,
     'STRATEGY': ViewStrategy,
@@ -37,7 +39,8 @@ const VIEWS = {
     'VOL': ViewVol,
     'SYNTHESIS': ViewSynthesis,
     'AUTOMATION': ViewAutomation,
-    'SIMULATION': ViewSimulation
+    'SIMULATION': ViewSimulation,
+    'COMPOSER': ViewSignalComposer
 };
 
 // State
@@ -48,6 +51,7 @@ let currentSubTab = 'MAIN';
 let reconnectInterval = null;
 
 const marketState = {};
+window.marketState = marketState; // Expose for Signal Composer
 let selectedCoin = null;
 let selectedProfile = 'MODERATE';
 let selectedTimeframe = '15MENIT';
@@ -129,7 +133,7 @@ function updateStatusText(text) {
 setInterval(() => {
     const mpsEl = document.getElementById('mps-text');
     if (mpsEl) {
-        const mps = meshStats.messageCount;
+        const mps = Math.round(meshStats.messageCount / 2); // Divide by 2 since interval is 2s
         mpsEl.innerText = `${mps} MPS`;
 
         // Dynamic coloring based on health
@@ -142,7 +146,7 @@ setInterval(() => {
         }
     }
     meshStats.messageCount = 0;
-}, 1000);
+}, 2000);
 
 
 // ============================================
@@ -209,7 +213,7 @@ function initTabs() {
 }
 
 function switchTab(tabName) {
-    if (!['GLOBAL', 'STRATEGY', 'DETAILS', 'VISUAL', 'INFO', 'P2P', 'AUTOMATION', 'SIMULATION'].includes(tabName)) return;
+    if (!['GLOBAL', 'STRATEGY', 'DETAILS', 'VISUAL', 'INFO', 'P2P', 'AUTOMATION', 'SIMULATION', 'COMPOSER'].includes(tabName)) return;
 
     // Lifecycle cleanup for outgoing tab/subtab
     if (currentTab === 'DETAILS' && tabName !== 'DETAILS') {
@@ -251,6 +255,9 @@ function switchTab(tabName) {
     } else if (tabName === 'SIMULATION') {
         detailsSubnav.classList.add('hidden');
         ViewSimulation.render(viewContainer);
+    } else if (tabName === 'COMPOSER') {
+        detailsSubnav.classList.add('hidden');
+        ViewSignalComposer.render(viewContainer);
     } else {
         detailsSubnav.classList.add('hidden');
         if (tabName === 'GLOBAL') ViewGlobal.render(viewContainer);
@@ -518,11 +525,21 @@ function connect() {
 
 const pendingUpdates = new Set();
 let renderingHeartbeat = null;
+let lastRenderTime = 0;
+const MIN_RENDER_INTERVAL = 400; // Minimum 400ms between renders
 
 function startRenderingHeartbeat() {
     if (renderingHeartbeat) return;
+    
+    // 🎨 UI RENDERING LOOP (500ms with throttle) - For display only
+    // Trading engines (Simulation/Composer) run instantly in handleIncomingStream
     renderingHeartbeat = setInterval(() => {
         if (pendingUpdates.size === 0) return;
+        
+        // Throttle: skip if last render was too recent
+        const now = Date.now();
+        if (now - lastRenderTime < MIN_RENDER_INTERVAL) return;
+        lastRenderTime = now;
 
         // 1. Process all pending coins
         pendingUpdates.forEach(coin => {
@@ -537,11 +554,8 @@ function startRenderingHeartbeat() {
         // 3. Execution Automation Engine (Webhook Dispatcher)
         ViewAutomation.runAutomationEngine(marketState);
 
-        // 4. Trade Simulation Engine (Virtual PnL Tracking)
-        ViewSimulation.runSimulationEngine(marketState);
-
         pendingUpdates.clear();
-    }, 300); // 300ms Heartbeat: High enough to feel real-time, low enough to save CPU
+    }, 500); // 500ms Heartbeat: Better CPU efficiency for UI
 }
 
 /**
@@ -618,7 +632,12 @@ function handleIncomingStream(data, source = 'WS') {
         };
     }
 
-    // Queue for UI update
+    // ⚡ INSTANT EXECUTION: Trading engines run immediately on data (memory-only, no DOM)
+    // These are pure JS calculations, no throttling needed
+    ViewSimulation.runSimulationEngine(marketState);
+    ViewSignalComposer.runComposerEngine(marketState);
+
+    // Queue for UI update (DOM rendering is throttled separately)
     pendingUpdates.add(coin);
 
     if (!selectedCoin) selectCoin(coin);
@@ -642,7 +661,8 @@ function updateTicker(data) {
         masterSig = data.masterSignals['15MENIT'].MODERATE.action;
         conf = data.masterSignals['15MENIT'].MODERATE.confidence;
     }
-    const sColor = masterSig === 'BUY' ? 'text-bb-green' : masterSig === 'SELL' ? 'text-bb-red' : 'text-bb-muted';
+    // Support both old (BUY/SELL) and new (LONG/SHORT) signal format
+    const sColor = (masterSig === 'BUY' || masterSig === 'LONG') ? 'text-bb-green' : (masterSig === 'SELL' || masterSig === 'SHORT') ? 'text-bb-red' : 'text-bb-muted';
 
     tickerContainer.innerHTML = `
         <div class="flex gap-4 items-center w-full">
@@ -663,7 +683,7 @@ function updateTicker(data) {
     `;
 }
 
-// Peer Refresh Loop
+// Peer Refresh Loop (reduced frequency for CPU efficiency)
 setInterval(() => {
     if (currentTab === 'INFO' && p2p) {
         InfoView.update({
@@ -671,7 +691,7 @@ setInterval(() => {
             meshStats: { ...meshStats } // Pass real-time throughput & mode
         });
     }
-}, 1000);
+}, 2000);
 
 // Init
 initTabs();

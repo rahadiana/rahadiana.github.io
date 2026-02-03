@@ -15,9 +15,9 @@ function updateCorrelation(signals) {
         }
     });
 
-    // Count by direction
-    const buyCount = items.filter(i => i.dir === 'BUY').length;
-    const sellCount = items.filter(i => i.dir === 'SELL').length;
+    // Count by direction - support both BUY/SELL (legacy) and LONG/SHORT (new)
+    const buyCount = items.filter(i => i.dir === 'BUY' || i.dir === 'LONG').length;
+    const sellCount = items.filter(i => i.dir === 'SELL' || i.dir === 'SHORT').length;
     const neutralCount = items.filter(i => i.dir === 'NEUTRAL' || i.dir === 'NO_TRADE').length;
     const total = items.length;
 
