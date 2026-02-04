@@ -33,6 +33,7 @@ class P2PMesh {
         };
         this.MAX_RETRIES = 5; // allow more quick retries
         this.CONNECTION_TIMEOUT = 10000; // 10s per attempt (faster failure)
+        this.pendingAnswers = new Map(); // id -> answer (buffered answers)
     }
 
     sendMessage(msg) {
@@ -232,8 +233,35 @@ class P2PMesh {
         }
 
         try {
-            console.log(`[P2P] 📬 Processing answer from: ${senderId}`);
-            await pc.setRemoteDescription(new RTCSessionDescription(answer));
+            console.log(`[P2P] 📬 Processing answer from: ${senderId} (signalingState: ${pc.signalingState})`);
+
+            // Only apply remote answer when we currently have a local offer.
+            // If PC is already 'stable', the answer was likely already applied
+            // or a glare resolution occurred; ignore to avoid InvalidStateError.
+            if (pc.signalingState === 'have-local-offer' || pc.signalingState === 'have-local-pranswer') {
+                await pc.setRemoteDescription(new RTCSessionDescription(answer));
+            } else if (pc.signalingState === 'stable') {
+                console.log(`[P2P] Ignoring answer from ${senderId}: already stable`);
+                return;
+            } else {
+                // Buffer the answer briefly in case of race; try applying once shortly after.
+                console.log(`[P2P] Buffering answer from ${senderId} (state: ${pc.signalingState})`);
+                this.pendingAnswers.set(senderId, answer);
+                setTimeout(async () => {
+                    const pending = this.pendingAnswers.get(senderId);
+                    const curPc = this.peers.get(senderId);
+                    if (!pending || !curPc) return;
+                    if (curPc.signalingState === 'have-local-offer' || curPc.signalingState === 'have-local-pranswer') {
+                        try {
+                            await curPc.setRemoteDescription(new RTCSessionDescription(pending));
+                            this.pendingAnswers.delete(senderId);
+                        } catch (e) {
+                            console.warn(`[P2P] Failed applying buffered answer for ${senderId}:`, e.message);
+                        }
+                    }
+                }, 500);
+                return;
+            }
 
             // Drain buffered ICE candidates
             const buffer = this.iceCandidateBuffers.get(senderId) || [];
