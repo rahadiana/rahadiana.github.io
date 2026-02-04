@@ -49,6 +49,9 @@ let p2p = null;
 let currentTab = 'GLOBAL';
 let currentSubTab = 'MAIN';
 let reconnectInterval = null;
+// Only attempt automatic reconnects when this flag is true. Set to false
+// when intentionally closing the socket (e.g., user logout or switching modes).
+let shouldReconnect = true;
 
 const marketState = {};
 window.marketState = marketState; // Expose for Signal Composer
@@ -398,9 +401,20 @@ function sendWebRTCCapability() {
 }
 
 function connect() {
+    // Prevent creating duplicate sockets if one is already open or connecting
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        console.log('[WS] connect() skipped: socket already open/connecting');
+        return;
+    }
+
     ws = new WebSocket(WS_URL);
 
     ws.onopen = () => {
+        // Stop any reconnect loop immediately once we have a live socket
+        if (reconnectInterval) {
+            clearInterval(reconnectInterval);
+            reconnectInterval = null;
+        }
         console.log('Main WS Connected');
         statusDot.className = 'w-1.5 h-1.5 rounded-full bg-bb-green animate-pulse';
         statusText.innerText = 'PROVING CAPABILITY...';
@@ -420,9 +434,12 @@ function connect() {
             safeSend({ type: 'p2p:ready' });
 
             // Periodically re-assert readiness to prevent state drift
-            setInterval(() => {
-                safeSend({ type: 'p2p:ready' });
-            }, 15000);
+            // Keep reference so we can clear when reconnecting
+            if (!p2p._readyInterval) {
+                p2p._readyInterval = setInterval(() => {
+                    safeSend({ type: 'p2p:ready' });
+                }, 15000);
+            }
         };
 
         if (!p2p.isSuperPeer) {
@@ -528,9 +545,38 @@ function connect() {
         statusDot.className = 'w-1.5 h-1.5 rounded-full bg-bb-red';
         statusText.innerText = 'DISCONNECTED';
         statusText.className = 'text-bb-red';
-        if (!reconnectInterval) reconnectInterval = setInterval(connect, 3000);
+        // Clear any P2P ready re-assert interval to avoid stacked timers
+        if (p2p && p2p._readyInterval) {
+            clearInterval(p2p._readyInterval);
+            p2p._readyInterval = null;
+        }
+        // Only start reconnect loop if we should (i.e., unexpected loss).
+        if (shouldReconnect && !reconnectInterval) reconnectInterval = setInterval(connect, 3000);
     };
 }
+
+// Close WebSocket intentionally. If `reconnect` is false (default), automatic
+// reconnects will be disabled. Call `disconnect(true)` to close but allow
+// reconnect attempts.
+function disconnect(reconnect = false) {
+    shouldReconnect = reconnect;
+    if (ws) {
+        try {
+            ws.close();
+        } catch (e) {
+            console.warn('[WS] Error closing socket:', e.message);
+        }
+        ws = null;
+    }
+    if (reconnectInterval) {
+        clearInterval(reconnectInterval);
+        reconnectInterval = null;
+    }
+}
+
+// Expose control to the console/app for manual use
+window.app = window.app || {};
+window.app.disconnect = disconnect;
 
 const pendingUpdates = new Set();
 let renderingHeartbeat = null;
