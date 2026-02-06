@@ -519,8 +519,8 @@ function updateVolumeFreq(vol, freq, custom, timeframe) {
     // 1.3 Volume Breakdown
     const elVol = document.getElementById('vol-breakdown');
     if (elVol && vol) {
-        const vBuy = vol[`vol_buy_${timeframe}`] || 0;
-        const vSell = vol[`vol_sell_${timeframe}`] || 0;
+        const vBuy = vol[`vol_BUY_${timeframe}`] || 0;
+        const vSell = vol[`vol_SELL_${timeframe}`] || 0;
         const total = vBuy + vSell;
         const buyPct = total > 0 ? (vBuy / total) * 100 : 50;
 
@@ -557,8 +557,8 @@ function updateVolumeFreq(vol, freq, custom, timeframe) {
     // 1.4 Freq Breakdown
     const elFreq = document.getElementById('freq-breakdown');
     if (elFreq && freq) {
-        const fBuy = freq[`freq_buy_${timeframe}`] || 0;
-        const fSell = freq[`freq_sell_${timeframe}`] || 0;
+        const fBuy = freq[`freq_BUY_${timeframe}`] || 0;
+        const fSell = freq[`freq_SELL_${timeframe}`] || 0;
         const ratio = fSell > 0 ? fBuy / fSell : fBuy;
 
         const isRetail = ratio > 2 && custom?.tradeSizeImbalance < 0;

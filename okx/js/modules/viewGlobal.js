@@ -228,8 +228,8 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
         const fundAn = analytics.funding || {};
 
         const getSpikeData = (tf, mult) => {
-            const b = (vol[`vol_buy_${tf}`] || 0);
-            const s = (vol[`vol_sell_${tf}`] || 0);
+            const b = (vol[`vol_BUY_${tf}`] || 0);
+            const s = (vol[`vol_SELL_${tf}`] || 0);
             const t = b + s;
             const h1Base = ((vol.vol_buy_1JAM || 0) + (vol.vol_sell_1JAM || 0)) / 60;
             const ratio = t > 0 ? (b - s) / t : 0;
@@ -249,8 +249,8 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
 
         const getFreqData = (tf) => {
             const freq = raw.FREQ || sigRoot.FREQ || {};
-            const b = freq[`freq_buy_${tf}`] || 0;
-            const s = freq[`freq_sell_${tf}`] || 0;
+            const b = freq[`freq_BUY_${tf}`] || 0;
+            const s = freq[`freq_SELL_${tf}`] || 0;
             const t = b + s;
             const net = b - s;
             const ratio = t > 0 ? net / t : 0;

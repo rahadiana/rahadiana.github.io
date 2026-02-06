@@ -86,8 +86,8 @@ function updateTable() {
         const price = raw.PRICE || {};
 
         const getMetrics = (tf, mult) => {
-            const b = vol[`vol_buy_${tf}`] || 0;
-            const s = vol[`vol_sell_${tf}`] || 0;
+            const b = vol[`vol_BUY_${tf}`] || 0;
+            const s = vol[`vol_SELL_${tf}`] || 0;
             const t = b + s;
             const ratio = t > 0 ? (b - s) / t : 0;
 

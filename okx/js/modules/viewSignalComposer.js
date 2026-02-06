@@ -1305,8 +1305,8 @@ function computeData(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
 
     // Helper for volume spike
     const getVolSpike = (tf, mult) => {
-        const b = (vol[`vol_buy_${tf}`] || 0);
-        const s = (vol[`vol_sell_${tf}`] || 0);
+        const b = (vol[`vol_BUY_${tf}`] || 0);
+        const s = (vol[`vol_SELL_${tf}`] || 0);
         const t = b + s;
         const h1Base = ((vol.vol_buy_1JAM || 0) + (vol.vol_sell_1JAM || 0)) / 60;
         const spike = h1Base > 0 ? (t / mult) / h1Base : 0;
@@ -1321,8 +1321,8 @@ function computeData(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
 
     // Helper for frequency
     const getFreq = (tf) => {
-        const b = freq[`freq_buy_${tf}`] || 0;
-        const s = freq[`freq_sell_${tf}`] || 0;
+        const b = freq[`freq_BUY_${tf}`] || 0;
+        const s = freq[`freq_SELL_${tf}`] || 0;
         return { buy: b, sell: s, total: b + s, net: b - s, ratio: (b + s) > 0 ? (b - s) / (b + s) : 0 };
     };
 

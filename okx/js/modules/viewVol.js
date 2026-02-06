@@ -69,8 +69,8 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
     ];
 
     const processedData = tfs.map(tf => {
-        const buy = volData[`vol_buy_${tf.key}`] || 0;
-        const sell = volData[`vol_sell_${tf.key}`] || 0;
+        const buy = volData[`vol_BUY_${tf.key}`] || 0;
+        const sell = volData[`vol_SELL_${tf.key}`] || 0;
         const total = buy + sell;
         const buyPct = total > 0 ? (buy / total) * 100 : 50;
         const pChg = priceData[`percent_change_${tf.key}`] || 0;

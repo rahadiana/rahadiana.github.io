@@ -73,8 +73,8 @@ function updateUI() {
         const price = data.raw?.PRICE || {};
 
         const getBuyPct = (tf) => {
-            const b = parseFloat(vol[`vol_buy_${tf}`]) || 0;
-            const s = parseFloat(vol[`vol_sell_${tf}`]) || 0;
+            const b = parseFloat(vol[`vol_BUY_${tf}`]) || 0;
+            const s = parseFloat(vol[`vol_SELL_${tf}`]) || 0;
             const t = b + s;
             return t > 0 ? (b / t) * 100 : 50;
         };

@@ -23,8 +23,8 @@ import * as ViewSignalComposer from './modules/viewSignalComposer.js';
 import P2PMesh from './p2p.js';
 
 // Configuration
-const WS_URL = 'wss://eofficev2.bekasikota.go.id/okx-ws';
-// const WS_URL = 'ws://localhost:8020';
+// const WS_URL = 'wss://eofficev2.bekasikota.go.id/okx-ws';
+const WS_URL = 'ws://localhost:8020';
 const VIEWS = {
     'GLOBAL': ViewGlobal,
     'STRATEGY': ViewStrategy,
