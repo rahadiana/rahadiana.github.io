@@ -125,7 +125,7 @@ export function render(container) {
 
 export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
     const micro = data.signals?.profiles?.[profile]?.timeframes?.[timeframe]?.signals?.microstructure || {};
-
+    
     // 1. VPIN Update
     const vpin = micro.vpin || { rawValue: 0, metadata: {} };
     const vpinArc = document.getElementById('vpin-arc');

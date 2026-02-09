@@ -539,14 +539,29 @@ function renderLadder() {
         bidsRes = [...(dp.cumulativeBids || [])].slice(0, 15);
     }
 
+    // Try to fetch iceberg reasons for current active coin from HL detector
+    const sig = (window.hiddenLiquidityDetector && window.hiddenLiquidityDetector.getSignal) ? window.hiddenLiquidityDetector.getSignal(activeCoinId) : null;
+    const icebergReasons = sig?.icebergReasons || [];
+
     const renderRow = (item, type) => {
         const sideColor = type === 'ask' ? 'bg-bb-red' : 'bg-bb-green';
         const textColor = type === 'ask' ? 'text-bb-red' : 'text-bb-green';
         const barPct = Math.min(100, ((item.cumSize || 0) / (maxCum * 0.8)) * 100);
 
+        // try match an iceberg reason by price (tolerance relative)
+        let hlBadge = '';
+        let hlClass = '';
+        try {
+            const match = icebergReasons.find(r => Math.abs((r.price || 0) - (item.price || 0)) <= Math.max((item.price || 1) * 0.0005, 0.0001));
+            if (match) {
+                hlBadge = `<span class="ml-1 text-[8px] font-black text-bb-gold">HL:${match.refillCount} • ${Utils.formatNumber(match.tradeVolume || 0)}</span>`;
+                hlClass = 'ring-1 ring-bb-gold/40 bg-white/3';
+            }
+        } catch (e) { /* ignore */ }
+
         return `
-            <div class="flex items-center gap-2 h-4 group hover:bg-white/5 px-1 transition-all duration-300">
-                <div class="w-16 text-[9px] font-mono ${textColor} text-left tracking-tight">${(item.price || 0).toFixed(getItemPrecision())}</div>
+            <div class="flex items-center gap-2 h-4 group hover:bg-white/5 px-1 transition-all duration-300 ${hlClass}">
+                <div class="w-16 text-[9px] font-mono ${textColor} text-left tracking-tight">${(item.price || 0).toFixed(getItemPrecision())}${hlBadge}</div>
                 <div class="flex-1 h-2.5 bg-bb-dark/50 relative overflow-hidden rounded-sm border border-white/5">
                     <div class="absolute inset-y-0 left-0 ${sideColor} opacity-40 transition-all duration-500" style="width: ${barPct}%"></div>
                     <div class="absolute inset-x-0 inset-y-0 flex items-center justify-end px-2 text-[7px] font-bold text-white/60 z-10">

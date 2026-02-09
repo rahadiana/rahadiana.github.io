@@ -770,8 +770,8 @@ const STRATEGIES = {
         filter: (id, d) => {
             const vol = d.raw?.VOL || {};
             const freq = d.raw?.FREQ || {};
-            const v15 = (vol.vol_buy_15MENIT || 0) + (vol.vol_sell_15MENIT || 0);
-            const f15 = (freq.freq_buy_15MENIT || 0) + (freq.freq_sell_15MENIT || 0);
+            const v15 = (vol.vol_BUY_15MENIT || 0) + (vol.vol_SELL_15MENIT || 0);
+            const f15 = (freq.freq_BUY_15MENIT || 0) + (freq.freq_SELL_15MENIT || 0);
             const intense = v15 > 0 ? (f15 / (v15 / 1000)) : 0;
             return intense > 80 ? { bias: 'STAY AWAY', factors: ['HFT Warfare', 'High Toxic Flow', 'Slippage Danger'], confidence: 99 } : null;
         }

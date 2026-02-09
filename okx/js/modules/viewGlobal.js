@@ -12,7 +12,7 @@ let cachedProfile = 'AGGRESSIVE';
 let cachedTimeframe = '15MENIT';
 
 // ⚡ Export settings for other modules (like Composer)
-window.globalViewSettings = { 
+window.globalViewSettings = {
     get profile() { return cachedProfile; },
     get timeframe() { return cachedTimeframe; }
 };
@@ -231,7 +231,7 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
             const b = (vol[`vol_BUY_${tf}`] || 0);
             const s = (vol[`vol_SELL_${tf}`] || 0);
             const t = b + s;
-            const h1Base = ((vol.vol_buy_1JAM || 0) + (vol.vol_sell_1JAM || 0)) / 60;
+            const h1Base = ((vol.vol_BUY_1JAM || 0) + (vol.vol_SELL_1JAM || 0)) / 60;
             const ratio = t > 0 ? (b - s) / t : 0;
             const durability = h1Base > 0 ? Math.min(1.0, (t / mult) / h1Base) : 0;
             const spike = h1Base > 0 ? (t / mult) / h1Base : 0;
@@ -427,7 +427,19 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
                 return signalHistory[key].ts;
             })(),
             isTrap: (master.action === 'LONG' && eff.character_15MENIT === 'ABSORPTION') || (master.action === 'SHORT' && eff.character_15MENIT === 'ABSORPTION'),
-            isAlpha: (master.action === 'LONG' && flow.capital_bias_15MENIT === 'ACCUMULATION') || (master.action === 'SHORT' && flow.capital_bias_15MENIT === 'DISTRIBUTION')
+            isAlpha: (master.action === 'LONG' && flow.capital_bias_15MENIT === 'ACCUMULATION') || (master.action === 'SHORT' && flow.capital_bias_15MENIT === 'DISTRIBUTION'),
+
+            // META-GUARD INTEGRATION
+            guard: (() => {
+                const mg = sigRoot.institutional_guard || data.institutional_guard || {};
+                return {
+                    status: mg.meta_guard_status || 'SCANNING',
+                    blockReason: mg.block_reason || null,
+                    allowed: mg.execution_allowed !== false,
+                    noiseLevel: mg.noise_level || 'CLEAN',
+                    confAdj: mg.confidence_adjustment || 0
+                };
+            })()
         };
     });
 
@@ -498,6 +510,7 @@ function renderHeader() {
         html += th('CHG% 24H', 'chg', 'text-right', 'w-24');
         html += th('URGENCY', 'dashboard', 'text-center');
         html += th('SIGNAL', 'action', 'text-center');
+        html += th('🛡️ GUARD', 'guard', 'text-center');
         html += th('SCORE', 'dashboard', 'text-center');
         html += th('CONFLU', 'confCount', 'text-center');
         html += th('SNIPER', 'isAlpha', 'text-center');
@@ -539,6 +552,7 @@ function renderHeader() {
         html += th('CHG%', 'chg', 'text-right', 'w-24');
         if (currentMatrix === 'DECISION') {
             html += th('SIGNAL', 'action', 'text-center');
+            html += th('🛡️ GUARD', 'guard', 'text-center');
             html += th('SCORE', 'dashboard', 'text-center');
             html += th('CONF', 'conf', 'text-center');
             html += th('CONFLU', 'confCount', 'text-center');
@@ -740,6 +754,16 @@ function renderRows(data) {
                 const barColor = action === 'LONG' ? 'bg-bb-green' : action === 'SHORT' ? 'bg-bb-red' : 'bg-bb-muted opacity-30';
 
                 rowHtml += wrap(sigText, 'text-center', `font-black ${sigColor}`);
+
+                // GUARD Cell
+                const gStatus = r.guard?.status || 'SCANNING';
+                const gColor = gStatus === 'ALLOW' ? 'text-bb-green bg-bb-green/10 border-bb-green/30' :
+                    gStatus === 'BLOCK' ? 'text-bb-red bg-bb-red/10 border-bb-red/30 animate-pulse' :
+                        gStatus === 'DOWNGRADE' ? 'text-bb-gold bg-bb-gold/10 border-bb-gold/30' :
+                            'text-bb-muted bg-white/5 border-bb-border/30';
+                const gReason = r.guard?.blockReason ? ` title="${r.guard.blockReason}"` : '';
+                rowHtml += wrap(`<span class="px-1.5 py-0.5 text-[8px] font-black border rounded ${gColor}"${gReason}>${gStatus}</span>`, 'text-center');
+
                 rowHtml += wrap(`<div class="h-1 bg-bb-border/20 rounded overflow-hidden"><div class="h-full ${barColor}" style="width: ${r.dashboard}%"></div></div>`, 'text-center');
                 rowHtml += wrap(`${Math.round(r.conf)}%`, 'text-center', 'text-bb-gold font-bold');
                 rowHtml += wrap(`${r.confCount}/${r.confRequired}`, 'text-center', 'text-white opacity-60');
@@ -848,6 +872,16 @@ function renderRows(data) {
 
                 rowHtml += wrap(`<span class="${urgColor} font-black text-[8px]">${urgency}</span>`, 'text-center');
                 rowHtml += wrap(`<span class="${sigColor} font-black">${action === 'LONG' ? 'LONG' : action === 'SHORT' ? 'SHORT' : 'WAIT'}</span>`, 'text-center');
+
+                // GUARD Cell for ALERTS
+                const gStatus = r.guard?.status || 'SCANNING';
+                const gColor = gStatus === 'ALLOW' ? 'text-bb-green bg-bb-green/10 border-bb-green/30' :
+                    gStatus === 'BLOCK' ? 'text-bb-red bg-bb-red/10 border-bb-red/30 animate-pulse' :
+                        gStatus === 'DOWNGRADE' ? 'text-bb-gold bg-bb-gold/10 border-bb-gold/30' :
+                            'text-bb-muted bg-white/5 border-bb-border/30';
+                const gReason = r.guard?.blockReason ? ` title="${r.guard.blockReason}"` : '';
+                rowHtml += wrap(`<span class="px-1.5 py-0.5 text-[8px] font-black border rounded ${gColor}"${gReason}>${gStatus}</span>`, 'text-center');
+
                 rowHtml += wrap(`<div class="h-1 w-full bg-bb-border/20 rounded overflow-hidden mt-1"><div class="h-full ${barColor}" style="width: ${r.dashboard}%"></div></div>`, 'text-center');
                 rowHtml += wrap(`${r.confCount}/${r.confRequired}`, 'text-center', 'font-bold text-white');
 

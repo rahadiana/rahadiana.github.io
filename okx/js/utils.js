@@ -35,6 +35,26 @@ export const getColor = (value, isBullishHigh = true) => {
     }
 };
 
+// Helper to download a string as a file (CSV/JSON/etc.)
+export function downloadFile(content, filename = 'download.txt', mime = 'text/plain') {
+    try {
+        const blob = new Blob([content], { type: mime });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        return true;
+    } catch (e) {
+        console.error('downloadFile error', e);
+        return false;
+    }
+}
+
 // Hybrid Export for resolution resilience
 export default {
     formatCurrency,

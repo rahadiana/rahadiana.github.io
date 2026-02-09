@@ -40,6 +40,30 @@ let state = {
 // Internal engine state
 const SIM_STORAGE_KEY = 'bb_simulation_state';
 
+// Helper: Update Meta-Guard status in header
+function updateGuardStatus(coin) {
+    const el = document.getElementById('sim-guard-status');
+    if (!el) return;
+
+    const mkt = window.marketState || {};
+    const data = mkt[coin] || mkt[coin + '-USDT'];
+    const guard = data?.signals?.institutional_guard || data?.institutional_guard || {};
+    const status = guard.meta_guard_status || 'SCANNING';
+
+    el.innerText = status;
+
+    if (status === 'ALLOW') {
+        el.className = 'text-lg font-black text-bb-green';
+    } else if (status === 'BLOCK') {
+        el.className = 'text-lg font-black text-bb-red animate-pulse';
+        el.title = guard.block_reason || 'BLOCKED';
+    } else if (status === 'DOWNGRADE') {
+        el.className = 'text-lg font-black text-bb-gold';
+    } else {
+        el.className = 'text-lg font-black text-bb-muted';
+    }
+}
+
 export function render(container) {
     loadState();
     syncLiveSubscriptions();
@@ -64,6 +88,10 @@ export function render(container) {
                 <div class="flex flex-col">
                     <span class="text-[8px] text-bb-muted uppercase font-black tracking-widest mb-1">Closed PnL</span>
                     <span id="sim-closed-pnl" class="text-2xl font-black ${(state.metrics?.totalPnL || 0) >= 0 ? 'text-bb-green' : 'text-bb-red'}">$${(state.metrics?.totalPnL || 0).toFixed(2)}</span>
+                </div>
+                <div class="flex flex-col" title="Meta-Guard status for selected asset">
+                    <span class="text-[8px] text-bb-muted uppercase font-black tracking-widest mb-1">🛡️ Meta-Guard</span>
+                    <span id="sim-guard-status" class="text-lg font-black text-bb-muted">SCANNING</span>
                 </div>
                 <div class="ml-auto flex items-center gap-3">
                     <button id="sim-reset" class="px-4 py-1.5 border border-bb-red/30 text-bb-red text-[10px] font-black hover:bg-bb-red/10 transition-all uppercase rounded font-mono active:scale-95">Reset Account</button>
@@ -244,6 +272,15 @@ function attachEvents(container) {
         levSlider.oninput = (e) => levVal.innerText = `${e.target.value}x`;
     }
 
+    // Meta-Guard status update when asset is typed
+    const assetInput = container.querySelector('#sim-asset');
+    if (assetInput) {
+        assetInput.oninput = (e) => {
+            const coin = e.target.value.toUpperCase().trim();
+            updateGuardStatus(coin);
+        };
+    }
+
     const buyBtn = container.querySelector('#sim-buy');
     const sellBtn = container.querySelector('#sim-sell');
 
@@ -254,10 +291,10 @@ function attachEvents(container) {
     if (resetBtn) {
         resetBtn.onclick = () => {
             if (confirm('Reset account to $10,000? All trades will be lost.')) {
-                state = { 
-                    ...state, 
-                    balance: 10000, 
-                    positions: [], 
+                state = {
+                    ...state,
+                    balance: 10000,
+                    positions: [],
                     history: [],
                     metrics: {
                         totalTrades: 0,
@@ -314,7 +351,7 @@ function attachEvents(container) {
         // Apply global toggle to all active positions too
         state.positions.forEach(p => { if (p.config) p.config.tsEnabled = state.config.trailingStopEnabled; });
         saveState();
-        
+
         // ⚡ Update UI without full re-render
         const btn = container.querySelector('#cfg-ts-toggle');
         const tsRows = container.querySelectorAll('[data-ts-row]');
@@ -333,7 +370,7 @@ function attachEvents(container) {
         // Apply global toggle to all active positions too
         state.positions.forEach(p => { if (p.config) p.config.dcaEnabled = state.config.dcaEnabled; });
         saveState();
-        
+
         // ⚡ Update UI without full re-render
         const btn = container.querySelector('#cfg-dca-toggle');
         const dcaRows = container.querySelectorAll('[data-dca-row]');
@@ -409,7 +446,7 @@ export function openPosition(side, metadata = {}) {
             entryPrice = parseFloat(coinData.PRICE.last);
         }
     }
-    
+
     if (entryPrice <= 0) {
         if (!metadata.silent) {
             console.warn(`[SIM] Cannot open position for ${asset}: No valid entry price`);
@@ -441,7 +478,7 @@ export function openPosition(side, metadata = {}) {
         const feePct = metadata.source === 'AUTOMATION' ? state.config.takerFeePct : state.config.makerFeePct;
         entryFee = (amount * leverage) * (feePct / 100);
     }
-    
+
     const totalCost = amount + entryFee;
     if (totalCost > state.balance) {
         if (!metadata.silent) console.warn(`[SIM] Insufficient balance (need $${totalCost.toFixed(2)}, have $${state.balance.toFixed(2)})`);
@@ -468,7 +505,7 @@ export function openPosition(side, metadata = {}) {
                 const waitMin = parseFloat(dcaCfg.dcaWaitMin !== undefined ? dcaCfg.dcaWaitMin : state.config.dcaWaitMin) || 0;
                 const waitMs = waitMin * 60 * 1000;
                 const timeSinceLastDca = Date.now() - lastDcaTime;
-                
+
                 // ⚡ First DCA triggers immediately, subsequent ones respect cooldown
                 const cooldownPassed = isFirstDca || waitMs === 0 || timeSinceLastDca >= waitMs;
 
@@ -479,14 +516,14 @@ export function openPosition(side, metadata = {}) {
 
                 // Perform DCA Averaging using initialAmount as base
                 const dcaSize = (existing.initialAmount || amount) * (dcaCfg.dcaMultiplier || 1.0);
-                
+
                 // === REAL TRADE: Calculate DCA fee ===
                 let dcaFee = 0;
                 if (state.config.enableFees) {
                     const feePct = state.config.takerFeePct;
                     dcaFee = (dcaSize * existing.leverage) * (feePct / 100);
                 }
-                
+
                 const dcaTotalCost = dcaSize + dcaFee;
                 if (dcaTotalCost > state.balance) {
                     if (!metadata.silent) console.warn(`[SIM] Insufficient balance for DCA Step ${existing.dcaStep + 1} on ${asset} (need $${dcaTotalCost.toFixed(2)})`);
@@ -509,7 +546,7 @@ export function openPosition(side, metadata = {}) {
                     existing.peakRoe = -999; // Reset peak for Trailing Stop after DCA
                     existing.lastDcaTime = Date.now();
                     existing.totalFees = (existing.totalFees || 0) + dcaFee; // Track cumulative fees
-                    
+
                     // ⚡ Clear _dcaPending flag to allow future DCA triggers
                     delete existing._dcaPending;
 
@@ -559,10 +596,10 @@ export function openPosition(side, metadata = {}) {
         ruleName: metadata.ruleName || '',
         strategy: metadata.strategy || '',
         timestamp: Date.now(),
-        logs: [{ 
-            type: 'ENTRY', 
-            price: entryPrice, 
-            amount: amount, 
+        logs: [{
+            type: 'ENTRY',
+            price: entryPrice,
+            amount: amount,
             fee: entryFee,
             time: Date.now(),
             factors: metadata.factors || []
@@ -602,7 +639,7 @@ export function openPosition(side, metadata = {}) {
         reason: metadata.source || 'MANUAL',
         entryFee: entryFee
     });
-    
+
     // Log for debugging
     const slipInfo = metadata.slippage ? ` (slip: ${metadata.slippage >= 0 ? '+' : ''}$${metadata.slippage.toFixed(4)})` : '';
     console.log(`[SIM-OPEN] ${side} ${asset} @ $${entryPrice.toFixed(4)}${slipInfo} | Size: $${amount} | Lev: ${leverage}x | Fee: $${entryFee.toFixed(2)} | TP: ${tpPerc}% SL: ${slPerc}%`);
@@ -660,10 +697,10 @@ function syncLiveSubscriptions() {
                 if (tickCount % 10 === 0) {
                     console.log(`[SIM-TICK] Interval running, livePriceCache keys: ${Object.keys(livePriceCache).length}, positions: ${state.positions.length}`);
                 }
-                
+
                 // Ensure OKX WS stays connected
                 OkxWs.connect();
-                
+
                 // Re-subscribe if livePriceCache is empty (connection was lost)
                 if (Object.keys(livePriceCache).length === 0 && window._simSubs && window._simSubs.size > 0) {
                     console.log('[SIM] LivePriceCache empty, re-subscribing...');
@@ -671,7 +708,7 @@ function syncLiveSubscriptions() {
                     syncLiveSubscriptions();
                     return;
                 }
-                
+
                 // Build minimal marketState from livePriceCache for standalone operation
                 const liveMarketState = {};
                 Object.keys(livePriceCache).forEach(coin => {
@@ -697,7 +734,7 @@ function closePosition(id, currentPrice, reason = 'MANUAL') {
 
     const p = state.positions[idx];
     const exitPrice = currentPrice || 0;
-    
+
     // === REAL TRADE: Validate exit price ===
     if (exitPrice <= 0) {
         console.warn(`[SIM] Cannot close ${p.coin}: No valid exit price`);
@@ -710,7 +747,7 @@ function closePosition(id, currentPrice, reason = 'MANUAL') {
         const feePct = state.config.takerFeePct; // Exit is typically taker
         exitFee = (p.amount * p.leverage) * (feePct / 100);
     }
-    
+
     const totalFees = (p.totalFees || 0) + exitFee;
 
     let grossPnl = 0;
@@ -731,13 +768,13 @@ function closePosition(id, currentPrice, reason = 'MANUAL') {
     state.metrics.totalTrades++;
     state.metrics.totalPnL += netPnl;
     state.metrics.totalFeesPaid += totalFees;
-    
+
     if (netPnl >= 0) {
         state.metrics.winningTrades++;
     } else {
         state.metrics.losingTrades++;
     }
-    
+
     // Track peak balance and max drawdown
     if (state.balance > state.metrics.peakBalance) {
         state.metrics.peakBalance = state.balance;
@@ -748,20 +785,20 @@ function closePosition(id, currentPrice, reason = 'MANUAL') {
     }
 
     const holdTime = Date.now() - p.timestamp;
-    const holdTimeStr = holdTime < 60000 ? `${(holdTime/1000).toFixed(0)}s` : 
-                        holdTime < 3600000 ? `${(holdTime/60000).toFixed(1)}m` : 
-                        `${(holdTime/3600000).toFixed(1)}h`;
+    const holdTimeStr = holdTime < 60000 ? `${(holdTime / 1000).toFixed(0)}s` :
+        holdTime < 3600000 ? `${(holdTime / 60000).toFixed(1)}m` :
+            `${(holdTime / 3600000).toFixed(1)}h`;
 
     const finalLogs = [...(p.logs || [])];
-    finalLogs.push({ 
-        type: 'EXIT', 
-        price: exitPrice, 
+    finalLogs.push({
+        type: 'EXIT',
+        price: exitPrice,
         grossPnl: grossPnl,
         netPnl: netPnl,
         fee: exitFee,
         totalFees: totalFees,
-        amount: p.amount, 
-        time: Date.now(), 
+        amount: p.amount,
+        time: Date.now(),
         reason: reason,
         holdTime: holdTimeStr
     });
@@ -841,10 +878,10 @@ function loadState() {
                 state.positions.forEach(p => {
                     if (p.side === 'BUY' || p.side === 'B') p.side = 'LONG';
                     if (p.side === 'SELL' || p.side === 'S') p.side = 'SHORT';
-                    
+
                     // ⚡ Clear any stuck flags from previous session
                     delete p._dcaPending;
-                    
+
                     // ⚡ Force sync position config with current global config
                     // This ensures toggling DCA on/off affects all positions
                     if (p.config) {
@@ -889,19 +926,19 @@ function updateUI() {
             const total = state.metrics?.totalTrades || 0;
             const winRate = total > 0 ? ((wins / total) * 100).toFixed(1) : 0;
             const totalFees = state.metrics?.totalFeesPaid || 0;
-            
+
             let statsHtml = '';
             if (total > 0) {
                 // NOTE: state.metrics.totalPnL is already NET (after fees deducted)
                 // So we need to calculate GROSS by adding fees back
                 const netPnl = state.metrics?.totalPnL || 0;
                 const grossPnl = netPnl + totalFees; // Gross = Net + Fees
-                
+
                 const grossClass = grossPnl >= 0 ? 'text-bb-green' : 'text-bb-red';
                 const grossSign = grossPnl >= 0 ? '+' : '';
                 const netClass = netPnl >= 0 ? 'text-bb-green' : 'text-bb-red';
                 const netSign = netPnl >= 0 ? '+' : '';
-                
+
                 statsHtml = `
                     <div class="p-3 bg-bb-gold/5 border border-bb-gold/20 rounded mb-2 space-y-2">
                         <div class="flex justify-between text-[10px]">
@@ -923,7 +960,7 @@ function updateUI() {
                     </div>
                 `;
             }
-            
+
             histEl.innerHTML = statsHtml + state.history.slice(0, 50).map(h => {
                 const isEntry = h.type === 'ENTRY';
                 const colorClass = isEntry ? 'text-bb-muted' : (h.pnl >= 0 ? 'text-bb-green' : 'text-bb-red');
@@ -1018,10 +1055,10 @@ export async function runSimulationEngine(marketState) {
             console.warn(`[SIM] Position ${p.coin} has no entry price - this indicates a bug`);
             return; // Skip this position in rendering
         }
-        
+
         // Skip trade logic if no current price, but still render the position
         const hasValidPrice = currentPrice > 0;
-        
+
         if (!hasValidPrice) {
             console.warn(`[SIM] No price for ${p.coin} - OKX WS may not be connected`);
         }
@@ -1037,7 +1074,7 @@ export async function runSimulationEngine(marketState) {
             const direction = p.side === 'LONG' ? 1 : -1;
             grossRoe = diff * direction * p.leverage * 100;
             pnl = p.amount * (diff * direction * p.leverage);
-            
+
             // ⚡ Calculate Net ROE (including fees)
             // Entry fee already paid, estimate exit fee (taker)
             const entryFee = p.totalFees || 0;
@@ -1119,10 +1156,10 @@ export async function runSimulationEngine(marketState) {
                     const lastDcaTime = p.lastDcaTime || p.timestamp || 0;
                     const waitMs = dcaWaitMin * 60 * 1000;
                     const timeSinceLastDca = Date.now() - lastDcaTime;
-                    
+
                     // ⚡ First DCA triggers immediately, subsequent ones respect cooldown
                     const cooldownPassed = isFirstDca || waitMs === 0 || timeSinceLastDca >= waitMs;
-                    
+
                     if (!cooldownPassed) {
                         // Optionally log cooldown status (uncomment for debug)
                         // console.log(`[SIM-DCA] ${p.coin} Cooldown: ${((waitMs - timeSinceLastDca) / 1000).toFixed(0)}s remaining`);
@@ -1130,9 +1167,9 @@ export async function runSimulationEngine(marketState) {
                         // Prevent double-trigger by marking position
                         if (!p._dcaPending) {
                             p._dcaPending = true;
-                            
+
                             console.log(`[SIM-DCA] ${p.coin} Triggering DCA step ${p.dcaStep} → ${p.dcaStep + 1} at Net ROE: ${roe.toFixed(2)}%`);
-                            
+
                             // Logic: Trigger openPosition with same side to average down
                             // We use silent:true to avoid duplicate alerts
                             setTimeout(() => {
@@ -1154,7 +1191,7 @@ export async function runSimulationEngine(marketState) {
         }
 
         totalUnrealized += pnl;
-        
+
         // Calculate net PnL (accounting for fees)
         const currentFees = p.totalFees || 0;
         const netPnl = pnl - currentFees;

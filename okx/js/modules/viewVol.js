@@ -76,8 +76,8 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
         const pChg = priceData[`percent_change_${tf.key}`] || 0;
 
         // Durability Score Logic: 
-        const v5m = (volData.vol_buy_5MENIT || 0) + (volData.vol_sell_5MENIT || 0);
-        const v1h = (volData.vol_buy_1JAM || 0) + (volData.vol_sell_1JAM || 0);
+        const v5m = (volData.vol_BUY_5MENIT || 0) + (volData.vol_SELL_5MENIT || 0);
+        const v1h = (volData.vol_BUY_1JAM || 0) + (volData.vol_SELL_1JAM || 0);
         const paceBase = v1h / 60; // 1h avg pace
 
         let multiplier = 1;

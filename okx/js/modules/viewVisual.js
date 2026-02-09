@@ -30,6 +30,9 @@ export function render(container) {
                     <span class="mr-1 group-active:rotate-180 transition-transform duration-300">↻</span> REFRESH
                 </button>
 
+                <button id="btn-hl-overlay" class="ml-2 px-3 h-full flex items-center text-[9px] font-bold text-bb-muted hover:text-bb-gold transition-colors border-l border-bb-border">
+                    HL OVERLAY
+                </button>
                 <div class="flex items-center gap-2 ml-auto border-l border-bb-border pl-4">
                     <span class="text-[9px] text-bb-muted uppercase">Sync:</span>
                     <span id="heatmap-last-sync" class="text-[9px] font-mono text-bb-green/60">--:--:--</span>
@@ -74,6 +77,18 @@ export function render(container) {
     container.querySelector('#btn-refresh-heatmap').onclick = () => {
         if (lastState) update(lastState, true);
     };
+
+    // Hidden-liquidity overlay toggle
+    const hlBtn = container.querySelector('#btn-hl-overlay');
+    let hlOverlay = false;
+    if (hlBtn) {
+        hlBtn.onclick = () => {
+            hlOverlay = !hlOverlay;
+            hlBtn.className = `ml-2 px-3 h-full flex items-center text-[9px] font-bold ${hlOverlay ? 'text-bb-gold bg-bb-gold/10 border-l border-bb-gold' : 'text-bb-muted hover:text-bb-gold'} transition-colors border-l border-bb-border`;
+            // force rerender with overlay state available via closure
+            if (lastState) update(lastState, true);
+        };
+    }
 
     // Immediate initial update if state exists
     if (lastState) {
@@ -253,10 +268,26 @@ function renderTreemap(marketState, container) {
         const fontSize = Math.max(7, Math.min(22, l.w / 6));
         const subFontSize = Math.max(5, Math.min(10, l.w / 12));
 
+        // hidden-liquidity overlay badge (if detector available)
+        let hlBadgeHtml = '';
+        try {
+            const det = window.hiddenLiquidityDetector;
+            if (det && det.getSignal) {
+                const sig = det.getSignal(l.id);
+                const s = sig?.score || 0;
+                const threshold = 0.35; // show only meaningful signals
+                if (hlOverlay && s >= threshold) {
+                    const color = s > 0.7 ? 'bg-bb-red' : 'bg-bb-gold';
+                    hlBadgeHtml = `<div class="absolute top-1 right-1 px-1.5 py-0.5 text-[9px] font-black text-white rounded ${color} shadow-md">HL ${Math.round(s*100)}%</div>`;
+                }
+            }
+        } catch (e) { /* ignore */ }
+
         return `
             <div class="absolute border border-black/40 flex flex-col items-center justify-center overflow-hidden transition-all duration-300 cursor-pointer hover:ring-1 hover:ring-white/50 z-10"
                  style="left: ${l.x}px; top: ${l.y}px; width: ${l.w}px; height: ${l.h}px; background-color: rgba(${bgColor}, ${opacity});"
                  onclick="window.app.selectCoin('${l.id}')">
+                ${hlBadgeHtml}
                 <div class="font-black text-white leading-none mb-0.5 select-none" style="font-size: ${fontSize}px">${l.coin}</div>
                 <div class="font-bold text-white/90 leading-none select-none" style="font-size: ${subFontSize}px">${l.displayVal}</div>
             </div>

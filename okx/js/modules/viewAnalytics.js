@@ -129,7 +129,7 @@ function updateVolOI(vol, oi) {
 
     // 2.3 Vol vs OI
     const oiChange = oi.oi_chg_1JAM || 0;
-    const vol1h = (vol.vol_buy_1JAM || 0) + (vol.vol_sell_1JAM || 0);
+    const vol1h = (vol.vol_BUY_1JAM || 0) + (vol.vol_SELL_1JAM || 0);
     const oiVal = oi.oi || 1;
     const ratio = vol1h / oiVal; // Vol/OI Ratio
 

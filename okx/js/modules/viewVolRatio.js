@@ -91,7 +91,7 @@ function updateTable() {
             const t = b + s;
             const ratio = t > 0 ? (b - s) / t : 0;
 
-            const h1Base = ((vol.vol_buy_1JAM || 0) + (vol.vol_sell_1JAM || 0)) / 60;
+            const h1Base = ((vol.vol_BUY_1JAM || 0) + (vol.vol_SELL_1JAM || 0)) / 60;
             const currentPace = t / mult;
             const durability = h1Base > 0 ? Math.min(1.0, (currentPace / h1Base) / 2) : 0;
 

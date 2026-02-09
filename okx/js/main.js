@@ -20,11 +20,21 @@ import * as ViewSynthesis from './modules/viewSynthesis.js';
 import * as ViewAutomation from './modules/viewAutomation.js';
 import * as ViewSimulation from './modules/viewSimulation.js';
 import * as ViewSignalComposer from './modules/viewSignalComposer.js';
+import * as ViewAlerts from './modules/viewAlerts.js';
+import * as ViewBacktest from './modules/viewBacktest.js';
+import * as ViewPortfolio from './modules/viewPortfolio.js';
+import * as ViewRisk from './modules/viewRisk.js';
+import * as ViewOrderSim from './modules/viewOrderSim.js';
+import * as ViewSocial from './modules/viewSocial.js';
+import * as ViewInstitutional from './modules/viewInstitutional.js';
 import P2PMesh from './p2p.js';
+import { initAutoAttach } from './detectors/initHiddenLiquidity.js';
 
 // Configuration
-const WS_URL = 'wss://eofficev2.bekasikota.go.id/okx-ws';
+// const WS_URL = 'wss://eofficev2.bekasikota.go.id/okx-ws';
 // const WS_URL = 'ws://localhost:8020';
+const WS_URL = 'wss://myokx.nusantaracode.com';
+
 const VIEWS = {
     'GLOBAL': ViewGlobal,
     'STRATEGY': ViewStrategy,
@@ -40,7 +50,14 @@ const VIEWS = {
     'SYNTHESIS': ViewSynthesis,
     'AUTOMATION': ViewAutomation,
     'SIMULATION': ViewSimulation,
-    'COMPOSER': ViewSignalComposer
+    'COMPOSER': ViewSignalComposer,
+    'ALERTS': ViewAlerts,
+    'SOCIAL': ViewSocial,
+    'BACKTEST': ViewBacktest,
+    'PORTFOLIO': ViewPortfolio,
+    'RISK': ViewRisk,
+    'ORDERS': ViewOrderSim,
+    'INSTITUTIONAL': ViewInstitutional
 };
 
 // State
@@ -216,7 +233,7 @@ function initTabs() {
 }
 
 function switchTab(tabName) {
-    if (!['GLOBAL', 'STRATEGY', 'DETAILS', 'VISUAL', 'INFO', 'P2P', 'AUTOMATION', 'SIMULATION', 'COMPOSER'].includes(tabName)) return;
+    if (!['GLOBAL', 'STRATEGY', 'DETAILS', 'VISUAL', 'INFO', 'P2P', 'AUTOMATION', 'SIMULATION', 'COMPOSER', 'ALERTS', 'BACKTEST', 'PORTFOLIO', 'RISK', 'ORDERS'].includes(tabName)) return;
 
     // Lifecycle cleanup for outgoing tab/subtab
     if (currentTab === 'DETAILS' && tabName !== 'DETAILS') {
@@ -224,6 +241,11 @@ function switchTab(tabName) {
         if (activeSubView && typeof activeSubView.stop === 'function') {
             activeSubView.stop();
         }
+    }
+
+    // Lifecycle cleanup when leaving Alerts
+    if (currentTab === 'ALERTS' && tabName !== 'ALERTS') {
+        if (ViewAlerts && typeof ViewAlerts.stop === 'function') ViewAlerts.stop();
     }
 
     currentTab = tabName;
@@ -252,6 +274,26 @@ function switchTab(tabName) {
     } else if (tabName === 'P2P') {
         detailsSubnav.classList.add('hidden');
         ViewP2P.render(viewContainer);
+    } else if (tabName === 'ALERTS') {
+        detailsSubnav.classList.add('hidden');
+        ViewAlerts.render(viewContainer);
+        if (typeof ViewAlerts.init === 'function') ViewAlerts.init();
+    } else if (tabName === 'BACKTEST') {
+        detailsSubnav.classList.add('hidden');
+        ViewBacktest.render(viewContainer);
+        if (typeof ViewBacktest.init === 'function') ViewBacktest.init();
+    } else if (tabName === 'PORTFOLIO') {
+        detailsSubnav.classList.add('hidden');
+        ViewPortfolio.render(viewContainer);
+        if (typeof ViewPortfolio.init === 'function') ViewPortfolio.init();
+    } else if (tabName === 'RISK') {
+        detailsSubnav.classList.add('hidden');
+        ViewRisk.render(viewContainer);
+        if (typeof ViewRisk.init === 'function') ViewRisk.init();
+    } else if (tabName === 'ORDERS') {
+        detailsSubnav.classList.add('hidden');
+        ViewOrderSim.render(viewContainer);
+        if (typeof ViewOrderSim.init === 'function') ViewOrderSim.init();
     } else if (tabName === 'AUTOMATION') {
         detailsSubnav.classList.add('hidden');
         ViewAutomation.render(viewContainer);
@@ -347,6 +389,22 @@ function updateCurrentView() {
         if (p2p) ViewP2P.update(p2p.getStats());
         return;
     }
+    if (currentTab === 'BACKTEST') {
+        if (VIEWS['BACKTEST'] && typeof VIEWS['BACKTEST'].update === 'function') VIEWS['BACKTEST'].update(marketState, selectedProfile, selectedTimeframe);
+        return;
+    }
+    if (currentTab === 'PORTFOLIO') {
+        if (VIEWS['PORTFOLIO'] && typeof VIEWS['PORTFOLIO'].update === 'function') VIEWS['PORTFOLIO'].update(marketState, selectedProfile, selectedTimeframe);
+        return;
+    }
+    if (currentTab === 'RISK') {
+        if (VIEWS['RISK'] && typeof VIEWS['RISK'].update === 'function') VIEWS['RISK'].update(marketState, selectedProfile, selectedTimeframe);
+        return;
+    }
+    if (currentTab === 'ALERTS') {
+        if (typeof ViewAlerts.update === 'function') ViewAlerts.update(marketState, selectedProfile, selectedTimeframe);
+        return;
+    }
 
     if (!selectedCoin || !marketState[selectedCoin]) return;
     const viewKey = currentTab === 'DETAILS' ? currentSubTab : currentTab;
@@ -359,10 +417,24 @@ function updateCurrentView() {
 // WEBSOCKET & P2P LOGIC
 // ============================================
 
-async function decompressGzip(blob) {
-    const ds = new DecompressionStream('gzip');
-    const decompressedStream = blob.stream().pipeThrough(ds);
-    return await new Response(decompressedStream).text();
+async function decompressZlib(data) {
+    try {
+        // Data can be Blob or ArrayBuffer
+        let uint8Array;
+        if (data instanceof Blob) {
+            const buffer = await data.arrayBuffer();
+            uint8Array = new Uint8Array(buffer);
+        } else {
+            uint8Array = new Uint8Array(data);
+        }
+
+        // pako.inflate auto-detects zlib/gzip header
+        const decompressed = pako.inflate(uint8Array, { to: 'string' });
+        return decompressed;
+    } catch (err) {
+        console.error('Decompression Error:', err);
+        return null;
+    }
 }
 
 function checkWebRTCSupport() {
@@ -408,8 +480,10 @@ function connect() {
     }
 
     ws = new WebSocket(WS_URL);
+    ws.binaryType = 'arraybuffer'; // Optimization for pako
 
     ws.onopen = () => {
+        // ... (keep existing onopen logic)
         // Stop any reconnect loop immediately once we have a live socket
         if (reconnectInterval) {
             clearInterval(reconnectInterval);
@@ -424,9 +498,17 @@ function connect() {
         sendWebRTCCapability();
 
         // Init P2P Mesh
-        p2p = new P2PMesh(ws, (data) => {
+        p2p = new P2PMesh(ws, (data, from) => {
+            try {
+                if (data && data.__appType === 'social' && typeof window !== 'undefined' && window.dispatchEvent) {
+                    window.dispatchEvent(new CustomEvent('p2p:social', { detail: { payload: data.payload, from: from } }));
+                    return;
+                }
+            } catch (e) { }
             handleIncomingStream(data, 'P2P');
         });
+        // expose for modules to broadcast
+        try { window.p2p = p2p; } catch (e) { }
 
         // Anti-Leech Validation
         p2p.onMeshReady = () => {
@@ -452,9 +534,10 @@ function connect() {
         meshStats.messageCount++; // ⭐ Raw Throughput Accounting
         try {
             let payloadText;
-            if (event.data instanceof Blob) {
-                // Handle Compressed Binary Data
-                payloadText = await decompressGzip(event.data);
+            if (event.data instanceof ArrayBuffer || event.data instanceof Blob) {
+                // Handle Compressed Binary Data (ZLIB)
+                payloadText = await decompressZlib(event.data);
+                if (!payloadText) return; // Skip if decompression failed
             } else {
                 // Handle Standard JSON Signaling
                 payloadText = event.data;
@@ -506,7 +589,14 @@ function connect() {
             } else if (payload.type === 'ice-candidate') {
                 p2p.handleIceCandidate(payload.senderId, payload.candidate);
             } else if (payload.type === 'stream') {
+                // console.log(`[WS] 📥 Stream Received: ${payload.data.coin}`);
                 handleIncomingStream(payload.data, 'WS');
+
+                // ⭐ TORRENT-STYLE: Announce chunk availability
+                if (p2p && payload.data.coin) {
+                    p2p.announceChunk(payload.data.coin, payload.data);
+                }
+
                 // P2P will broadcast the original raw data for efficiency
                 if (p2p) p2p.broadcast(payload.data);
             } else if (payload.type === 'stream-notify') {
@@ -535,6 +625,33 @@ function connect() {
                 });
 
                 pendingUpdates.add(coin);
+
+            } else if (payload.type === 'raw_data') {
+                // ⭐ FALLBACK: Process Raw Data directly if Stream/Relay is missing
+                // This ensures Tickers/Prices move even if Calculation Nodes are offline/blocked
+                const raw = payload.data;
+                const coin = raw.coin;
+
+                if (!coin) return;
+
+                if (!marketState[coin]) marketState[coin] = { coin: coin };
+
+                // Update Raw State
+                marketState[coin].raw = deepMerge(marketState[coin].raw, raw);
+
+                // Trigger UI Update
+                startRenderingHeartbeat();
+                pendingUpdates.add(coin);
+
+                // Direct Ticker Update
+                updateTicker({
+                    coin: coin,
+                    PRICE: raw.PRICE,
+                    VOL: raw.VOL,
+                    // Pass minimal signal structure to prevent UI errors
+                    signals: marketState[coin].signals || {},
+                    masterSignals: marketState[coin].masterSignals || {}
+                });
             }
         } catch (e) {
             console.error('WS Parse/Decompress Error:', e);
@@ -550,6 +667,7 @@ function connect() {
             clearInterval(p2p._readyInterval);
             p2p._readyInterval = null;
         }
+        try { if (window && window.p2p) window.p2p = null; } catch (e) { }
         // Only start reconnect loop if we should (i.e., unexpected loss).
         if (shouldReconnect && !reconnectInterval) reconnectInterval = setInterval(connect, 3000);
     };
@@ -585,12 +703,12 @@ const MIN_RENDER_INTERVAL = 400; // Minimum 400ms between renders
 
 function startRenderingHeartbeat() {
     if (renderingHeartbeat) return;
-    
+
     // 🎨 UI RENDERING LOOP (500ms with throttle) - For display only
     // Trading engines (Simulation/Composer) run instantly in handleIncomingStream
     renderingHeartbeat = setInterval(() => {
         if (pendingUpdates.size === 0) return;
-        
+
         // Throttle: skip if last render was too recent
         const now = Date.now();
         if (now - lastRenderTime < MIN_RENDER_INTERVAL) return;
@@ -706,7 +824,7 @@ function updateTicker(data) {
     const coin = data.coin || 'BTC';
     const price = data.raw?.PRICE?.last || data.PRICE?.price || 0;
     const change = data.raw?.PRICE?.percent_change_24h || data.PRICE?.percent_change_24h || data.raw?.PRICE?.percent_change_1JAM || 0;
-    const vol = (data.raw?.VOL?.vol_buy_1JAM || 0) + (data.raw?.VOL?.vol_sell_1JAM || 0);
+    const vol = (data.raw?.VOL?.vol_BUY_1JAM || 0) + (data.raw?.VOL?.vol_SELL_1JAM || 0);
     const regime = data.signals?.marketRegime?.currentRegime || 'UNKNOWN';
     const pColor = change >= 0 ? 'text-bb-green' : 'text-bb-red';
 
@@ -751,6 +869,12 @@ setInterval(() => {
 // Init
 initTabs();
 connect();
+try {
+    // Auto-attach hidden-liquidity detector to top coins (safe, idempotent)
+    initAutoAttach({ topN: 8 });
+} catch (e) {
+    console.warn('[HL] initAutoAttach failed', e);
+}
 window.app = window.app || {};
 window.app.selectCoin = (coin) => selectCoin(coin, true);
 window.dashboardNavigate = (coin) => selectCoin(coin, true);

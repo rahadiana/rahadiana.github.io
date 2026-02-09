@@ -7,6 +7,7 @@ export function render(container) {
             <!-- TOP DECISION CARD -->
             <div class="bg-bb-panel border-2 border-bb-border rounded-lg p-6 shadow-2xl flex flex-col items-center justify-center min-h-[180px] relative overflow-hidden" id="decision-main-card">
                 <div class="absolute top-0 right-0 p-2 flex items-center gap-2">
+                    <span id="dec-meta-guard-badge" class="hidden text-[7px] px-1.5 py-0.5 border rounded-sm font-black uppercase tracking-tighter">🛡️ ALLOW</span>
                     <span id="dec-liq-badge" class="hidden text-[7px] px-1 py-0.5 border rounded-sm font-bold uppercase tracking-tighter">Liq: Premium</span>
                     <span id="dec-hft-badge" class="hidden text-[7px] px-1 py-0.5 bg-bb-red/20 text-bb-red border border-bb-red/30 rounded-sm font-black animate-pulse uppercase tracking-tighter">Toxic HFT Flow</span>
                     <span class="text-[9px] text-bb-muted uppercase tracking-[0.2em] font-bold">Action Engine v2.1</span>
@@ -27,6 +28,11 @@ export function render(container) {
                     <div class="flex flex-col items-center">
                         <span class="text-[9px] text-bb-muted uppercase font-bold">Confluence</span>
                         <span class="text-2xl font-mono font-black text-white" id="dec-confirmations">0/0</span>
+                    </div>
+                    <div class="w-px h-10 bg-bb-border opacity-50"></div>
+                    <div class="flex flex-col items-center">
+                        <span class="text-[9px] text-bb-muted uppercase font-bold">Meta-Guard</span>
+                        <span class="text-lg font-mono font-black" id="dec-guard-status">--</span>
                     </div>
                 </div>
             </div>
@@ -182,8 +188,8 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
     const elLiq = document.getElementById('dec-liq-badge');
 
     if (elHFT) {
-        const v15 = (raw.VOL?.vol_buy_15MENIT || 0) + (raw.VOL?.vol_sell_15MENIT || 0);
-        const f15 = (raw.FREQ?.freq_buy_15MENIT || 0) + (raw.FREQ?.freq_sell_15MENIT || 0);
+        const v15 = (raw.VOL?.vol_BUY_15MENIT || 0) + (raw.VOL?.vol_SELL_15MENIT || 0);
+        const f15 = (raw.FREQ?.freq_BUY_15MENIT || 0) + (raw.FREQ?.freq_SELL_15MENIT || 0);
         const intensity = v15 > 0 ? (f15 / (v15 / 1000)) : 0;
 
         if (intensity > 40) {
@@ -246,6 +252,49 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
     if (elConf) elConf.innerText = `${Math.round(master.confidence || 0)}%`;
     if (elConfirm) elConfirm.innerText = `${master.confirmations || 0}/${master.requiredConfirmations || 0}`;
 
+    // 2.5 Meta-Guard Status
+    const metaGuard = data.signals?.institutional_guard || data.institutional_guard || {};
+    const elGuardStatus = document.getElementById('dec-guard-status');
+    const elGuardBadge = document.getElementById('dec-meta-guard-badge');
+
+    if (elGuardStatus) {
+        const guardStatus = metaGuard.meta_guard_status || '--';
+        elGuardStatus.innerText = guardStatus;
+
+        if (guardStatus === 'ALLOW') {
+            elGuardStatus.className = 'text-lg font-mono font-black text-bb-green';
+        } else if (guardStatus === 'BLOCK') {
+            elGuardStatus.className = 'text-lg font-mono font-black text-bb-red animate-pulse';
+        } else if (guardStatus === 'DOWNGRADE') {
+            elGuardStatus.className = 'text-lg font-mono font-black text-bb-gold';
+        } else {
+            elGuardStatus.className = 'text-lg font-mono font-black text-bb-muted';
+        }
+    }
+
+    if (elGuardBadge) {
+        const guardStatus = metaGuard.meta_guard_status;
+        if (guardStatus) {
+            elGuardBadge.classList.remove('hidden');
+            elGuardBadge.innerText = `🛡️ ${guardStatus}`;
+
+            if (guardStatus === 'ALLOW') {
+                elGuardBadge.className = 'text-[7px] px-1.5 py-0.5 border rounded-sm font-black uppercase tracking-tighter bg-bb-green/20 text-bb-green border-bb-green/30';
+            } else if (guardStatus === 'BLOCK') {
+                elGuardBadge.className = 'text-[7px] px-1.5 py-0.5 border rounded-sm font-black uppercase tracking-tighter bg-bb-red/20 text-bb-red border-bb-red/30 animate-pulse';
+            } else if (guardStatus === 'DOWNGRADE') {
+                elGuardBadge.className = 'text-[7px] px-1.5 py-0.5 border rounded-sm font-black uppercase tracking-tighter bg-bb-gold/20 text-bb-gold border-bb-gold/30';
+            }
+
+            // Add block reason tooltip
+            if (metaGuard.block_reason) {
+                elGuardBadge.title = `Block Reason: ${metaGuard.block_reason}`;
+            }
+        } else {
+            elGuardBadge.classList.add('hidden');
+        }
+    }
+
     // 3. Risk Management & Flow Velocity
     const elSize = document.getElementById('dec-size');
     const elSL = document.getElementById('dec-sl');
@@ -287,14 +336,14 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
             }
 
             const factors = detail?.adjustmentFactors || [];
-            
+
             // Skip universal/coin-level factors that are the same for all signals
             const UNIVERSAL_FACTORS = ['coinTier', 'coin_tier', 'tier'];
-            const signalSpecificFactors = factors.filter(f => 
-                !UNIVERSAL_FACTORS.includes(f.factor) && 
+            const signalSpecificFactors = factors.filter(f =>
+                !UNIVERSAL_FACTORS.includes(f.factor) &&
                 f.factor !== undefined
             );
-            
+
             // Find most significant signal-specific factor (furthest from 1.0)
             // Fall back to any factor if no signal-specific ones exist
             const factorsToCheck = signalSpecificFactors.length > 0 ? signalSpecificFactors : factors;
@@ -313,13 +362,13 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
                     .toUpperCase()
                     .trim();
             };
-            
+
             // Build factor text with additional context for agreement
             let factorText = 'Neutral';
             if (topFactor) {
                 const factorName = formatFactorName(topFactor.factor);
                 const multiplierStr = Number(topFactor.multiplier).toFixed(2);
-                
+
                 // Add context for agreement factor
                 if (topFactor.factor === 'agreement' && topFactor.agreements !== undefined) {
                     factorText = `${topFactor.agreements}/${topFactor.total} AGREE: ${multiplierStr}X`;

@@ -1014,8 +1014,8 @@ function checkSignal(strategy, data, rule = {}) {
             const pxChange = Math.abs(raw?.PRICE?.percent_change_1JAM || 0);
             
             if (vol > 500000 && pxChange < 0.8) {
-                const buyVol = raw?.VOL?.vol_buy_1JAM || 0;
-                const sellVol = raw?.VOL?.vol_sell_1JAM || 0;
+                const buyVol = raw?.VOL?.vol_BUY_1JAM || 0;
+                const sellVol = raw?.VOL?.vol_SELL_1JAM || 0;
                 const bias = buyVol > sellVol ? 'LONG' : 'SHORT';
                 
                 return { 

@@ -13,7 +13,8 @@ export function render(container) {
                     <a href="#section-features" class="text-[9px] font-black text-bb-muted hover:text-white transition-colors">FEATURES</a>
                     <a href="#section-telemetry" class="text-[9px] font-black text-bb-muted hover:text-white transition-colors">MESH_TELEMETRY</a>
                     <a href="#section-glossary" class="text-[9px] font-black text-bb-muted hover:text-white transition-colors">DATA_GLOSSARY</a>
-                    <a href="#section-strategies" class="text-[9px] font-black text-bb-muted hover:text-white transition-colors">STRATEGIES</a>
+                    <a href="#section-composer-db" class="text-[9px] font-black text-bb-muted hover:text-white transition-colors">COMPOSER_DB</a>
+                    <a href="#section-meta-guard" class="text-[9px] font-black text-bb-muted hover:text-white transition-colors">META_GUARD</a>
                     <a href="#section-simulation" class="text-[9px] font-black text-bb-muted hover:text-white transition-colors">SIMULATION</a>
                     <a href="#section-risk" class="text-[9px] font-black text-bb-muted hover:text-white transition-colors">RISK</a>
                 </div>
@@ -38,9 +39,9 @@ export function render(container) {
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
                         ${renderFeatureCard('📊', 'OVERVIEW', 'Dashboard utama menampilkan ringkasan semua coin aktif dengan sorting berdasarkan signal strength, volume, dan metrics kunci.', ['Real-time price updates', 'Signal strength indicators', 'Quick action buttons', 'Multi-coin monitoring'])}
                         ${renderFeatureCard('⚡', 'SIGNALS', 'Sistem sinyal multi-profile (Conservative/Moderate/Aggressive) dengan 7 timeframe dari 1 menit hingga 24 jam.', ['Composite Alpha Score', 'MTF (Multi-Timeframe) Alignment', 'Confidence levels', 'Entry/Exit recommendations'])}
-                        ${renderFeatureCard('🎯', 'SIMULATION', 'Paper trading simulator dengan fitur lengkap untuk testing strategi tanpa risiko modal nyata.', ['Virtual balance tracking', 'Smart DCA automation', 'TP/SL management', 'Trailing Stop', 'Trade history & analytics'])}
-                        ${renderFeatureCard('🤖', 'AUTOMATION', 'Engine otomatisasi trading berdasarkan signal triggers dengan risk management terintegrasi.', ['Signal-based entry', 'Auto position sizing', 'Drawdown protection', 'Multi-coin parallel trading'])}
-                        ${renderFeatureCard('🧬', 'COMPOSER', 'Signal builder untuk membuat dan mengkustomisasi kondisi entry/exit berdasarkan kombinasi metrics.', ['Custom signal creation', 'Multi-condition logic', 'Per-signal profile/timeframe', 'Real-time evaluation'])}
+                        ${renderFeatureCard('🎯', 'SIMULATION', 'Paper trading simulator dengan fitur lengkap untuk testing strategi tanpa risiko modal nyata.', ['Virtual balance tracking', 'Smart DCA automation', 'TP/SL management', 'Trailing Stop', 'Meta-Guard Integration'])}
+                        ${renderFeatureCard('🛡️', 'META-GUARD', 'Layer proteksi tingkat institusi yang memvalidasi setiap sinyal sebelum eksekusi. Block trade berbahaya via Institutional Guard.', ['Status: ALLOW/BLOCK/DOWNGRADE', 'Institutional Positioning Check', 'Anti-Manipulation Filters', 'Execution Validation'])}
+                        ${renderFeatureCard('🧬', 'COMPOSER', 'Advanced Signal Builder dengan 30+ Strategy Presets dan Meta-Guard integration. Build, Test, and Execute custom strategies.', ['30+ Strategy Presets', 'Custom signal creation', 'Meta-Guard Logic', 'Multi-condition builder'])}
                         ${renderFeatureCard('📈', 'ANALYTICS', 'Deep analytics dashboard dengan visualisasi distribusi signal dan performance metrics.', ['Signal distribution charts', 'Timeframe analysis', 'Profile comparison', 'Historical patterns'])}
                     </div>
 
@@ -172,10 +173,64 @@ export function render(container) {
                     </div>
                 </section>
 
-                <!-- SECTION: STRATEGY DATABASE -->
-                <section id="section-strategies" class="max-w-5xl mx-auto">
+                <!-- SECTION: META-GUARD PROTOCOL -->
+                <section id="section-meta-guard" class="max-w-5xl mx-auto">
                     <div class="flex items-center gap-4 mb-6">
-                        <h2 class="text-bb-gold font-black text-sm uppercase tracking-[0.2em] bg-bb-gold/10 px-3 py-1 border-l-2 border-bb-gold">03. STRATEGY_ARCHITECTURE_DATABASE</h2>
+                        <h2 class="text-bb-green font-black text-sm uppercase tracking-[0.2em] bg-bb-green/10 px-3 py-1 border-l-2 border-bb-green">02b. META-GUARD_PROTOCOL</h2>
+                        <div class="h-px flex-1 bg-bb-border"></div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                        <div class="p-4 bg-bb-panel border border-bb-green/30 rounded-lg">
+                            <h4 class="text-bb-green font-black text-[11px] mb-2 uppercase">✅ ALLOW STATE</h4>
+                            <p class="text-[9px] text-bb-muted leading-relaxed">
+                                Kondisi pasar optimal. Institutional Positioning mendukung arah trade. Volume dan Likuiditas sehat.
+                                <br><br><span class="text-white font-bold">Action:</span> Execution Allowed with Full confidence.
+                            </p>
+                        </div>
+                        <div class="p-4 bg-bb-panel border border-bb-gold/30 rounded-lg">
+                            <h4 class="text-bb-gold font-black text-[11px] mb-2 uppercase">⚠️ DOWNGRADE STATE</h4>
+                            <p class="text-[9px] text-bb-muted leading-relaxed">
+                                Terdeteksi noise atau conflicting signals. Institusi mungkin sedang hedging.
+                                <br><br><span class="text-white font-bold">Action:</span> Execution Allowed but with <span class="text-bb-gold">Reduced Size (50%)</span> & Tigher SL.
+                            </p>
+                        </div>
+                        <div class="p-4 bg-bb-panel border border-bb-red/30 rounded-lg">
+                            <h4 class="text-bb-red font-black text-[11px] mb-2 uppercase">🚫 BLOCK STATE</h4>
+                            <p class="text-[9px] text-bb-muted leading-relaxed">
+                                Bahaya terdeteksi: Toxic Flow, Manipulation, atau Crowd Contamination.
+                                <br><br><span class="text-white font-bold">Action:</span> <span class="text-bb-red">EXECUTION BLOCKED.</span> Guard akan mencegah entry apapun sampai kondisi aman.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="p-4 bg-bb-dark border border-bb-border rounded-lg">
+                        <h4 class="text-white font-black text-[10px] mb-2 uppercase">🛡️ GUARD CHECKLIST</h4>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-[9px]">
+                            <div class="flex flex-col gap-1">
+                                <span class="text-bb-muted uppercase font-bold">1. Positioning Check</span>
+                                <span class="text-bb-text opacity-70">Memastikan tidak melawan arah institusi besar (Whale).</span>
+                            </div>
+                            <div class="flex flex-col gap-1">
+                                <span class="text-bb-muted uppercase font-bold">2. Toxicity Scan</span>
+                                <span class="text-bb-text opacity-70">Mendeteksi HFT predatory flow (VPIN Extreme).</span>
+                            </div>
+                            <div class="flex flex-col gap-1">
+                                <span class="text-bb-muted uppercase font-bold">3. Causality Logic</span>
+                                <span class="text-bb-text opacity-70">Price move harus divalidasi oleh Volume & OI (No Fakeouts).</span>
+                            </div>
+                            <div class="flex flex-col gap-1">
+                                <span class="text-bb-muted uppercase font-bold">4. Liquidity Health</span>
+                                <span class="text-bb-text opacity-70">Memastikan slippage rendah (Kyle Lambda check).</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- SECTION: STRATEGY DATABASE -->
+                <section id="section-composer-db" class="max-w-5xl mx-auto">
+                    <div class="flex items-center gap-4 mb-6">
+                        <h2 class="text-bb-gold font-black text-sm uppercase tracking-[0.2em] bg-bb-gold/10 px-3 py-1 border-l-2 border-bb-gold">03. COMPOSER_PRESET_ARCHITECTURES</h2>
                         <div class="h-px flex-1 bg-bb-border"></div>
                     </div>
 
@@ -229,7 +284,7 @@ export function render(container) {
                                 <li><span class="text-bb-muted">Pilih coin dari dropdown atau ketik manual (format: XXX-USDT-SWAP)</span></li>
                                 <li><span class="text-bb-muted">Set position size ($), leverage, TP%, dan SL%</span></li>
                                 <li><span class="text-bb-muted">Klik LONG atau SHORT untuk membuka posisi</span></li>
-                                <li><span class="text-bb-muted">Monitor PnL real-time, klik CLOSE untuk menutup posisi</span></li>
+                                <li><span class="text-bb-muted">Monitor PnL & 🛡️ Guard Status real-time</span></li>
                                 <li><span class="text-bb-muted">Review trade history di panel bawah</span></li>
                             </ol>
                         </div>
@@ -241,6 +296,7 @@ export function render(container) {
                                 <li><span class="text-bb-gold font-bold">DCA:</span> <span class="text-bb-muted">Enable untuk auto-averaging saat rugi (steps: 2%, 4%, 8%, 16%)</span></li>
                                 <li><span class="text-bb-gold font-bold">TS:</span> <span class="text-bb-muted">Trailing Stop - lock profit setelah mencapai threshold</span></li>
                                 <li><span class="text-bb-gold font-bold">Fees:</span> <span class="text-bb-muted">Simulasikan trading fees (maker 0.02%, taker 0.05%)</span></li>
+                                <li><span class="text-bb-gold font-bold">Guard:</span> <span class="text-bb-muted">Validasi entry dengan Meta-Guard (Indikator di Header)</span></li>
                                 <li><span class="text-bb-gold font-bold">Halt:</span> <span class="text-bb-muted">Auto-pause saat drawdown > threshold</span></li>
                             </ul>
                         </div>
