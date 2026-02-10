@@ -33,7 +33,7 @@ import { initAutoAttach } from './detectors/initHiddenLiquidity.js';
 // Configuration
 // const WS_URL = 'wss://eofficev2.bekasikota.go.id/okx-ws';
 // const WS_URL = 'ws://localhost:8020';
-const WS_URL = 'wss://myokx.nusantaracode.com';
+const WS_URL = 'wss://okx-ws.nusantaracode.com';
 
 const VIEWS = {
     'GLOBAL': ViewGlobal,
@@ -878,3 +878,4 @@ try {
 window.app = window.app || {};
 window.app.selectCoin = (coin) => selectCoin(coin, true);
 window.dashboardNavigate = (coin) => selectCoin(coin, true);
+
