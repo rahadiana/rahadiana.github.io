@@ -1,4 +1,5 @@
 import * as Utils from '../utils.js';
+import { calculateVolumePace, calculateDurability } from '../data_helpers.js';
 
 let currentSort = { column: 'coin', direction: 'asc' };
 let lastDataMap = {};
@@ -85,21 +86,19 @@ function updateTable() {
         const vol = raw.VOL || {};
         const price = raw.PRICE || {};
 
-        const getMetrics = (tf, mult) => {
-            const b = vol[`vol_BUY_${tf}`] || 0;
-            const s = vol[`vol_SELL_${tf}`] || 0;
-            const t = b + s;
+        const getMetrics = (tf, minutes) => {
+            const avgVal = raw.AVG || {};
+            const pace = calculateVolumePace(vol, avgVal, tf, minutes);
+            const b = pace.buy;
+            const s = pace.sell;
+            const t = pace.total;
             const ratio = t > 0 ? (b - s) / t : 0;
 
-            const h1Base = ((vol.vol_BUY_1JAM || 0) + (vol.vol_SELL_1JAM || 0)) / 60;
-            const currentPace = t / mult;
-            const durability = h1Base > 0 ? Math.min(1.0, (currentPace / h1Base) / 2) : 0;
+            const v1h = ((vol.vol_BUY_1JAM || 0) + (vol.vol_SELL_1JAM || 0));
+            const pace1hPerMin = v1h / 60;
+            const durability = calculateDurability(pace.currentPace, pace1hPerMin);
 
-            // ⭐ Institutional Upgrade: AVG-based Spike (Historical)
-            const avgVal = raw.AVG || {};
-            const histTotal = (avgVal[`avg_VOLCOIN_buy_${tf}`] || 0) + (avgVal[`avg_VOLCOIN_sell_${tf}`] || 0);
-            const histPace = histTotal / mult;
-            const avgSpike = histPace > 0 ? (currentPace / histPace) : 0;
+            const avgSpike = pace.spike || 0;
 
             return { ratio, durability, avgSpike };
         };
@@ -145,7 +144,7 @@ function updateTable() {
         const rLabel = m.ratio >= 0.10 ? 'LONG' : m.ratio <= -0.10 ? 'SHORT' : 'NEUT';
 
         // mini bar and spike
-        const avgTag = m.avgSpike > 1.5 ? `<span class="text-bb-gold">${m.avgSpike.toFixed(1)}x</span>` : `<span class="text-bb-muted/30">AVG</span>`;
+        const avgTag = m.avgSpike > 1.5 ? `<span class="text-bb-gold">${Utils.safeFixed(m.avgSpike, 1)}x</span>` : `<span class="text-bb-muted/30">AVG</span>`;
         const barWidth = Math.round(m.durability * 5);
         let bars = '';
         const dColor = getDurabilityColor(m.durability);
@@ -161,7 +160,7 @@ function updateTable() {
                         <div class="text-[6px] font-black tracking-tighter">${avgTag}</div>
                     </div>
                     <div class="flex justify-between w-full px-1 text-[7px] font-black italic">
-                        <span class="${rColor}">${m.ratio > 0 ? '+' : ''}${m.ratio.toFixed(2)}</span>
+                        <span class="${rColor}">${m.ratio > 0 ? '+' : ''}${Utils.safeFixed(m.ratio, 2)}</span>
                         <span class="${rColor}">${rLabel}</span>
                     </div>
                 </div>
@@ -175,7 +174,7 @@ function updateTable() {
                 <div class="font-bold text-white group-hover:text-bb-gold transition-colors text-[9px]">${item.coin}</div>
             </td>
             <td class="p-2 text-right font-mono font-bold text-[9px] ${item.chg1h >= 0 ? 'text-bb-green' : 'text-bb-red'}">
-                ${item.chg1h > 0 ? '+' : ''}${item.chg1h.toFixed(2)}%
+                ${item.chg1h > 0 ? '+' : ''}${Utils.safeFixed(item.chg1h, 2)}%
             </td>
             ${createProfileCell(item.m1)}
             ${createProfileCell(item.m5)}

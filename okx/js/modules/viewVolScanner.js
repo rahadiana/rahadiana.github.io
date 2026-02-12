@@ -110,7 +110,7 @@ function updateUI() {
     const cell = (val) => {
         const color = val > 55 ? 'text-bb-green' : val < 45 ? 'text-bb-red' : 'text-bb-muted';
         const bg = val > 65 ? 'bg-bb-green/10' : val < 35 ? 'bg-bb-red/10' : '';
-        return `<td class="p-2 text-center text-[10px] font-mono font-bold ${color} ${bg}">${val.toFixed(1)}%</td>`;
+        return `<td class="p-2 text-center text-[10px] font-mono font-bold ${color} ${bg}">${Utils.safeFixed(val, 1)}%</td>`;
     };
 
     tbody.innerHTML = dataArray.map(item => {
@@ -122,7 +122,7 @@ function updateUI() {
                     <div class="font-bold text-white group-hover:text-bb-gold transition-colors text-[10px]">${item.id}</div>
                 </td>
                 <td class="p-2 text-right font-mono font-bold ${chgColor} text-[10px]">
-                    ${item.change > 0 ? '+' : ''}${item.change.toFixed(2)}%
+                    ${item.change > 0 ? '+' : ''}${Utils.safeFixed(item.change, 2)}%
                 </td>
                 ${cell(item.v1m)}
                 ${cell(item.v5m)}

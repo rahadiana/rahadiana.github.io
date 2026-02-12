@@ -151,7 +151,7 @@ export function render(container) {
   function renderMetrics() {
     const m = document.getElementById('bt-metrics');
     const p = BacktestEngine.performance;
-    m.innerHTML = `<div>PnL: ${p.getPnL().toFixed(2)}</div><div>MaxDrawdown: ${(p.getMaxDrawdown()*100).toFixed(2)}%</div><div>Sharpe: ${p.getSharpe().toFixed(2)}</div><div>Trades: ${p.trades.length}</div>`;
+    m.innerHTML = `<div>PnL: ${Utils.safeFixed(p.getPnL(), 2)}</div><div>MaxDrawdown: ${Utils.safeFixed(p.getMaxDrawdown() * 100, 2)}%</div><div>Sharpe: ${Utils.safeFixed(p.getSharpe(), 2)}</div><div>Trades: ${p.trades.length}</div>`;
     const tr = document.getElementById('bt-trades'); tr.innerHTML = '';
     for (const t of p.trades.slice().reverse()) { const r = document.createElement('div'); r.style.padding='6px'; r.innerText = JSON.stringify(t); tr.appendChild(r); }
   }

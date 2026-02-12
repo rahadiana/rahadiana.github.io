@@ -91,7 +91,6 @@ function updateCVD(of, getPrice) {
 
     // 2.1 CVD Section
     const momColor = of.cvd_momentum > 0 ? 'text-bb-green' : 'text-bb-red';
-
     el.innerHTML = `
         <div class="flex justify-between items-end border-b border-bb-border pb-2">
             <div class="flex flex-col">
@@ -113,10 +112,10 @@ function updateCVD(of, getPrice) {
             </div>
             <div class="bg-bb-dark p-2">
                 <div class="text-[9px] text-bb-muted">STRENGTH</div>
-                <div class="text-white font-bold">${of.flowStrength?.toFixed(2)}</div>
+                <div class="text-white font-bold">${Utils.safeFixed(of.flowStrength, 2)}</div>
             </div>
         </div>
-        
+
         <div class="text-[10px] text-bb-muted italic mt-1">
             ${of.interpretation}
         </div>
@@ -138,7 +137,7 @@ function updateVolOI(vol, oi) {
     el.innerHTML = `
         <div class="flex justify-between items-center">
             <span class="text-[10px] text-bb-muted">1H OI CHANGE</span>
-            <span class="font-bold ${oiColor}">${oiChange > 0 ? '+' : ''}${oiChange.toFixed(2)}% ${Math.abs(oiChange) > 10 ? '🔥' : ''}</span>
+            <span class="font-bold ${oiColor}">${oiChange > 0 ? '+' : ''}${Utils.safeFixed(oiChange, 2)}% ${Math.abs(oiChange) > 10 ? '🔥' : ''}</span>
         </div>
         
         <div class="w-full bg-bb-dark h-2 rounded overflow-hidden mb-2">
@@ -148,7 +147,7 @@ function updateVolOI(vol, oi) {
         <div class="grid grid-cols-2 gap-2 text-[10px]">
              <div>
                  <span class="text-bb-muted block">VOL/OI RATIO</span>
-                 <span class="${ratio < 0.1 ? 'text-bb-red' : 'text-bb-green'} font-mono">${ratio.toFixed(4)}</span>
+                 <span class="${ratio < 0.1 ? 'text-bb-red' : 'text-bb-green'} font-mono">${Utils.safeFixed(ratio, 4)}</span>
              </div>
              <div class="text-right">
                  <span class="text-bb-muted block">TOTAL OI</span>
@@ -177,7 +176,7 @@ function updateOrderFlow(of) {
         <div>
             <div class="flex justify-between text-[10px] mb-1">
                 <span class="text-bb-muted">TAKER BUY RATIO</span>
-                <span class="${takerBuy > 0.55 ? 'text-bb-green' : 'text-bb-red'} font-bold">${(takerBuy * 100).toFixed(1)}%</span>
+                <span class="${takerBuy > 0.55 ? 'text-bb-green' : 'text-bb-red'} font-bold">${Utils.safeFixed(takerBuy * 100, 1)}%</span>
             </div>
             <div class="w-full bg-bb-dark h-1.5 rounded overflow-hidden">
                  <div class="bg-bb-green h-full" style="width: ${takerBuy * 100}%"></div>
@@ -187,7 +186,7 @@ function updateOrderFlow(of) {
         <div>
             <div class="flex justify-between text-[10px] mb-1">
                 <span class="text-bb-muted">AGGRESSIVE BUY</span>
-                <span class="${aggBuy > 0.55 ? 'text-bb-green' : 'text-white'} font-bold">${(aggBuy * 100).toFixed(1)}%</span>
+                <span class="${aggBuy > 0.55 ? 'text-bb-green' : 'text-white'} font-bold">${Utils.safeFixed(aggBuy * 100, 1)}%</span>
             </div>
             <div class="w-full bg-bb-dark h-1.5 rounded overflow-hidden">
                  <div class="bg-blue-500 h-full" style="width: ${aggBuy * 100}%"></div>
@@ -196,7 +195,7 @@ function updateOrderFlow(of) {
 
         <div class="flex justify-between items-center bg-bb-dark p-2 border border-bb-border mt-2">
              <span class="text-[10px] text-bb-muted">SIZE IMBALANCE</span>
-             <span class="font-bold ${of.tradeSizeImbalance > 0 ? 'text-bb-green' : 'text-bb-red'}">${of.tradeSizeImbalance.toFixed(2)}</span>
+             <span class="font-bold ${of.tradeSizeImbalance > 0 ? 'text-bb-green' : 'text-bb-red'}">${Utils.safeFixed(of.tradeSizeImbalance, 2)}</span>
         </div>
     `;
 }
@@ -249,7 +248,7 @@ function updateVolatility(vol, priceData) {
         <div class="grid grid-cols-2 gap-2">
             <div class="bg-bb-dark p-1 text-center">
                 <div class="text-[9px] text-bb-muted">BB POSITION</div>
-                <div class="font-bold ${bbPct > 80 ? 'text-bb-red' : bbPct < 20 ? 'text-bb-green' : 'text-white'}">${bbPct.toFixed(0)}%</div>
+                <div class="font-bold ${bbPct > 80 ? 'text-bb-red' : bbPct < 20 ? 'text-bb-green' : 'text-white'}">${Utils.safeFixed(bbPct, 0)}%</div>
             </div>
             <div class="bg-bb-dark p-1 text-center">
                 <div class="text-[9px] text-bb-muted">ATR %ILE</div>
@@ -283,7 +282,7 @@ function updateVWAPZones(analytics, priceData) {
         <div class="text-center mb-2">
             <div class="text-[10px] text-bb-muted">CURRENT ZONE</div>
             <div class="text-2xl font-bold ${zoneColor}">${zone}</div>
-            <div class="text-xs text-bb-muted">VWAP: $${vwap.toFixed(4)}</div>
+            <div class="text-xs text-bb-muted">VWAP: $${Utils.safeFixed(vwap, 4)}</div>
         </div>
         
         <div class="w-full bg-bb-dark h-6 rounded flex items-center justify-center relative overflow-hidden border border-bb-border">
@@ -300,7 +299,7 @@ function updateVWAPZones(analytics, priceData) {
         
         <div class="text-center mt-2 text-xs">
             <span class="text-bb-muted">Deviation: </span>
-            <span class="${dist > 0 ? 'text-bb-red' : 'text-bb-green'} font-mono">${dist > 0 ? '+' : ''}${dist.toFixed(2)}%</span>
+            <span class="${dist > 0 ? 'text-bb-red' : 'text-bb-green'} font-mono">${dist > 0 ? '+' : ''}${Utils.safeFixed(dist, 2)}%</span>
         </div>
     `;
 }

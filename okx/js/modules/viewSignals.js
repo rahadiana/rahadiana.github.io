@@ -112,17 +112,17 @@ function updateMicroGrid(micro) {
     const tim = micro.tim?.tim || 50;
     const zPress = micro.zPress?.zPress || 0;
 
-    // Intensity (Mock or Real)
-    if (elInt) elInt.innerText = (Math.abs(zPress) * 5).toFixed(1) + '/10';
+        // Intensity (Mock or Real)
+        if (elInt) elInt.innerText = Utils.safeFixed(Math.abs(zPress) * 5, 1) + '/10';
 
     el.innerHTML = `
         ${card('COHESION', coh + '%', micro.cohesion?.level, coh > 60 ? 'text-bb-green' : 'text-bb-gold')}
         ${card('FLOW STR (OFSI)', ofsi, micro.ofsi?.strength, ofsi > 60 ? 'text-bb-green' : ofsi < 40 ? 'text-bb-red' : 'text-bb-muted')}
         ${card('FUNDING BIAS', fbi, micro.fbi?.direction, fbi > 80 ? 'text-bb-red' : 'text-bb-green')}
-        ${card('COMPOSITE (CIS)', cis.toFixed(0), micro.cis?.bias, cis > 60 ? 'text-bb-green' : 'text-bb-gold')}
+        ${card('COMPOSITE (CIS)', Utils.safeFixed(cis, 0), micro.cis?.bias, cis > 60 ? 'text-bb-green' : 'text-bb-gold')}
         ${card('TRADE IMB (TIM)', tim, micro.tim?.imbalance, tim > 60 ? 'text-bb-green' : 'text-bb-red')}
-        ${card('Z-PRESSURE', zPress.toFixed(2), micro.zPress?.pressure, zPress > 0.5 ? 'text-bb-green' : zPress < -0.5 ? 'text-bb-red' : 'text-bb-blue')}
-        ${card('RANGE COMP', micro.rangeComp?.rangeComp?.toFixed(0) || 0, micro.rangeComp?.status, 'text-white')}
+        ${card('Z-PRESSURE', Utils.safeFixed(zPress, 2), micro.zPress?.pressure, zPress > 0.5 ? 'text-bb-green' : zPress < -0.5 ? 'text-bb-red' : 'text-bb-blue')}
+        ${card('RANGE COMP', Utils.safeFixed(micro.rangeComp?.rangeComp ?? 0, 0), micro.rangeComp?.status, 'text-white')}
         ${card('CORRELATION', micro.pfci?.pfci || 0, micro.pfci?.signal, 'text-bb-blue')}
     `;
 }
@@ -131,44 +131,59 @@ function updateAttribution(signals) {
     const el = document.getElementById('attrib-list');
     if (!el || !signals) return;
 
-    // Flatten & Sort
+    // Recursive flatten with validation
     let items = [];
-    Object.keys(signals).forEach(key => {
-        const s = signals[key];
-        // Handle nested categories or direct signals
-        if (s.direction) items.push({ id: key, ...s });
-        else if (typeof s === 'object') {
-            Object.keys(s).forEach(k => {
-                if (s[k]?.direction) items.push({ id: `${key}.${k}`, ...s[k] });
-            });
-        }
-    });
 
-    // Calculate total score for % share
-    const totalScore = items.reduce((acc, i) => acc + (i.normalizedScore || 0), 0);
+    function flattenSignals(obj, prefix = '') {
+        Object.keys(obj || {}).forEach(key => {
+            const val = obj[key];
+            const id = prefix ? `${prefix}.${key}` : key;
+            if (!val || typeof val !== 'object') return;
 
-    items.sort((a, b) => (b.normalizedScore || 0) - (a.normalizedScore || 0));
+            // Direct signal object
+            if (val.direction && typeof val.normalizedScore === 'number') {
+                items.push({
+                    id,
+                    direction: val.direction,
+                    normalizedScore: val.normalizedScore,
+                    confidence: val.confidence || 0,
+                    weight: typeof val.adaptiveWeight === 'number' ? val.adaptiveWeight : (typeof val.originalWeight === 'number' ? val.originalWeight : 1),
+                    metadata: val.metadata || {}
+                });
+            } else {
+                // Recurse deeper
+                flattenSignals(val, id);
+            }
+        });
+    }
 
-    el.innerHTML = items.map(item => {
-        const share = totalScore > 0 ? (item.normalizedScore / totalScore) * 100 : 0;
-        // Support both BUY/SELL (legacy) and LONG/SHORT (new)
+    flattenSignals(signals);
+
+    // Use absolute values for impact share calculation
+    const totalAbs = items.reduce((acc, it) => acc + Math.abs(it.normalizedScore || 0), 0);
+
+    items.sort((a, b) => Math.abs(b.normalizedScore) - Math.abs(a.normalizedScore));
+
+    el.innerHTML = items.slice(0, 50).map(item => {
+        const share = totalAbs > 0 ? (Math.abs(item.normalizedScore) / totalAbs) * 100 : 0;
         const isLong = item.direction === 'BUY' || item.direction === 'LONG';
         const isShort = item.direction === 'SELL' || item.direction === 'SHORT';
+        const scoreVal = (typeof item.normalizedScore === 'number') ? item.normalizedScore : 0;
+        const weightVal = (typeof item.weight === 'number') ? item.weight : 0;
+
         const color = isLong ? 'text-bb-green bg-bb-green' : isShort ? 'text-bb-red bg-bb-red' : 'text-bb-muted bg-bb-muted';
 
         return `
             <div class="grid grid-cols-12 gap-2 p-2 border-b border-bb-border/30 hover:bg-white/5 items-center text-xs group">
                 <div class="col-span-3 font-mono text-[9px] uppercase truncate text-white" title="${item.id}">${item.id}</div>
-                <div class="col-span-2 text-center font-bold ${color.split(' ')[0]}">${item.normalizedScore.toFixed(1)}</div>
-                
+                    <div class="col-span-2 text-center font-bold ${color.split(' ')[0]}">${Utils.safeFixed(scoreVal, 1)}</div>
                 <div class="col-span-5 flex items-center gap-2">
                     <div class="flex-1 h-1.5 bg-bb-dark rounded-full overflow-hidden">
                         <div class="h-full ${color.split(' ')[1]}" style="width: ${share}%"></div>
                     </div>
-                    <span class="text-[9px] w-8 text-right">${share.toFixed(1)}%</span>
+                        <span class="text-[9px] w-8 text-right">${Utils.safeFixed(share, 1)}%</span>
                 </div>
-                
-                <div class="col-span-2 text-right text-[9px] text-bb-muted">${(item.weight || 0).toFixed(2)}</div>
+                    <div class="col-span-2 text-right text-[9px] text-bb-muted">${Utils.safeFixed(weightVal, 2)}</div>
             </div>
         `;
     }).join('');
@@ -198,7 +213,7 @@ function updateBreakout(vol, priceData) {
              </div>
              <div class="flex justify-between">
                  <span class="text-bb-muted">TARGET</span>
-                 <span class="font-mono text-bb-gold">$${(priceData?.last * 1.019 || 0).toFixed(4)}</span>
+                 <span class="font-mono text-bb-gold">${'$' + Utils.safeFixed((priceData?.last || 0) * 1.019, 4)}</span>
              </div>
         </div>
     `;
@@ -213,7 +228,7 @@ function updateQuality(custom) {
     el.innerHTML = `
         <div class="flex justify-between items-center bg-bb-dark p-2 border border-bb-border">
             <span class="text-[9px] text-bb-muted">SIGNAL QUALITY</span>
-            <span class="font-bold ${sqi > 70 ? 'text-bb-green' : 'text-bb-gold'}">${sqi.toFixed(1)}</span>
+                <span class="font-bold ${sqi > 70 ? 'text-bb-green' : 'text-bb-gold'}">${Utils.safeFixed(sqi, 1)}</span>
         </div>
         
         <div class="bg-bb-dark p-2 border border-bb-border">
@@ -239,23 +254,23 @@ function updateConfluence(data, signals, master, syn) {
         FLOW: {
             title: 'FLOW',
             bias: flow.net_flow_15MENIT > 10000 ? 'BULL' : flow.net_flow_15MENIT < -10000 ? 'BEAR' : 'NEUT',
-            val: (flow.net_flow_15MENIT / 1000).toFixed(1) + 'K'
+            val: Utils.safeFixed((flow.net_flow_15MENIT || 0) / 1000, 1) + 'K'
         },
         SENT: {
             title: 'SENT',
             bias: lsr > 1.5 ? 'BEAR' : lsr < 0.7 ? 'BULL' : 'NEUT',
-            val: lsr.toFixed(2) + 'r'
+            val: Utils.safeFixed(lsr, 2) + 'r'
         },
         LIQ: {
             title: 'LIQ',
             bias: (data.raw?.OB?.bidDepth / data.raw?.OB?.askDepth) > 1.2 ? 'BULL' : (data.raw?.OB?.askDepth / data.raw?.OB?.bidDepth) > 1.2 ? 'BEAR' : 'NEUT',
-            val: (data.raw?.OB?.bidDepth / (data.raw?.OB?.askDepth || 1)).toFixed(2) + 'x'
+            val: Utils.safeFixed((data.raw?.OB?.bidDepth || 0) / (data.raw?.OB?.askDepth || 1), 2) + 'x'
         },
         TECH: {
             title: 'TECH',
             // Support both BUY/SELL (legacy) and LONG/SHORT (new)
             bias: (master.action === 'BUY' || master.action === 'LONG') ? 'BULL' : (master.action === 'SELL' || master.action === 'SHORT') ? 'BEAR' : 'NEUT',
-            val: (master.confidence || 0).toFixed(0) + '%'
+            val: Utils.safeFixed(master.confidence || 0, 0) + '%'
         }
     };
 

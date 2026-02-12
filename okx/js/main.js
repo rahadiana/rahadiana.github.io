@@ -23,15 +23,19 @@ import * as ViewSignalComposer from './modules/viewSignalComposer.js';
 import * as ViewAlerts from './modules/viewAlerts.js';
 import * as ViewBacktest from './modules/viewBacktest.js';
 import * as ViewPortfolio from './modules/viewPortfolio.js';
+import './modules/domDelegates.js';
 import * as ViewRisk from './modules/viewRisk.js';
 import * as ViewOrderSim from './modules/viewOrderSim.js';
 import * as ViewSocial from './modules/viewSocial.js';
 import * as ViewInstitutional from './modules/viewInstitutional.js';
+import * as ViewComponents from './modules/viewComponents.js';
 import P2PMesh from './p2p.js';
 import { initAutoAttach } from './detectors/initHiddenLiquidity.js';
 
 // Configuration
-const WS_URL = 'wss://okx-ws.nusantaracode.com';
+// const WS_URL = 'wss://eofficev2.bekasikota.go.id/okx-ws';
+const WS_URL = 'ws://localhost:8040';
+// const WS_URL = 'wss://eofficev2.bekasikota.go.id/edge';
 
 const VIEWS = {
     'GLOBAL': ViewGlobal,
@@ -55,7 +59,8 @@ const VIEWS = {
     'PORTFOLIO': ViewPortfolio,
     'RISK': ViewRisk,
     'ORDERS': ViewOrderSim,
-    'INSTITUTIONAL': ViewInstitutional
+    'INSTITUTIONAL': ViewInstitutional,
+    'COMPONENTS': ViewComponents
 };
 
 // State
@@ -332,6 +337,8 @@ function switchSubTab(subTabName) {
         }
     });
 
+
+
     VIEWS[subTabName].render(viewContainer);
     updateCurrentView();
 }
@@ -339,6 +346,8 @@ function switchSubTab(subTabName) {
 function selectCoin(coin, isManual = false) {
     if (!coin) return;
     selectedCoin = coin;
+    // Expose current selection to modules that read global selection
+    window.selectedCoin = selectedCoin;
 
     // ⭐ TRANSITION GUARD: Force Full Feed on coin change
     if (meshStats.isOffloaded) {
@@ -530,6 +539,25 @@ function connect() {
 
     ws.onmessage = async (event) => {
         meshStats.messageCount++; // ⭐ Raw Throughput Accounting
+        // Debug: log raw incoming message envelope to help find missing streams
+        try {
+            let rawType = typeof event.data;
+            let size = 0;
+            let preview = null;
+            if (rawType === 'string') {
+                size = event.data.length;
+                preview = event.data.slice(0, 200);
+            } else if (event.data instanceof ArrayBuffer) {
+                rawType = 'ArrayBuffer';
+                size = event.data.byteLength;
+                preview = '[binary]';
+            } else if (event.data instanceof Blob) {
+                rawType = 'Blob';
+                size = event.data.size;
+                preview = '[binary]';
+            }
+            // console.debug('[WS RAW] incoming message', { rawType, size, preview });
+        } catch (e) { console.debug('[WS RAW] debug error', e); }
         try {
             let payloadText;
             if (event.data instanceof ArrayBuffer || event.data instanceof Blob) {
@@ -541,7 +569,17 @@ function connect() {
                 payloadText = event.data;
             }
 
-            const payload = JSON.parse(payloadText);
+            if (!payloadText || (typeof payloadText === 'string' && payloadText.trim().length === 0)) {
+                console.warn('[WS] Empty payloadText received; ignoring');
+                return;
+            }
+            let payload = null;
+            try {
+                payload = JSON.parse(payloadText);
+            } catch (e) {
+                console.error('[WS] JSON.parse failed for payloadText preview:', payloadText && payloadText.slice ? payloadText.slice(0, 200) : String(payloadText), e);
+                return;
+            }
             if (payload.type === 'welcome') {
                 p2p.init(payload.peerId, payload.config);
                 statusText.innerText = `CONNECTED [${p2p.isSuperPeer ? 'S' : 'P'}]`;
@@ -597,6 +635,10 @@ function connect() {
 
                 // P2P will broadcast the original raw data for efficiency
                 if (p2p) p2p.broadcast(payload.data);
+            } else if (payload.type === 'relay:ack') {
+                console.log('[RELAY] ack from server:', payload);
+            } else if (payload.type === 'relay:delivered') {
+                console.log('[RELAY] delivered report:', payload);
             } else if (payload.type === 'stream-notify') {
                 // Lightweight update to keep ticker alive & populate sidebar while mesh forms
                 const coin = payload.coin;
@@ -876,6 +918,3 @@ try {
 window.app = window.app || {};
 window.app.selectCoin = (coin) => selectCoin(coin, true);
 window.dashboardNavigate = (coin) => selectCoin(coin, true);
-
-
-

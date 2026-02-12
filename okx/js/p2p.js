@@ -576,9 +576,9 @@ class P2PMesh {
                             data: cached.data,
                             timestamp: cached.timestamp
                         }));
-                        console.log(`[TORRENT] 📤 Served chunk ${coin} to ${targetId}`);
+                        //console.log(`[TORRENT] 📤 Served chunk ${coin} to ${targetId}`);
                     } else {
-                        console.log(`[TORRENT] ❌ Cannot serve stale/missing chunk ${coin}`);
+                        //console.log(`[TORRENT] ❌ Cannot serve stale/missing chunk ${coin}`);
                     }
                     return;
                 }
@@ -590,7 +590,7 @@ class P2PMesh {
 
                     // Freshness check
                     if (age > this.CHUNK_TTL) {
-                        console.log(`[TORRENT] ⏰ Rejected stale chunk ${coin} (age: ${age}ms)`);
+                        //console.log(`[TORRENT] ⏰ Rejected stale chunk ${coin} (age: ${age}ms)`);
                         return;
                     }
 
@@ -609,7 +609,7 @@ class P2PMesh {
                     // Announce that we now have this chunk
                     this.announceChunk(coin, packet.data);
 
-                    console.log(`[TORRENT] ✅ Received fresh chunk ${coin} from ${targetId} (age: ${age}ms)`);
+                    //console.log(`[TORRENT] ✅ Received fresh chunk ${coin} from ${targetId} (age: ${age}ms)`);
                     return;
                 }
 
@@ -696,7 +696,7 @@ class P2PMesh {
             chunk: coin
         });
 
-        console.log(`[TORRENT] 📢 Announced chunk: ${coin}`);
+        //console.log(`[TORRENT] 📢 Announced chunk: ${coin}`);
     }
 
     // ⭐ TORRENT-STYLE: Request chunk from best peer
@@ -711,7 +711,7 @@ class P2PMesh {
         });
 
         if (candidates.length === 0) {
-            console.log(`[TORRENT] ❌ No peers have chunk: ${coin}`);
+            //console.log(`[TORRENT] ❌ No peers have chunk: ${coin}`);
             return false;
         }
 
@@ -733,7 +733,7 @@ class P2PMesh {
             }
             this.pendingChunkRequests.get(coin).add(bestPeer);
 
-            console.log(`[TORRENT] 📥 Requested chunk ${coin} from ${bestPeer}`);
+            //console.log(`[TORRENT] 📥 Requested chunk ${coin} from ${bestPeer}`);
             return true;
         }
 

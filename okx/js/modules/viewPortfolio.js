@@ -1,5 +1,10 @@
 import BacktestEngine from '../backtest_engine.js';
 import { downloadFile } from '../utils.js';
+import * as Utils from '../utils.js';
+
+let _pfExportCsvHandler = null;
+let _pfExportJsonHandler = null;
+let _rootEl = null;
 
 // Portfolio management scaffold
 export function render(container) {
@@ -28,25 +33,30 @@ export function render(container) {
     </div>
   `;
   container.appendChild(root);
+  _rootEl = root;
   renderSummary();
 
-  document.getElementById('pf-export-csv').addEventListener('click', ()=>{
+  // Named handlers so we can remove them in stop()
+  _pfExportCsvHandler = async () => {
     try {
-      import('../backtest_engine.js').then(mod => {
-        const csv = mod.exportResultsCSV(BacktestEngine);
-        downloadFile(csv, 'portfolio_trades.csv', 'text/csv');
-      });
+      const mod = await import('../backtest_engine.js');
+      const csv = mod.exportResultsCSV(BacktestEngine);
+      downloadFile(csv, 'portfolio_trades.csv', 'text/csv');
     } catch (e) { console.error('export csv failed', e); }
-  });
+  };
 
-  document.getElementById('pf-export-json').addEventListener('click', ()=>{
+  _pfExportJsonHandler = async () => {
     try {
-      import('../backtest_engine.js').then(mod => {
-        const json = mod.exportResultsJSON(BacktestEngine);
-        downloadFile(json, 'portfolio_state.json', 'application/json');
-      });
+      const mod = await import('../backtest_engine.js');
+      const json = mod.exportResultsJSON(BacktestEngine);
+      downloadFile(json, 'portfolio_state.json', 'application/json');
     } catch (e) { console.error('export json failed', e); }
-  });
+  };
+
+  const csvBtn = document.getElementById('pf-export-csv');
+  const jsonBtn = document.getElementById('pf-export-json');
+  if (csvBtn) csvBtn.addEventListener('click', _pfExportCsvHandler);
+  if (jsonBtn) jsonBtn.addEventListener('click', _pfExportJsonHandler);
 }
 
 function renderSummary() {
@@ -56,16 +66,30 @@ function renderSummary() {
   if (!s || !p || !pos) return;
   // aggregate from BacktestEngine if available
   const eng = BacktestEngine;
-  const pnl = eng.performance.getPnL();
-  const mdd = eng.performance.getMaxDrawdown();
-  const sharpe = eng.performance.getSharpe();
-  s.innerHTML = `<div>Total PnL: ${pnl.toFixed(2)}</div><div>Open Positions: ${Object.keys(eng.pos).filter(k=>eng.pos[k]).length}</div>`;
-  p.innerHTML = `<div>Max Drawdown: ${(mdd*100).toFixed(2)}%</div><div>Sharpe: ${sharpe.toFixed(2)}</div><div>Trades: ${eng.performance.trades.length}</div>`;
+  const pnl = (eng && eng.performance && typeof eng.performance.getPnL === 'function') ? Number(eng.performance.getPnL()) || 0 : 0;
+  const mdd = (eng && eng.performance && typeof eng.performance.getMaxDrawdown === 'function') ? Number(eng.performance.getMaxDrawdown()) || 0 : 0;
+  const sharpe = (eng && eng.performance && typeof eng.performance.getSharpe === 'function') ? Number(eng.performance.getSharpe()) || 0 : 0;
+  const openPositions = eng && eng.pos ? Object.keys(eng.pos).filter(k => eng.pos[k]).length : 0;
+  s.textContent = '';
+  const pnlDiv = document.createElement('div'); pnlDiv.textContent = `Total PnL: ${Utils.formatNumber(pnl, 2)}`;
+  const posDiv = document.createElement('div'); posDiv.textContent = `Open Positions: ${openPositions}`;
+  s.appendChild(pnlDiv); s.appendChild(posDiv);
+
+  p.textContent = '';
+  const mddDiv = document.createElement('div'); mddDiv.textContent = `Max Drawdown: ${Utils.formatNumber(mdd * 100, 2)}%`;
+  const sharpeDiv = document.createElement('div'); sharpeDiv.textContent = `Sharpe: ${Utils.formatNumber(sharpe, 2)}`;
+  const tradesCount = eng && eng.performance && Array.isArray(eng.performance.trades) ? eng.performance.trades.length : 0;
+  const tradesDiv = document.createElement('div'); tradesDiv.textContent = `Trades: ${tradesCount}`;
+  p.appendChild(mddDiv); p.appendChild(sharpeDiv); p.appendChild(tradesDiv);
   pos.innerHTML = '';
-  for (const coin of Object.keys(eng.pos)) {
-    const pr = eng.pos[coin];
-    if (pr) {
-      const d = document.createElement('div'); d.style.padding='6px'; d.innerText=`${coin}: size=${pr.size} entry=${pr.entryPrice}`; pos.appendChild(d);
+  if (eng && eng.pos) {
+    for (const coin of Object.keys(eng.pos)) {
+      const pr = eng.pos[coin];
+      if (pr) {
+        const d = document.createElement('div'); d.style.padding = '6px';
+        d.textContent = `${coin}: size=${Utils.formatNumber(Number(pr.size) || 0, 2)} entry=${Utils.formatPrice(Number(pr.entryPrice) || 0)}`;
+        pos.appendChild(d);
+      }
     }
   }
 }
@@ -76,6 +100,18 @@ export function update(marketState, profile, timeframe) {
 }
 
 export function init() { }
-export function stop() { }
+export function stop() {
+  // cleanup event listeners
+  try {
+    const csvBtn = document.getElementById('pf-export-csv');
+    const jsonBtn = document.getElementById('pf-export-json');
+    if (csvBtn && _pfExportCsvHandler) csvBtn.removeEventListener('click', _pfExportCsvHandler);
+    if (jsonBtn && _pfExportJsonHandler) jsonBtn.removeEventListener('click', _pfExportJsonHandler);
+    if (_rootEl) {
+      // clear any references
+      _rootEl = null;
+    }
+  } catch (e) { console.error('stop cleanup error', e); }
+}
 
 export default { render, update, init, stop };

@@ -229,14 +229,16 @@ export function init() {
   evalInterval = setInterval(() => { try { evaluateAll(); } catch (e) { console.error('alert-eval', e); } }, 5000);
 
   // Listen for hidden-liquidity detector events
-  if (typeof window !== 'undefined' && window.addEventListener) {
+    if (typeof window !== 'undefined' && window.addEventListener) {
     window.__hl_alert_handler = function(e) {
       try {
         const sig = e.detail;
         if (!sig) return;
         const coin = sig.coin;
-        const score = sig.score;
-        const msg = `Hidden Liquidity detected on ${coin} — score ${score.toFixed(3)} (iceberg:${sig.breakdown.iceberg.toFixed(3)}, absorption:${sig.breakdown.absorption.toFixed(3)})`;
+        const score = sig.score || 0;
+        const iceberg = (sig.breakdown && sig.breakdown.iceberg) || 0;
+        const absorption = (sig.breakdown && sig.breakdown.absorption) || 0;
+        const msg = `Hidden Liquidity detected on ${coin} — score ${Utils.safeFixed(score, 3)} (iceberg: ${Utils.safeFixed(iceberg, 3)}, absorption: ${Utils.safeFixed(absorption, 3)})`;
         addHistory({ ts: Date.now(), ruleId: 'hl_auto', coin, msg });
         showToast(`Hidden Liquidity: ${coin}`, msg);
         // Browser notification
@@ -249,9 +251,7 @@ export function init() {
         // Evaluate user rules that reference hiddenLiquidity metric
         for (const r of rules || []) {
           const conds = r.conditions || [];
-          // Only evaluate rules that include hiddenLiquidity metric
           if (!conds.some(c => c.metric === 'hiddenLiquidity')) continue;
-          // evaluate conditions (support logical)
           const results = conds.map(c => {
             if (c.metric !== 'hiddenLiquidity') return null;
             const thr = parseFloat(c.threshold) || 0;
@@ -269,7 +269,7 @@ export function init() {
           const triggered = logical === 'AND' ? results.every(Boolean) : results.some(Boolean);
           if (triggered) {
             notify(r, coin, msg);
-            addHistory({ ts: Date.now(), ruleId: r.id, coin, msg: `${r.name} triggered by HL on ${coin} (${score.toFixed(3)})` });
+            addHistory({ ts: Date.now(), ruleId: r.id, coin, msg: `${r.name} triggered by HL on ${coin} ${Utils.safeFixed(score, 3)}` });
           }
         }
       } catch (e) { console.error('hl handler', e); }

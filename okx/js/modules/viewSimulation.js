@@ -87,7 +87,7 @@ export function render(container) {
                 </div>
                 <div class="flex flex-col">
                     <span class="text-[8px] text-bb-muted uppercase font-black tracking-widest mb-1">Closed PnL</span>
-                    <span id="sim-closed-pnl" class="text-2xl font-black ${(state.metrics?.totalPnL || 0) >= 0 ? 'text-bb-green' : 'text-bb-red'}">$${(state.metrics?.totalPnL || 0).toFixed(2)}</span>
+                    <span id="sim-closed-pnl" class="text-2xl font-black ${(state.metrics?.totalPnL || 0) >= 0 ? 'text-bb-green' : 'text-bb-red'}">$${Utils.safeFixed(state.metrics?.totalPnL || 0, 2)}</span>
                 </div>
                 <div class="flex flex-col" title="Meta-Guard status for selected asset">
                     <span class="text-[8px] text-bb-muted uppercase font-black tracking-widest mb-1">🛡️ Meta-Guard</span>
@@ -196,7 +196,7 @@ export function render(container) {
                             <div data-dca-row class="flex flex-col gap-1 pt-1 transition-opacity ${state.config.dcaEnabled ? '' : 'opacity-40'}">
                                 <label class="text-[7px] text-bb-muted uppercase font-black flex justify-between">
                                     <span>Step Sizing Multiplier</span>
-                                    <span class="text-bb-gold font-mono">${(state.config.dcaMultiplier || 1.0).toFixed(1)}x</span>
+                                    <span class="text-bb-gold font-mono">${Utils.safeFixed(state.config.dcaMultiplier || 1.0, 1)}x</span>
                                 </label>
                                 <input id="cfg-dca-mult" type="range" min="1" max="3" step="0.1" value="${state.config.dcaMultiplier || 1.0}" class="w-full h-1 bg-bb-border rounded appearance-none cursor-pointer accent-bb-gold">
                             </div>
@@ -402,7 +402,7 @@ function attachEvents(container) {
         state.positions.forEach(p => { if (p.config) p.config.dcaMultiplier = state.config.dcaMultiplier; });
         // UI feedback for slider
         const label = e.target.previousElementSibling.querySelector('span:last-child');
-        if (label) label.innerText = `${state.config.dcaMultiplier.toFixed(1)}x`;
+        if (label) label.innerText = Utils.safeFixed(state.config.dcaMultiplier, 1) + 'x';
         saveState();
     };
 }
@@ -481,7 +481,7 @@ export function openPosition(side, metadata = {}) {
 
     const totalCost = amount + entryFee;
     if (totalCost > state.balance) {
-        if (!metadata.silent) console.warn(`[SIM] Insufficient balance (need $${totalCost.toFixed(2)}, have $${state.balance.toFixed(2)})`);
+        if (!metadata.silent) console.warn(`[SIM] Insufficient balance (need $${Utils.safeFixed(totalCost, 2)}, have $${Utils.safeFixed(state.balance, 2)})`);
         return;
     }
 
@@ -510,7 +510,7 @@ export function openPosition(side, metadata = {}) {
                 const cooldownPassed = isFirstDca || waitMs === 0 || timeSinceLastDca >= waitMs;
 
                 if (!cooldownPassed) {
-                    if (!metadata.silent) console.log(`[SIM] DCA Cooldown active for ${asset}. Wait: ${((waitMs - timeSinceLastDca) / 1000).toFixed(0)}s`);
+                    if (!metadata.silent) console.log(`[SIM] DCA Cooldown active for ${asset}. Wait: ${Utils.safeFixed((waitMs - timeSinceLastDca) / 1000, 0)}s`);
                     return;
                 }
 
@@ -526,7 +526,7 @@ export function openPosition(side, metadata = {}) {
 
                 const dcaTotalCost = dcaSize + dcaFee;
                 if (dcaTotalCost > state.balance) {
-                    if (!metadata.silent) console.warn(`[SIM] Insufficient balance for DCA Step ${existing.dcaStep + 1} on ${asset} (need $${dcaTotalCost.toFixed(2)})`);
+                    if (!metadata.silent) console.warn(`[SIM] Insufficient balance for DCA Step ${existing.dcaStep + 1} on ${asset} (need $${Utils.safeFixed(dcaTotalCost, 2)})`);
                     return;
                 }
 
@@ -534,7 +534,7 @@ export function openPosition(side, metadata = {}) {
                 const currentAmount = existing.amount;
                 const newEntry = entryPrice; // Use validated entry price
 
-                if (newEntry > 0 && currentEntry > 0) {
+                    if (newEntry > 0 && currentEntry > 0) {
                     // Weighted Average Entry Price
                     // New Avg = ((Old Price * Old Amount) + (New Price * New Amount)) / (Total Amount)
                     const totalAmount = currentAmount + dcaSize;
@@ -562,7 +562,7 @@ export function openPosition(side, metadata = {}) {
 
                     state.balance -= dcaTotalCost;
                     saveState();
-                    if (!metadata.silent) console.log(`[SIM] DCA Step ${existing.dcaStep} @ $${newEntry.toFixed(4)} | Size: $${dcaSize} | Fee: $${dcaFee.toFixed(2)} | New Avg: $${avgPrice.toFixed(4)}`);
+                    if (!metadata.silent) console.log(`[SIM] DCA Step ${existing.dcaStep} @ $${Utils.safeFixed(newEntry, 4)} | Size: $${Utils.safeFixed(dcaSize, 2)} | Fee: $${Utils.safeFixed(dcaFee, 2)} | New Avg: $${Utils.safeFixed(avgPrice, 4)}`);
                     updateUI();
                 }
                 return; // Stop here, we merged into existing
@@ -641,8 +641,8 @@ export function openPosition(side, metadata = {}) {
     });
 
     // Log for debugging
-    const slipInfo = metadata.slippage ? ` (slip: ${metadata.slippage >= 0 ? '+' : ''}$${metadata.slippage.toFixed(4)})` : '';
-    console.log(`[SIM-OPEN] ${side} ${asset} @ $${entryPrice.toFixed(4)}${slipInfo} | Size: $${amount} | Lev: ${leverage}x | Fee: $${entryFee.toFixed(2)} | TP: ${tpPerc}% SL: ${slPerc}%`);
+    const slipInfo = metadata.slippage ? ` (slip: ${metadata.slippage >= 0 ? '+' : ''}${Utils.safeFixed(metadata.slippage, 4)})` : '';
+    console.log(`[SIM-OPEN] ${side} ${asset} @ $${Utils.safeFixed(entryPrice, 4)}${slipInfo} | Size: $${amount} | Lev: ${leverage}x | Fee: $${Utils.safeFixed(entryFee, 2)} | TP: ${tpPerc}% SL: ${slPerc}%`);
 
     saveState();
     updateUI();
@@ -785,9 +785,9 @@ function closePosition(id, currentPrice, reason = 'MANUAL') {
     }
 
     const holdTime = Date.now() - p.timestamp;
-    const holdTimeStr = holdTime < 60000 ? `${(holdTime / 1000).toFixed(0)}s` :
-        holdTime < 3600000 ? `${(holdTime / 60000).toFixed(1)}m` :
-            `${(holdTime / 3600000).toFixed(1)}h`;
+    const holdTimeStr = holdTime < 60000 ? `${Utils.safeFixed(holdTime / 1000, 0)}s` :
+        holdTime < 3600000 ? `${Utils.safeFixed(holdTime / 60000, 1)}m` :
+            `${Utils.safeFixed(holdTime / 3600000, 1)}h`;
 
     const finalLogs = [...(p.logs || [])];
     finalLogs.push({
@@ -824,13 +824,13 @@ function closePosition(id, currentPrice, reason = 'MANUAL') {
             grossPnl: grossPnl,
             fees: totalFees,
             netPnl: netPnl,
-            roe: p.entryPrice > 0 ? ((netPnl / p.amount) * 100).toFixed(2) + '%' : '0%',
+            roe: p.entryPrice > 0 ? Utils.safeFixed((netPnl / p.amount) * 100, 2) + '%' : '0%',
             holdTime: holdTimeStr,
             slippage: p.slippage || 0
         }
     });
 
-    console.log(`[SIM-CLOSE] ${p.coin} ${p.side} | Entry: $${p.entryPrice.toFixed(4)} → Exit: $${exitPrice.toFixed(4)} | Gross: $${grossPnl.toFixed(2)} | Fees: $${totalFees.toFixed(2)} | Net: $${netPnl.toFixed(2)} | Hold: ${holdTimeStr}`);
+    console.log(`[SIM-CLOSE] ${p.coin} ${p.side} | Entry: $${Utils.safeFixed(p.entryPrice, 4)} → Exit: $${Utils.safeFixed(exitPrice, 4)} | Gross: $${Utils.safeFixed(grossPnl, 2)} | Fees: $${Utils.safeFixed(totalFees, 2)} | Net: $${Utils.safeFixed(netPnl, 2)} | Hold: ${holdTimeStr}`);
 
     state.positions.splice(idx, 1);
     saveState();
@@ -913,7 +913,7 @@ function updateUI() {
     if (closedPnlEl) {
         const closedPnl = state.metrics?.totalPnL || 0;
         const sign = closedPnl >= 0 ? '+' : '';
-        closedPnlEl.innerText = `${sign}$${Math.abs(closedPnl).toFixed(2)}`;
+        closedPnlEl.innerText = `${sign}$${Utils.safeFixed(Math.abs(closedPnl), 2)}`;
         closedPnlEl.className = `text-2xl font-black ${closedPnl >= 0 ? 'text-bb-green' : 'text-bb-red'}`;
     }
 
@@ -924,7 +924,7 @@ function updateUI() {
             // Calculate win rate for display
             const wins = state.metrics?.winningTrades || 0;
             const total = state.metrics?.totalTrades || 0;
-            const winRate = total > 0 ? ((wins / total) * 100).toFixed(1) : 0;
+            const winRate = total > 0 ? Utils.safeFixed((wins / total) * 100, 1) : 0;
             const totalFees = state.metrics?.totalFeesPaid || 0;
 
             let statsHtml = '';
@@ -943,15 +943,15 @@ function updateUI() {
                     <div class="p-3 bg-bb-gold/5 border border-bb-gold/20 rounded mb-2 space-y-2">
                         <div class="flex justify-between text-[10px]">
                             <span class="text-bb-muted">Gross PnL:</span>
-                            <span class="${grossClass} font-black">${grossSign}$${Math.abs(grossPnl).toFixed(2)}</span>
+                            <span class="${grossClass} font-black">${grossSign}$${Utils.safeFixed(Math.abs(grossPnl), 2)}</span>
                         </div>
                         <div class="flex justify-between text-[8px]">
                             <span class="text-bb-muted">Fees Paid:</span>
-                            <span class="text-bb-red">-$${totalFees.toFixed(2)}</span>
+                            <span class="text-bb-red">-$${Utils.safeFixed(totalFees, 2)}</span>
                         </div>
                         <div class="flex justify-between text-[10px] border-t border-white/10 pt-2">
                             <span class="text-bb-muted">Net PnL:</span>
-                            <span class="${netClass} font-black">${netSign}$${Math.abs(netPnl).toFixed(2)}</span>
+                            <span class="${netClass} font-black">${netSign}$${Utils.safeFixed(Math.abs(netPnl), 2)}</span>
                         </div>
                         <div class="flex justify-between text-[8px] pt-1">
                             <span class="text-bb-muted">Win Rate:</span>
@@ -966,7 +966,7 @@ function updateUI() {
                 const colorClass = isEntry ? 'text-bb-muted' : (h.pnl >= 0 ? 'text-bb-green' : 'text-bb-red');
                 const sign = isEntry ? '' : (h.pnl >= 0 ? '+' : '');
                 const holdTime = h.holdTime || '';
-                const fees = h.totalFees ? ` (fees: $${h.totalFees.toFixed(2)})` : '';
+                const fees = h.totalFees ? ' (fees: $' + Utils.safeFixed(h.totalFees, 2) + ')' : '';
 
                 return `
                 <div class="p-2 bg-black/20 border border-white/5 rounded text-[8px] flex justify-between items-center group cursor-pointer hover:bg-white/5 transition-all" onclick="window.app.showTradeDetails(${h.id || h.ts})">
@@ -983,7 +983,7 @@ function updateUI() {
                         </div>
                     </div>
                     <div class="text-right">
-                        <div class="${colorClass} font-black">${isEntry ? '$' + (h.entryPrice || 0).toFixed(2) : sign + '$' + (h.pnl || 0).toFixed(2)}</div>
+                        <div class="${colorClass} font-black">${isEntry ? '$' + Utils.safeFixed(h.entryPrice || 0, (h.entryPrice || 0) < 1 ? 4 : 2) : sign + '$' + Utils.safeFixed(h.pnl || 0, 2)}</div>
                         <div class="text-[7px] text-bb-muted uppercase">${h.reason || 'MANUAL'}${!isEntry ? fees : ''}</div>
                     </div>
                 </div>
@@ -1107,14 +1107,14 @@ export async function runSimulationEngine(marketState) {
 
             // Debug TP/SL logic (only log when close to target)
             if (targetTp > 0 && roe >= targetTp * 0.8) {
-                console.log(`[SIM-TPSL] ${p.coin} Net ROE: ${roe.toFixed(2)}% approaching TP: ${targetTp}%`);
+                console.log(`[SIM-TPSL] ${p.coin} Net ROE: ${Utils.safeFixed(roe, 2)}% approaching TP: ${targetTp}%`);
             }
             if (targetSl > 0 && roe <= -targetSl * 0.8) {
-                console.log(`[SIM-TPSL] ${p.coin} Net ROE: ${roe.toFixed(2)}% approaching SL: -${targetSl}%`);
+                console.log(`[SIM-TPSL] ${p.coin} Net ROE: ${Utils.safeFixed(roe, 2)}% approaching SL: -${targetSl}%`);
             }
 
             if (targetTp > 0 && roe >= targetTp) {
-                console.log(`[SIM-TPSL] 🎯 ${p.coin} HIT TP! Net ROE: ${roe.toFixed(2)}% >= Target: ${targetTp}%`);
+                console.log(`[SIM-TPSL] 🎯 ${p.coin} HIT TP! Net ROE: ${Utils.safeFixed(roe, 2)}% >= Target: ${targetTp}%`);
                 setTimeout(() => closePosition(p.id, currentPrice, 'AUTO-TP'), 0);
             } else if (targetSl > 0 && roe <= -targetSl) {
                 setTimeout(() => closePosition(p.id, currentPrice, 'AUTO-TP'), 0);
@@ -1123,12 +1123,12 @@ export async function runSimulationEngine(marketState) {
                 const dcaEnabled = (p.config && p.config.dcaEnabled !== undefined) ? p.config.dcaEnabled : state.config.dcaEnabled;
                 const dcaMaxSteps = (p.config && p.config.dcaMaxSteps !== undefined) ? p.config.dcaMaxSteps : state.config.dcaMaxSteps;
 
-                if (!dcaEnabled || p.dcaStep >= dcaMaxSteps) {
-                    console.log(`[SIM-TPSL] 🛑 ${p.coin} HIT SL! ROE: ${roe.toFixed(2)}% <= Target: -${targetSl}%`);
-                    setTimeout(() => closePosition(p.id, currentPrice, 'AUTO-SL'), 0);
-                } else {
-                    console.log(`[SIM-TPSL] ${p.coin} SL triggered but DCA enabled (step ${p.dcaStep}/${dcaMaxSteps})`);
-                }
+                    if (!dcaEnabled || p.dcaStep >= dcaMaxSteps) {
+                        console.log(`[SIM-TPSL] 🛑 ${p.coin} HIT SL! ROE: ${Utils.safeFixed(roe, 2)}% <= Target: -${targetSl}%`);
+                        setTimeout(() => closePosition(p.id, currentPrice, 'AUTO-SL'), 0);
+                    } else {
+                        console.log(`[SIM-TPSL] ${p.coin} SL triggered but DCA enabled (step ${p.dcaStep}/${dcaMaxSteps})`);
+                    }
             }
 
             // SMART DCA TRIGGER (If ROE is negative) - uses Net ROE for consistency
@@ -1146,7 +1146,7 @@ export async function runSimulationEngine(marketState) {
                 } else if (roe > -dcaTrigger) {
                     // Only log if close to trigger
                     if (roe <= -(dcaTrigger * 0.7)) {
-                        console.log(`[SIM-DCA] ${p.coin} ROE ${roe.toFixed(2)}% not at trigger -${dcaTrigger}% yet`);
+                        console.log(`[SIM-DCA] ${p.coin} ROE ${Utils.safeFixed(roe, 2)}% not at trigger -${dcaTrigger}% yet`);
                     }
                 }
 
@@ -1162,13 +1162,13 @@ export async function runSimulationEngine(marketState) {
 
                     if (!cooldownPassed) {
                         // Optionally log cooldown status (uncomment for debug)
-                        // console.log(`[SIM-DCA] ${p.coin} Cooldown: ${((waitMs - timeSinceLastDca) / 1000).toFixed(0)}s remaining`);
+                        // console.log(`[SIM-DCA] ${p.coin} Cooldown: ${((waitMs - timeSinceLastDca) / Utils.safeFixed(1000), 0)}s remaining`);
                     } else {
                         // Prevent double-trigger by marking position
                         if (!p._dcaPending) {
                             p._dcaPending = true;
 
-                            console.log(`[SIM-DCA] ${p.coin} Triggering DCA step ${p.dcaStep} → ${p.dcaStep + 1} at Net ROE: ${roe.toFixed(2)}%`);
+                            console.log(`[SIM-DCA] ${p.coin} Triggering DCA step ${p.dcaStep} → ${p.dcaStep + 1} at Net ROE: ${Utils.safeFixed(roe, 2)}%`);
 
                             // Logic: Trigger openPosition with same side to average down
                             // We use silent:true to avoid duplicate alerts
@@ -1204,7 +1204,7 @@ export async function runSimulationEngine(marketState) {
                         <div class="flex items-center gap-1 opacity-50">
                             <span class="text-[7px] font-black uppercase text-bb-gold/80">${p.source === 'MANUAL' ? 'MANUAL' : 'AUTO'}</span>
                             <span class="text-[7px] text-bb-muted uppercase">${p.source === 'MANUAL' ? 'Direct' : (p.strategy || p.ruleName || 'AUTO')}</span>
-                            ${p.slippage ? `<span class="text-[6px] text-bb-red/60">slip:${p.slippage > 0 ? '+' : ''}${p.slippage.toFixed(2)}</span>` : ''}
+                            ${p.slippage ? `<span class="text-[6px] text-bb-red/60">slip:${p.slippage > 0 ? '+' : ''}${Utils.safeFixed(p.slippage, 2)}</span>` : ''}
                         </div>
                     </div>
                 </td>
@@ -1212,10 +1212,10 @@ export async function runSimulationEngine(marketState) {
                 <td class="p-3 text-right pr-6 align-middle">
                     <div class="flex flex-col items-end">
                         <span class="font-black text-white/80">$${p.amount.toLocaleString()}</span>
-                        ${currentFees > 0 ? `<span class="text-[7px] text-bb-red/50">fee: $${currentFees.toFixed(2)}</span>` : ''}
+                        ${currentFees > 0 ? `<span class="text-[7px] text-bb-red/50">fee: $${Utils.safeFixed(currentFees, 2)}</span>` : ''}
                     </div>
                 </td>
-                <td class="p-3 text-right pr-6 align-middle font-mono text-bb-muted/80">${p.entryPrice.toFixed(p.entryPrice < 1 ? 4 : 2)}</td>
+                <td class="p-3 text-right pr-6 align-middle font-mono text-bb-muted/80">${Utils.safeFixed(p.entryPrice, p.entryPrice < 1 ? 4 : 2)}</td>
                 <td class="p-3 text-right pr-6 align-middle">
                     <div class="flex flex-col items-end gap-1 group/item cursor-pointer hover:bg-white/10 p-1 rounded transition-all active:scale-95" onclick="window.app.editSimPositionSettings(${p.id})">
                         <!-- TP Target with progress -->
@@ -1237,7 +1237,7 @@ export async function runSimulationEngine(marketState) {
                             ` : '<span class="text-[9px] text-bb-muted/30">SL: OFF</span>'}
                         </div>
                         <!-- Current Price Display -->
-                        <div class="text-[7px] text-bb-muted mt-0.5">Now: $${currentPrice.toFixed(p.entryPrice < 1 ? 4 : 2)}</div>
+                        <div class="text-[7px] text-bb-muted mt-0.5">Now: $${Utils.safeFixed(currentPrice, p.entryPrice < 1 ? 4 : 2)}</div>
                     </div>
                 </td>
                 <td class="p-3 text-center align-middle">
@@ -1260,13 +1260,13 @@ export async function runSimulationEngine(marketState) {
                         </div>
                     </div>
                 </td>
-                <td class="p-3 text-right pr-6 align-middle text-xs" title="Gross: ${grossRoe > 0 ? '+' : ''}${grossRoe.toFixed(2)}%">
+                <td class="p-3 text-right pr-6 align-middle text-xs" title="Gross: ${grossRoe > 0 ? '+' : ''}${Utils.safeFixed(grossRoe, 2)}%">
                     <div class="flex flex-col items-end">
-                        <span class="font-black ${roe >= 0 ? 'text-bb-green drop-shadow-[0_0_8px_rgba(34,197,94,0.2)]' : 'text-bb-red drop-shadow-[0_0_8px_rgba(239,68,68,0.2)]'}">${roe > 0 ? '+' : ''}${roe.toFixed(2)}%</span>
+                        <span class="font-black ${roe >= 0 ? 'text-bb-green drop-shadow-[0_0_8px_rgba(34,197,94,0.2)]' : 'text-bb-red drop-shadow-[0_0_8px_rgba(239,68,68,0.2)]'}">${roe > 0 ? '+' : ''}${Utils.safeFixed(roe, 2)}%</span>
                         <span class="text-[6px] text-bb-muted/50">net</span>
                     </div>
                 </td>
-                <td class="p-3 text-right pr-6 align-middle font-black ${pnl >= 0 ? 'text-bb-green' : 'text-bb-red'} text-xs">${pnl > 0 ? '+' : ''}$${pnl.toFixed(2)}</td>
+                <td class="p-3 text-right pr-6 align-middle font-black ${pnl >= 0 ? 'text-bb-green' : 'text-bb-red'} text-xs">${pnl > 0 ? '+' : ''}$${Utils.safeFixed(pnl, 2)}</td>
                 <td class="p-3 text-center align-middle">
                     <button class="px-3 py-1 bg-bb-red/10 border border-bb-red/30 text-bb-red text-[9px] font-black hover:bg-bb-red hover:text-white transition-all uppercase rounded active:scale-90" 
                             onclick="window.app.closeSimPosition(${p.id}, ${currentPrice})">
@@ -1281,7 +1281,7 @@ export async function runSimulationEngine(marketState) {
     posList.innerHTML = html;
 
     if (unrealizedEl) {
-        unrealizedEl.innerText = `${totalUnrealized >= 0 ? '+' : ''}$${totalUnrealized.toFixed(2)}`;
+    unrealizedEl.innerText = `${totalUnrealized >= 0 ? '+' : ''}$${Utils.safeFixed(totalUnrealized, 2)}`;
         unrealizedEl.className = `text-xl font-black ${totalUnrealized > 0 ? 'text-bb-green' : totalUnrealized < 0 ? 'text-bb-red' : 'text-bb-muted'}`;
     }
 
@@ -1300,7 +1300,7 @@ export async function runSimulationEngine(marketState) {
 
             if (drawdownPct <= -(state.config.maxDrawdownPct || 15)) {
                 if (timeSinceHalt >= haltWaitMs) {
-                    console.warn(`[CIRCUIT BREAKER] Drawdown target hit (${drawdownPct.toFixed(2)}%). Halting new entries...`);
+                    console.warn(`[CIRCUIT BREAKER] Drawdown target hit ${Utils.safeFixed(drawdownPct, 2)}%. Halting new entries...`);
                     state.lastHaltTime = Date.now();
                     saveState();
                     renderHaltBanner();
@@ -1429,7 +1429,7 @@ window.app.showTradeDetails = (id) => {
             if (l.type === 'DCA') { label = `DCA #${l.step}`; color = 'text-bb-gold'; }
             if (l.type === 'EXIT') color = 'text-bb-red';
 
-            const pnlStr = l.pnl !== undefined ? `<span class="${l.pnl >= 0 ? 'text-bb-green' : 'text-bb-red'} font-bold">PNL: $${l.pnl.toFixed(2)}</span>` : '';
+            const pnlStr = l.pnl !== undefined ? `<span class="${l.pnl >= 0 ? 'text-bb-green' : 'text-bb-red'} font-bold">PNL: $${Utils.safeFixed(l.pnl, 2)}</span>` : '';
 
             return `
                 <div class="flex justify-between items-center p-2 border-b border-white/5 text-[9px]">
@@ -1438,7 +1438,7 @@ window.app.showTradeDetails = (id) => {
                         <span class="text-bb-muted">${timeStr}</span>
                     </div>
                     <div class="text-right flex flex-col">
-                        <span class="text-white font-mono">$${(l.price || 0).toFixed(l.price < 1 ? 4 : 2)}</span>
+                        <span class="text-white font-mono">$${Utils.safeFixed(l.price || 0, (l.price || 0) < 1 ? 4 : 2)}</span>
                         <span class="text-bb-muted text-[7px]">$${(l.amount || 0).toLocaleString()} BASE</span>
                         ${pnlStr}
                     </div>
@@ -1449,6 +1449,35 @@ window.app.showTradeDetails = (id) => {
 
     const modal = document.createElement('div');
     modal.className = 'fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4';
+
+    // Build Meta-Guard summary (safe-read from marketState)
+    const guardSource = window.marketState?.[h.coin] || {};
+    const guardData = guardSource.signals?.institutional_guard || guardSource.institutional_guard || null;
+    let guardHtml = '';
+    if (guardData) {
+        const gStatus = guardData.meta_guard_status || guardData.status || 'N/A';
+        const gScore = guardData.score !== undefined ? Utils.safeFixed(guardData.score, 2) : 'N/A';
+        const gReason = guardData.block_reason || guardData.reason || guardData.message || '';
+        const breakdown = guardData.breakdown || null;
+
+        guardHtml = `
+            <div class="p-3 bg-bb-panel border border-bb-border rounded mb-3">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <div class="text-[9px] text-bb-muted">Meta-Guard</div>
+                        <div class="text-lg font-black">${gStatus}</div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-[9px] text-bb-muted">Score</div>
+                        <div class="text-xl font-black text-bb-gold">$${gScore}</div>
+                    </div>
+                </div>
+                ${gReason ? `<div class="text-[9px] text-bb-muted mt-2">${gReason}</div>` : ''}
+                ${breakdown ? `<div class="mt-2 text-[9px] text-bb-muted"><pre class="whitespace-pre-wrap text-[9px]">${JSON.stringify(breakdown, null, 2)}</pre></div>` : ''}
+            </div>
+        `;
+    }
+
     modal.innerHTML = `
         <div class="bg-bb-panel border border-bb-gold/30 w-full max-w-md rounded-lg overflow-hidden flex flex-col shadow-[0_0_50px_rgba(0,0,0,0.5)]">
             <div class="p-4 bg-bb-gold/10 border-b border-white/5 flex justify-between items-center">
@@ -1459,15 +1488,17 @@ window.app.showTradeDetails = (id) => {
                 <button class="text-bb-muted hover:text-white" onclick="this.closest('.fixed').remove()">✕</button>
             </div>
             
+            ${guardHtml}
+
             <div class="p-4 flex-1 overflow-y-auto max-h-[60vh] scrollbar-thin">
                 <div class="grid grid-cols-2 gap-4 mb-4 bg-black/20 p-3 rounded border border-white/5">
                     <div class="flex flex-col">
                         <span class="text-[7px] text-bb-muted uppercase font-black">Final Entry (Avg)</span>
-                        <span class="text-white font-mono">$${h.entryPrice.toFixed(h.entryPrice < 1 ? 4 : 2)}</span>
+                        <span class="text-white font-mono">$${Utils.safeFixed(h.entryPrice || 0, (h.entryPrice || 0) < 1 ? 4 : 2)}</span>
                     </div>
                     <div class="text-right flex flex-col">
                         <span class="text-[7px] text-bb-muted uppercase font-black">Exit Price</span>
-                        <span class="text-bb-red font-mono">$${(h.exitPrice || 0).toFixed(h.exitPrice < 1 ? 4 : 2)}</span>
+                        <span class="text-bb-red font-mono">$${Utils.safeFixed(h.exitPrice || 0, (h.exitPrice || 0) < 1 ? 4 : 2)}</span>
                     </div>
                 </div>
 
@@ -1484,7 +1515,7 @@ window.app.showTradeDetails = (id) => {
                 ${h.pnl !== undefined ? `
                 <div class="mt-4 p-4 rounded bg-gradient-to-br ${h.pnl >= 0 ? 'from-bb-green/20 to-transparent' : 'from-bb-red/20 to-transparent'} border ${h.pnl >= 0 ? 'border-bb-green/30' : 'border-bb-red/30'} flex justify-between items-center">
                     <span class="text-[9px] font-black uppercase text-white">Full Position Realized PnL</span>
-                    <span class="text-lg font-black ${h.pnl >= 0 ? 'text-bb-green' : 'text-bb-red'}">${h.pnl >= 0 ? '+' : ''}$${h.pnl.toFixed(2)}</span>
+                    <span class="text-lg font-black ${h.pnl >= 0 ? 'text-bb-green' : 'text-bb-red'}">${h.pnl >= 0 ? '+' : ''}$${Utils.safeFixed(h.pnl, 2)}</span>
                 </div>
                 ` : ''}
             </div>

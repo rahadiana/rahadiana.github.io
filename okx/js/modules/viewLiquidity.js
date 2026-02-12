@@ -214,7 +214,7 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
     const bidPct = total > 0 ? (bids / total) * 100 : 50;
 
     const elTotalBadge = document.getElementById('liq-total-depth-badge');
-    if (elTotalBadge) elTotalBadge.innerText = `$${(total / 1000000).toFixed(2)}M TOTAL DEPTH`;
+    if (elTotalBadge) elTotalBadge.innerText = `$${Utils.formatNumber(total / 1000000, 2)}M TOTAL DEPTH`;
 
     document.getElementById('liq-bid-sum').innerText = `$${Utils.formatNumber(bids)}`;
     document.getElementById('liq-ask-sum').innerText = `$${Utils.formatNumber(asks)}`;
@@ -257,7 +257,7 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
     const updateSlipEl = (id, val) => {
         const el = document.getElementById(id);
         if (!el) return;
-        el.innerText = `${val.toFixed(3)}%`;
+        el.innerText = `${Utils.safeFixed(val, 3)}%`;
         el.className = `text-[10px] font-mono font-bold ${val > 0.5 ? 'text-bb-red' : val > 0.1 ? 'text-bb-gold' : id === 'liq-slip-100k' ? 'text-bb-blue' : 'text-white/90'}`;
     };
 
@@ -427,7 +427,7 @@ function updateRealTimeMetrics() {
 
     if (elBidSum) elBidSum.innerText = `$${Utils.formatNumber(totalBidVal)}`;
     if (elAskSum) elAskSum.innerText = `$${Utils.formatNumber(totalAskVal)}`;
-    if (elBadge) elBadge.innerText = `$${((totalBidVal + totalAskVal) / 1000000).toFixed(2)}M ACTIVE DEPTH`;
+    if (elBadge) elBadge.innerText = `$${Utils.formatNumber((totalBidVal + totalAskVal) / 1000000, 2)}M ACTIVE DEPTH`;
 
     const totalVal = totalBidVal + totalAskVal;
     const bidPct = totalVal > 0 ? (totalBidVal / totalVal) * 100 : 50;
@@ -461,7 +461,7 @@ function updateRealTimeMetrics() {
     const updateSlipEl = (id, val) => {
         const el = document.getElementById(id);
         if (!el) return;
-        el.innerText = `${val.toFixed(4)}%`;
+        el.innerText = `${Utils.safeFixed(val, 4)}%`;
         el.className = `text-[10px] font-mono font-bold ${val > 0.5 ? 'text-bb-red' : val > 0.1 ? 'text-bb-gold' : 'text-bb-blue'}`;
     };
 
@@ -561,7 +561,7 @@ function renderLadder() {
 
         return `
             <div class="flex items-center gap-2 h-4 group hover:bg-white/5 px-1 transition-all duration-300 ${hlClass}">
-                <div class="w-16 text-[9px] font-mono ${textColor} text-left tracking-tight">${(item.price || 0).toFixed(getItemPrecision())}${hlBadge}</div>
+                <div class="w-16 text-[9px] font-mono ${textColor} text-left tracking-tight">${Utils.safeFixed(item.price || 0, getItemPrecision())}${hlBadge}</div>
                 <div class="flex-1 h-2.5 bg-bb-dark/50 relative overflow-hidden rounded-sm border border-white/5">
                     <div class="absolute inset-y-0 left-0 ${sideColor} opacity-40 transition-all duration-500" style="width: ${barPct}%"></div>
                     <div class="absolute inset-x-0 inset-y-0 flex items-center justify-end px-2 text-[7px] font-bold text-white/60 z-10">
@@ -579,7 +579,7 @@ function renderLadder() {
             ${isLive ? `<div class="absolute -top-5 right-0 flex items-center gap-1.5 opacity-80"><span class="w-1.5 h-1.5 rounded-full bg-bb-green shadow-[0_0_5px_lime] animate-pulse"></span><span class="text-[8px] text-bb-green font-black uppercase tracking-widest">LIVE FEED</span></div>` : ''}
             ${asksRes.map(a => renderRow(a, 'ask')).join('')}
             <div class="h-px bg-white/10 my-1 relative flex items-center justify-center">
-                 <span class="bg-bb-black px-2 text-[8px] text-white font-black uppercase tracking-widest border border-white/10 rounded-full">SPREAD ${(Math.abs((asksRes[asksRes.length - 1]?.price || 0) - (bidsRes[0]?.price || 0))).toFixed(getItemPrecision())}</span>
+                 <span class="bg-bb-black px-2 text-[8px] text-white font-black uppercase tracking-widest border border-white/10 rounded-full">SPREAD ${Utils.safeFixed(Math.abs((asksRes[asksRes.length - 1]?.price || 0) - (bidsRes[0]?.price || 0)), getItemPrecision())}</span>
             </div>
             ${bidsRes.map(b => renderRow(b, 'bid')).join('')}
         </div>

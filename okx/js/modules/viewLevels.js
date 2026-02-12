@@ -105,15 +105,15 @@ function updateLiquidityScore(custom, lsiData) {
     el.innerHTML = `
         <div class="flex flex-col justify-center items-center bg-bb-dark border border-bb-border p-2">
             <span class="text-[10px] text-bb-muted">LIQUIDITY SCORE</span>
-            <span class="text-3xl font-bold ${score > 70 ? 'text-bb-green' : score < 40 ? 'text-bb-red' : 'text-bb-gold'}">${score.toFixed(0)}</span>
+                <span class="text-3xl font-bold ${score > 70 ? 'text-bb-green' : score < 40 ? 'text-bb-red' : 'text-bb-gold'}">${Utils.safeFixed(score, 0)}</span>
             <span class="text-[9px] text-white px-2 rounded ${lsiLevel === 'CRITICAL' ? 'bg-red-900' : 'bg-green-900'}">${lsiLevel}</span>
         </div>
         
         <div class="flex flex-col justify-center px-2 space-y-1">
-             <div class="flex justify-between text-xxs">
-                 <span class="text-bb-muted">DEPTH Q</span>
-                 <div class="w-12 h-1 bg-bb-dark overflow-hidden"><div class="bg-blue-500 h-full" style="width: ${custom.LCI || 50}%"></div></div>
-             </div>
+            <div class="flex justify-between text-xs">
+                <span class="text-bb-muted">STOP LOSS (1.5 ATR)</span>
+                <span class="font-mono text-bb-red">$${Utils.safeFixed(stopLoss, 4)}</span>
+            </div>
              <div class="flex justify-between text-xxs">
                  <span class="text-bb-muted">RESILIENCE</span>
                  <div class="w-12 h-1 bg-bb-dark overflow-hidden"><div class="bg-purple-500 h-full" style="width: ${custom.LRI * 10 || 50}%"></div></div>
@@ -142,8 +142,8 @@ function updateOrderBook(ob) {
         <!-- IMBALANCE BAR -->
         <div>
             <div class="flex justify-between text-xs mb-1">
-                <span class="text-bb-green font-bold">BIDS ${(bidPct).toFixed(0)}%</span>
-                <span class="text-bb-red font-bold">ASKS ${(100 - bidPct).toFixed(0)}%</span>
+                 <span class="text-bb-green font-bold">BIDS ${Utils.safeFixed(bidPct, 0)}%</span>
+                 <span class="text-bb-red font-bold">ASKS ${100 - Utils.safeFixed(bidPct, 0)}%</span>
             </div>
             <div class="w-full h-4 bg-bb-dark rounded flex overflow-hidden border border-bb-border">
                  <div class="bg-bb-green/80 flex items-center justify-center text-[9px] text-black font-bold h-full" style="width: ${bidPct}%">${Utils.formatNumber(bids)}</div>
@@ -161,7 +161,7 @@ function updateOrderBook(ob) {
             <div class="space-y-1 text-xxs">
                  <div class="flex justify-between">
                      <span class="text-bb-muted">OBI SCORE</span>
-                     <span class="${bidPct > 60 ? 'text-bb-green' : bidPct < 40 ? 'text-bb-red' : 'text-white'}">${((bidPct - 50) * 2).toFixed(1)}%</span>
+                     <span class="${bidPct > 60 ? 'text-bb-green' : bidPct < 40 ? 'text-bb-red' : 'text-white'}">${((bidPct - 50) * Utils.safeFixed(2), 1)}%</span>
                  </div>
                  <div class="flex justify-between">
                      <span class="text-bb-muted">DEPTH USD</span>
@@ -182,11 +182,11 @@ function updateExecution(ob, custom) {
     el.innerHTML = `
         <div class="bg-bb-dark p-2 text-center border border-bb-border">
             <div class="text-[9px] text-bb-muted">SPREAD (BPS)</div>
-            <div class="text-xl font-bold ${spread < 5 ? 'text-bb-green' : 'text-bb-gold'}">${spread.toFixed(2)}</div>
+                <div class="text-xl font-bold ${spread < 5 ? 'text-bb-green' : 'text-bb-gold'}">${Utils.safeFixed(spread, 2)}</div>
         </div>
         <div class="bg-bb-dark p-2 text-center border border-bb-border">
             <div class="text-[9px] text-bb-muted">SLIPPAGE SCORE</div>
-            <div class="text-xl font-bold ${slippage > 80 ? 'text-bb-green' : 'text-bb-white'}">${slippage.toFixed(0)}</div>
+                <div class="text-xl font-bold ${slippage > 80 ? 'text-bb-green' : 'text-bb-white'}">${Utils.safeFixed(slippage, 0)}</div>
         </div>
     `;
 }
@@ -221,21 +221,21 @@ function updateLevels(levels, price) {
             <div class="flex items-center gap-2">
                 <span class="text-[10px] w-6 text-bb-red font-bold">R3</span>
                 <div class="flex-1 h-[2px] bg-bb-red/30 relative">
-                    <span class="absolute right-0 -top-2 text-[9px] ${getDistColor(r3)}">$${r3.toFixed(4)} (+${((r3 - price) / price * 100).toFixed(1)}%)</span>
+                        <span class="absolute right-0 -top-2 text-[9px] ${getDistColor(r3)}">$${Utils.safeFixed(r3, 4)} (+${Utils.safeFixed((r3 - price) / price * 100, 1)}%)</span>
                 </div>
             </div>
             
             <div class="flex items-center gap-2">
                 <span class="text-[10px] w-6 text-bb-red font-bold">R2</span>
                 <div class="flex-1 h-[2px] bg-bb-red/40 relative">
-                    <span class="absolute right-0 -top-2 text-[9px] ${getDistColor(r2)}">$${r2.toFixed(4)} (+${((r2 - price) / price * 100).toFixed(1)}%)</span>
+                        <span class="absolute right-0 -top-2 text-[9px] ${getDistColor(r2)}">$${Utils.safeFixed(r2, 4)} (+${Utils.safeFixed((r2 - price) / price * 100, 1)}%)</span>
                 </div>
             </div>
             
             <div class="flex items-center gap-2">
                 <span class="text-[10px] w-6 text-bb-red font-bold">R1</span>
                 <div class="flex-1 h-[2px] bg-bb-red/60 relative">
-                    <span class="absolute right-0 -top-2 text-[9px] ${getDistColor(r1)}">$${r1.toFixed(4)} (+${((r1 - price) / price * 100).toFixed(1)}%)</span>
+                        <span class="absolute right-0 -top-2 text-[9px] ${getDistColor(r1)}">$${Utils.safeFixed(r1, 4)} (+${Utils.safeFixed((r1 - price) / price * 100, 1)}%)</span>
                 </div>
             </div>
             
@@ -243,7 +243,7 @@ function updateLevels(levels, price) {
             <div class="flex items-center gap-2 py-1">
                 <span class="text-[10px] w-6 text-bb-gold font-bold">P</span>
                 <div class="flex-1 h-px bg-bb-gold border-t-2 border-dashed border-bb-gold relative">
-                    <span class="absolute right-0 -top-3 text-[10px] text-bb-gold font-bold">$${pivot.toFixed(4)}</span>
+                        <span class="absolute right-0 -top-3 text-[10px] text-bb-gold font-bold">$${Utils.safeFixed(pivot, 4)}</span>
                 </div>
             </div>
 
@@ -251,21 +251,21 @@ function updateLevels(levels, price) {
             <div class="flex items-center gap-2">
                 <span class="text-[10px] w-6 text-bb-green font-bold">S1</span>
                 <div class="flex-1 h-[2px] bg-bb-green/60 relative">
-                    <span class="absolute right-0 -top-2 text-[9px] ${getDistColor(s1)}">$${s1.toFixed(4)} (${((s1 - price) / price * 100).toFixed(1)}%)</span>
+                        <span class="absolute right-0 -top-2 text-[9px] ${getDistColor(s1)}">$${Utils.safeFixed(s1, 4)} (${Utils.safeFixed((s1 - price) / price * 100, 1)}%)</span>
                 </div>
             </div>
             
             <div class="flex items-center gap-2">
                 <span class="text-[10px] w-6 text-bb-green font-bold">S2</span>
                 <div class="flex-1 h-[2px] bg-bb-green/40 relative">
-                    <span class="absolute right-0 -top-2 text-[9px] ${getDistColor(s2)}">$${s2.toFixed(4)} (${((s2 - price) / price * 100).toFixed(1)}%)</span>
+                        <span class="absolute right-0 -top-2 text-[9px] ${getDistColor(s2)}">$${Utils.safeFixed(s2, 4)} (${Utils.safeFixed((s2 - price) / price * 100, 1)}%)</span>
                 </div>
             </div>
             
             <div class="flex items-center gap-2">
                 <span class="text-[10px] w-6 text-bb-green font-bold">S3</span>
                 <div class="flex-1 h-[2px] bg-bb-green/30 relative">
-                    <span class="absolute right-0 -top-2 text-[9px] ${getDistColor(s3)}">$${s3.toFixed(4)} (${((s3 - price) / price * 100).toFixed(1)}%)</span>
+                        <span class="absolute right-0 -top-2 text-[9px] ${getDistColor(s3)}">$${Utils.safeFixed(s3, 4)} (${Utils.safeFixed((s3 - price) / price * 100, 1)}%)</span>
                 </div>
             </div>
         </div>
@@ -301,11 +301,11 @@ function updateRiskCalc(price, vol) {
         </div>
         <div class="flex justify-between text-xs">
             <span class="text-bb-muted">STOP LOSS (1.5 ATR)</span>
-            <span class="font-mono text-bb-red">$${stopLoss.toFixed(4)}</span>
+                <span class="font-mono text-bb-red">$${Utils.safeFixed(stopLoss, 4)}</span>
         </div>
         
         <div class="bg-bb-dark p-1 mt-1 text-center text-[9px] text-bb-muted">
-            Based on current volatility (${(atr / price * 100).toFixed(2)}%)
+            Based on current volatility (${Utils.safeFixed((atr / price) * 100, 2)}%)
         </div>
     `;
 }
@@ -325,17 +325,17 @@ function updateVWAP(price, analytics) {
     el.innerHTML = `
         <div class="flex justify-between items-center bg-bb-dark p-1 border border-bb-border mb-1">
             <span class="text-[9px] text-bb-muted">VWAP DIST</span>
-            <span class="${dist > 0 ? 'text-bb-green' : 'text-bb-red'} font-bold text-xs">${dist > 0 ? '+' : ''}${dist.toFixed(2)}%</span>
+            <span class="${dist > 0 ? 'text-bb-green' : 'text-bb-red'} font-bold text-xs">${dist > 0 ? '+' : ''}${Utils.safeFixed(dist, 2)}%</span>
         </div>
         
         <div class="space-y-1 text-xs">
              <div class="flex justify-between">
                  <span class="text-bb-muted">TARGET 1 (1.5R)</span>
-                 <span class="text-bb-green">$${tp1.toFixed(4)}</span>
+                 <span class="text-bb-green">$${Utils.safeFixed(tp1, 4)}</span>
              </div>
              <div class="flex justify-between">
                  <span class="text-bb-muted">TARGET 2 (3R)</span>
-                 <span class="text-bb-green">$${tp2.toFixed(4)}</span>
+                 <span class="text-bb-green">$${Utils.safeFixed(tp2, 4)}</span>
              </div>
         </div>
     `;

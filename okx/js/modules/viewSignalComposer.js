@@ -6,6 +6,8 @@
  */
 
 import * as ViewSimulation from './viewSimulation.js';
+import * as Utils from '../utils.js';
+import { computeData } from '../data_helpers.js';
 
 const STORAGE_KEY = 'bb_signal_composer';
 
@@ -59,14 +61,14 @@ const DETAIL_TABS = {
 };
 
 // ======================== COMPLETE SIGNAL COMPONENTS ========================
-const SIGNAL_COMPONENTS = {
+export const SIGNAL_COMPONENTS = {
     // ═══════════════════ PRICE METRICS ═══════════════════
     PRICE_CURRENT: { category: 'PRICE', name: 'Current Price', icon: '💲', path: 'raw.PRICE.last', operators: ['>', '<', '>=', '<='], defaultThreshold: 50000, description: 'Current market price' },
     PRICE_CHANGE_1M: { category: 'PRICE', name: 'Price Δ 1m', icon: '📈', path: 'raw.PRICE.percent_change_1MENIT', operators: ['>', '<', '>=', '<=', 'ABS>'], defaultThreshold: 0.2, description: 'Price % change 1 min' },
     PRICE_CHANGE_5M: { category: 'PRICE', name: 'Price Δ 5m', icon: '📈', path: 'raw.PRICE.percent_change_5MENIT', operators: ['>', '<', '>=', '<=', 'ABS>'], defaultThreshold: 0.5, description: 'Price % change 5 min' },
     PRICE_CHANGE_15M: { category: 'PRICE', name: 'Price Δ 15m', icon: '📈', path: 'raw.PRICE.percent_change_15MENIT', operators: ['>', '<', '>=', '<=', 'ABS>'], defaultThreshold: 1.0, description: 'Price % change 15 min' },
     PRICE_CHANGE_1H: { category: 'PRICE', name: 'Price Δ 1h', icon: '📈', path: 'raw.PRICE.percent_change_1JAM', operators: ['>', '<', '>=', '<=', 'ABS>'], defaultThreshold: 2.0, description: 'Price % change 1 hour' },
-    PRICE_CHANGE_24H: { category: 'PRICE', name: 'Price Δ 24h', icon: '📈', path: 'raw.PRICE.percent_change_24h', operators: ['>', '<', '>=', '<=', 'ABS>'], defaultThreshold: 5.0, description: 'Price % change 24h' },
+    PRICE_CHANGE_24H: { category: 'PRICE', name: 'Price Δ 24h', icon: '📈', path: 'raw.PRICE.percent_change_24JAM', operators: ['>', '<', '>=', '<=', 'ABS>'], defaultThreshold: 5.0, description: 'Price % change 24h' },
     PRICE_FROM_HIGH: { category: 'PRICE', name: 'From 24h High', icon: '🔺', path: 'raw.PRICE.percent_change_from_top', operators: ['>', '<'], defaultThreshold: -5, description: 'Distance from 24h high' },
     PRICE_FROM_LOW: { category: 'PRICE', name: 'From 24h Low', icon: '🔻', path: 'raw.PRICE.percent_change_from_bottom', operators: ['>', '<'], defaultThreshold: 5, description: 'Distance from 24h low' },
 
@@ -186,7 +188,7 @@ const SIGNAL_COMPONENTS = {
     GUARD_BLOCK_REASON: { category: 'GUARD', name: 'Block Reason', icon: '🚫', path: 'signals.institutional_guard.block_reason', operators: ['==', '!=', 'CONTAINS'], defaultThreshold: null, valueType: 'select', options: ['NO_POSITIONING', 'HIGH_VOL', 'CAUSALITY_BROKEN', 'CROWD_CONTAMINATION', 'NO_LIQUIDITY', 'SANITY_CHECK_FAILED'], description: 'Reason for blocking execution' }
 };
 
-const CATEGORIES = {
+export const CATEGORIES = {
     PRICE: { name: 'Price', color: 'bb-gold', icon: '📈' },
     VOLUME: { name: 'Volume', color: 'bb-blue', icon: '📊' },
     FREQ: { name: 'Frequency', color: 'indigo-400', icon: '⚡' },
@@ -305,6 +307,7 @@ let scannerResults = [];
 let selectedCoin = null;
 let composerProfile = 'GLOBAL';   // GLOBAL, AGGRESSIVE, MODERATE, CONSERVATIVE, SCALPER
 let composerTimeframe = 'GLOBAL'; // GLOBAL, 1MENIT, 5MENIT, 15MENIT, 30MENIT, 1JAM
+let currentDetailTab = 'MAIN';
 
 // ⚡ Helper: Get active profile/timeframe (resolve GLOBAL from main settings)
 function getActiveProfileTimeframe() {
@@ -334,6 +337,9 @@ function getSignalProfileTimeframe(sig) {
 
 export function render(container) {
     loadState();
+    // Sync local selection with global app selection so Details panel reflects global coin
+    if (window.selectedCoin) selectedCoin = window.selectedCoin;
+    // No forced detail tab — render normally
 
     container.innerHTML = `
         <div class="h-full flex flex-col bg-bb-black font-mono overflow-hidden">
@@ -465,9 +471,9 @@ function renderListTab() {
             <div class="p-2 border-b border-bb-border bg-black/30">
                 <span class="text-[8px] font-black text-bb-muted uppercase">Coin Details</span>
             </div>
-            <div id="detail-view" class="flex-1 overflow-auto">
-                ${selectedCoin ? renderCoinDetail(selectedCoin) : renderNoSelection()}
-            </div>
+                    <div id="detail-view" class="flex-1 overflow-auto">
+                        ${selectedCoin ? renderCoinDetail(selectedCoin) : renderNoSelection()}
+                    </div>
         </div>
     `;
 }
@@ -603,9 +609,9 @@ function renderMatrixTable() {
 }
 
 function getMatrixColumns(view) {
-    const fmtNum = (v, d = 2) => v != null ? Number(v).toFixed(d) : '-';
-    const fmtPct = v => v != null ? `${v >= 0 ? '+' : ''}${Number(v).toFixed(2)}%` : '-';
-    const fmtUsd = v => v != null ? `$${(v / 1000).toFixed(0)}k` : '-';
+    const fmtNum = (v, d = 2) => v != null ? Utils.safeFixed(Number(v), d) : '-';
+    const fmtPct = v => v != null ? `${v >= 0 ? '+' : ''}${Utils.safeFixed(Number(v), 2)}%` : '-';
+    const fmtUsd = v => v != null ? `$${Utils.safeFixed(v / 1000, 0)}k` : '-';
     const pctCol = v => v > 0 ? 'text-bb-green' : v < 0 ? 'text-bb-red' : 'text-white/60';
 
     const views = {
@@ -689,6 +695,12 @@ function renderCoinDetail(coin) {
 
     return `
         <div class="p-2 space-y-3">
+            <!-- DETAIL SUB-TABS -->
+            <div class="flex gap-1 mb-2">
+                ${Object.entries(DETAIL_TABS).map(([k, v]) => `
+                    <button class="detail-tab px-2 py-0.5 text-[8px] font-bold rounded ${currentDetailTab === k ? 'bg-bb-gold text-black' : 'bg-white/5 text-bb-muted'}" data-detail="${k}">${v.icon} ${v.name}</button>
+                `).join('')}
+            </div>
             <!-- HEADER -->
             <div class="flex items-center justify-between border-b border-white/10 pb-2">
                 <div>
@@ -700,7 +712,7 @@ function renderCoinDetail(coin) {
                         $${(raw.PRICE?.last || 0).toLocaleString()}
                     </div>
                     <div class="text-[9px] ${(raw.PRICE?.percent_change_1JAM || 0) >= 0 ? 'text-bb-green' : 'text-bb-red'}">
-                        ${(raw.PRICE?.percent_change_1JAM || 0) >= 0 ? '+' : ''}${(raw.PRICE?.percent_change_1JAM || 0).toFixed(2)}%
+                        ${(raw.PRICE?.percent_change_1JAM || 0) >= 0 ? '+' : ''}${Utils.safeFixed(raw.PRICE?.percent_change_1JAM || 0, 2)}%
                     </div>
                 </div>
             </div>
@@ -713,7 +725,7 @@ function renderCoinDetail(coin) {
                         ${sig.masterSignal?.action || 'WAIT'}
                     </span>
                     <div>
-                        <div class="text-[9px] text-white">Score: ${(sig.masterSignal?.normalizedScore || 0).toFixed(0)}</div>
+                        <div class="text-[9px] text-white">Score: ${Utils.safeFixed(sig.masterSignal?.normalizedScore || 0, 0)}</div>
                         <div class="text-[8px] text-bb-muted">${sig.masterSignal?.confirmations || 0} confirmations</div>
                     </div>
                 </div>
@@ -723,15 +735,15 @@ function renderCoinDetail(coin) {
             <div class="grid grid-cols-3 gap-2">
                 <div class="p-1.5 rounded bg-black/30 border border-white/10 text-center">
                     <div class="text-[7px] text-bb-muted">OI</div>
-                    <div class="text-[10px] font-bold text-white">${((raw.OI?.openInterest || 0) / 1e6).toFixed(1)}M</div>
+                    <div class="text-[10px] font-bold text-white">${Utils.safeFixed((raw.OI?.openInterest || 0) / 1e6, 1)}M</div>
                 </div>
                 <div class="p-1.5 rounded bg-black/30 border border-white/10 text-center">
                     <div class="text-[7px] text-bb-muted">Funding</div>
-                    <div class="text-[10px] font-bold ${(raw.FUNDING?.fundingRate || 0) >= 0 ? 'text-bb-green' : 'text-bb-red'}">${((raw.FUNDING?.fundingRate || 0) * 100).toFixed(4)}%</div>
+                    <div class="text-[10px] font-bold ${(raw.FUNDING?.fundingRate || 0) >= 0 ? 'text-bb-green' : 'text-bb-red'}">${Utils.safeFixed((raw.FUNDING?.fundingRate || 0) * 100, 4)}%</div>
                 </div>
                 <div class="p-1.5 rounded bg-black/30 border border-white/10 text-center">
                     <div class="text-[7px] text-bb-muted">LSR</div>
-                    <div class="text-[10px] font-bold text-white">${(raw.LSR?.ratio || 0).toFixed(2)}</div>
+                    <div class="text-[10px] font-bold text-white">${Utils.safeFixed(raw.LSR?.ratio || 0, 2)}</div>
                 </div>
             </div>
 
@@ -741,7 +753,7 @@ function renderCoinDetail(coin) {
                 <div class="space-y-1">
                     <div class="flex justify-between text-[8px]">
                         <span class="text-bb-muted">Flow 15m</span>
-                        <span class="${(syn.flow?.net_flow_15MENIT || 0) >= 0 ? 'text-bb-green' : 'text-bb-red'}">$${((syn.flow?.net_flow_15MENIT || 0) / 1000).toFixed(0)}k</span>
+                        <span class="${(syn.flow?.net_flow_15MENIT || 0) >= 0 ? 'text-bb-green' : 'text-bb-red'}">$${Utils.safeFixed((syn.flow?.net_flow_15MENIT || 0) / 1000, 0)}k</span>
                     </div>
                     <div class="flex justify-between text-[8px]">
                         <span class="text-bb-muted">Character</span>
@@ -754,10 +766,247 @@ function renderCoinDetail(coin) {
                 </div>
             </div>
 
-            <!-- ACTIVE SIGNALS CHECK -->
-            ${renderActiveSignalsForCoin(coin, data)}
+            <!-- DETAIL CONTENT -->
+            ${currentDetailTab === 'COMPOSER' ? renderComposerDetail(coin, data) : renderActiveSignalsForCoin(coin, data)}
         </div>
     `;
+}
+
+function renderComposerDetail(coin, data) {
+    return getComposerGroupedDetailHTML(coin);
+}
+
+// Public helper: return HTML for composer detail for a given coin
+export function getComposerDetailHTML(coin) {
+    const mkt = window.marketState || {};
+    const data = computeData(mkt[coin], getActiveProfileTimeframe().profile, getActiveProfileTimeframe().timeframe);
+    return renderComposerDetail(coin, data);
+}
+
+// Build a compact Composer panel (category filters + values) for embedding in Details
+export function getComposerPanelHTML(coin) {
+    const categories = Object.keys(CATEGORIES || {}).map(k => ({ key: k, icon: CATEGORIES[k].icon }));
+    const catButtons = [
+        `<button class="cat-filter px-1 py-0.5 rounded text-[7px] font-bold bg-bb-gold text-black" data-cat="ALL">ALL</button>`,
+        ...categories.map(c => `<button class="cat-filter px-1 py-0.5 rounded text-[6px] bg-white/5 text-bb-muted" data-cat="${c.key}" title="${c.key}">${c.icon}</button>`)
+    ].join('');
+
+    const header = `
+        <div class="p-2 bg-bb-panel border border-bb-border rounded w-80 shadow-gold-glow text-[10px]">
+            <div class="flex items-center justify-between mb-2">
+                <div class="text-[8px] font-black text-bb-muted uppercase">Composer Components</div>
+                <div class="text-[8px] text-bb-muted">Action Engine v2.1</div>
+            </div>
+            <div class="flex flex-wrap gap-1 mb-2" id="composer-category-filters">${catButtons}</div>
+            <div id="composer-components-list" class="max-h-[420px] overflow-y-auto scrollbar-thin divide-y divide-white/5"></div>
+        </div>
+    `;
+
+    return header;
+}
+
+// Build a grouped table of components for a given coin (for Details->Composer)
+export function getComposerGroupedDetailHTML(coin) {
+    const mkt = window.marketState || {};
+    const { profile, timeframe } = getActiveProfileTimeframe();
+    const data = computeData(mkt[coin], profile, timeframe) || {};
+
+    const groups = Object.entries(CATEGORIES).map(([catKey, cat]) => {
+        const catComps = Object.entries(SIGNAL_COMPONENTS).filter(([, c]) => c.category === catKey);
+        if (!catComps.length) return '';
+
+        const rows = catComps.map(([id, comp]) => {
+            const raw = safeGet(data, comp.path) ?? null;
+            let display;
+            if (raw === null) display = '-';
+            else if (typeof raw === 'number') {
+                const unit = detectUnitFromPath(comp.path);
+                if (unit === '%') display = Utils.safeFixed(raw, comp.displayDigits || 2) + '%';
+                else if (unit === '$') display = '$' + Utils.safeFixed(raw, comp.displayDigits || (Math.abs(raw) > 1000 ? 0 : 2));
+                else display = Utils.safeFixed(raw, comp.displayDigits || 2);
+            } else display = String(raw);
+
+            // Determine color based on value if applicable
+            let colorClass = 'text-white';
+            if (typeof raw === 'number') {
+                if (comp.path.includes('buy_sell_ratio') || comp.path.includes('openInterest')) {
+                    // specific logic if needed
+                } else {
+                    if (raw > 0) colorClass = 'text-bb-green';
+                    if (raw < 0) colorClass = 'text-bb-red';
+                }
+            }
+
+            return `
+                <tr class="border-b border-white/5 last:border-0 hover:bg-white/5">
+                    <td class="px-2 py-1 text-bb-muted w-8 text-center text-[7px]">${comp.icon || ''}</td>
+                    <td class="px-2 py-1 font-medium text-bb-muted">${comp.name}</td>
+                    <td class="px-2 py-1 text-right font-mono font-bold ${colorClass}">${display}</td>
+                </tr>
+            `;
+        }).join('');
+
+        return `
+            <div class="mb-3 border border-white/10 rounded bg-black/20 overflow-hidden">
+                <div class="px-2 py-1.5 bg-white/5 border-b border-white/10 flex items-center justify-between">
+                    <span class="text-[9px] font-black text-${cat.color || 'white'} uppercase flex items-center gap-1.5">
+                        ${cat.icon} ${cat.name}
+                    </span>
+                </div>
+                <table class="w-full text-[9px]">
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+        `;
+    }).join('');
+
+    return `
+        <div class="p-2 h-full overflow-y-auto scrollbar-thin">
+            <div class="grid grid-cols-1 gap-2 pb-10">
+                ${groups}
+            </div>
+        </div>
+    `;
+}
+
+// Deprecated but kept for backward compatibility if needed
+export function getComposerTableHTML(coin) {
+    return getComposerGroupedDetailHTML(coin);
+}
+
+export function detectUnitFromPath(path) {
+    if (!path) return '';
+    const p = path.toLowerCase();
+    if (p.includes('funding') || p.includes('fundingrate') || p.includes('funding_rate')) return '%';
+    if (p.includes('percent') || p.includes('percent_change') || p.includes('delta') || p.includes('change')) return '%';
+    //    if (p.includes('price') || p.includes('last') || p.includes('openinterest') || p.includes('oi') || p.includes('vol')) return '$';
+    return '';
+}
+
+// Render table rows into container element
+export function renderComposerTableRows(container, coin, category = 'ALL') {
+    // This function is less relevant now with grouped view but kept for the "scanner" or "editor" palette if needed
+    // Implementation unchanged...
+    const mkt = window.marketState || {};
+    const { profile, timeframe } = getActiveProfileTimeframe();
+    const data = computeData(mkt[coin], profile, timeframe) || {};
+
+    const comps = Object.entries(SIGNAL_COMPONENTS).filter(([k, c]) => category === 'ALL' || c.category === category);
+    if (!comps.length) {
+        container.innerHTML = `<tr><td colspan="4" class="p-2 text-[9px] text-bb-muted">No components</td></tr>`;
+        return;
+    }
+
+    const rows = comps.map(([id, comp], idx) => {
+        const raw = safeGet(data, comp.path) ?? null;
+        let display;
+        if (raw === null) display = '-';
+        else if (typeof raw === 'number') {
+            const unit = detectUnitFromPath(comp.path);
+            if (unit === '%') display = Utils.safeFixed(raw, comp.displayDigits || 2) + '%';
+            else if (unit === '$') display = Utils.safeFixed(raw, comp.displayDigits || (Math.abs(raw) > 1000 ? 0 : 2));
+            else display = Utils.safeFixed(raw, comp.displayDigits || 2);
+        } else display = String(raw);
+
+        const desc = comp.description || '';
+        return `
+            <tr class="border-b border-white/5">
+                <td class="px-2 py-1 text-[9px] text-bb-muted">${idx + 1}</td>
+                <td class="px-2 py-1"><span class="text-[12px] mr-2">${comp.icon || ''}</span>${comp.name}</td>
+                <td class="px-2 py-1 text-[9px] text-bb-muted">${desc}</td>
+                <td class="px-2 py-1 text-right font-mono font-bold text-white">${display}</td>
+            </tr>
+        `;
+    }).join('');
+
+    container.innerHTML = rows;
+}
+
+// Attach events for table category filters
+export function attachComposerTableEvents(slotEl) {
+    if (!slotEl) return;
+    const filters = slotEl.querySelector('#composer-cat-filters');
+    const body = slotEl.querySelector('#composer-components-table-body');
+    const coin = window.selectedCoin || selectedCoin;
+    if (!body || !filters) return;
+
+    renderComposerTableRows(body, coin, 'ALL');
+
+    filters.addEventListener('click', (e) => {
+        const btn = e.target.closest('.composer-cat');
+        if (!btn) return;
+        const cat = btn.getAttribute('data-cat') || 'ALL';
+        filters.querySelectorAll('.composer-cat').forEach(b => b.classList.remove('bg-bb-gold', 'text-black'));
+        btn.classList.add('bg-bb-gold', 'text-black');
+        renderComposerTableRows(body, coin, cat);
+    });
+}
+
+function safeGet(obj, path) {
+    if (!path) return undefined;
+    const parts = path.split('.');
+    let cur = obj;
+    for (const p of parts) {
+        if (!cur) return undefined;
+        cur = cur[p];
+    }
+    return cur;
+}
+
+// Render list of components for coin and category into container element
+export function renderComposerComponentsList(container, coin, category = 'ALL') {
+    const mkt = window.marketState || {};
+    const { profile, timeframe } = getActiveProfileTimeframe();
+    const data = computeData(mkt[coin], profile, timeframe) || {};
+
+    const comps = Object.entries(SIGNAL_COMPONENTS).filter(([k, c]) => category === 'ALL' || c.category === category);
+    if (!comps.length) {
+        container.innerHTML = `<div class="p-2 text-[9px] text-bb-muted">No components for ${category}</div>`;
+        return;
+    }
+
+    const rows = comps.map(([id, comp]) => {
+        const rawVal = safeGet(data, comp.path) ?? '-';
+        let display;
+        if (rawVal === '-') display = '-';
+        else if (comp.path && comp.path.toLowerCase().includes('funding')) display = Utils.safeFixed((rawVal || 0) * 100, comp.displayDigits || 4) + '%';
+        else if (comp.path && comp.path.toLowerCase().includes('percent')) display = Utils.safeFixed(rawVal, comp.displayDigits || 2) + '%';
+        else if (typeof rawVal === 'number') display = Utils.safeFixed(rawVal, comp.displayDigits || (Math.abs(rawVal) > 1000 ? 0 : 2));
+        else display = rawVal === null ? '-' : String(rawVal);
+        return `
+            <div class="flex justify-between items-center py-1 px-2 text-[10px]">
+                <div class="flex items-center gap-2 text-bb-muted">
+                    <div class="text-[12px]">${comp.icon || ''}</div>
+                    <div class="truncate max-w-[200px]">${comp.name}</div>
+                </div>
+                <div class="font-mono font-bold text-white text-right ml-2">${display}</div>
+            </div>
+        `;
+    }).join('');
+
+    container.innerHTML = `<div class="p-1 bg-black/20 rounded">${rows}</div>`;
+}
+
+// Attach events to composer panel (category switches)
+export function attachComposerPanelEvents(slotEl) {
+    if (!slotEl) return;
+    const filters = slotEl.querySelector('#composer-category-filters');
+    const list = slotEl.querySelector('#composer-components-list');
+    const coin = window.selectedCoin || selectedCoin;
+    if (!list) return;
+
+    // initial render: ALL
+    renderComposerComponentsList(list, coin, 'ALL');
+
+    filters.addEventListener('click', (e) => {
+        const btn = e.target.closest('.cat-filter');
+        if (!btn) return;
+        const cat = btn.getAttribute('data-cat');
+        // update active styling
+        filters.querySelectorAll('.cat-filter').forEach(b => b.classList.remove('bg-bb-gold', 'text-black'));
+        btn.classList.add('bg-bb-gold', 'text-black');
+        renderComposerComponentsList(list, coin, cat || 'ALL');
+    });
 }
 
 function renderActiveSignalsForCoin(coin, rawData) {
@@ -782,7 +1031,7 @@ function renderActiveSignalsForCoin(coin, rawData) {
                     <div class="flex items-center justify-between text-[8px]">
                         <span class="text-white">${r.sig.name}</span>
                         <span class="px-1.5 py-0.5 rounded ${r.triggered ? (r.bias === 'LONG' ? 'bg-bb-green/20 text-bb-green' : 'bg-bb-red/20 text-bb-red') : 'bg-white/10 text-bb-muted'}">
-                            ${r.triggered ? `${r.bias} ${r.score?.toFixed(0)}%` : 'NO'}
+                            ${r.triggered ? `${r.bias} ${Utils.safeFixed(r.score ?? 0, 0)}%` : 'NO'}
                         </span>
                     </div>
                 `).join('')}
@@ -1030,9 +1279,9 @@ function renderScannerResults() {
                     <tr class="border-b border-white/5 hover:bg-white/5 cursor-pointer" data-coin="${r.coin}">
                         <td class="p-1.5 font-bold text-white">${r.coin.replace('-USDT', '')}</td>
                         <td class="text-center p-1.5"><span class="px-1.5 py-0.5 rounded ${r.bias === 'LONG' ? 'bg-bb-green/20 text-bb-green' : 'bg-bb-red/20 text-bb-red'}">${r.bias}</span></td>
-                        <td class="text-center p-1.5 text-bb-gold font-bold">${r.score?.toFixed(0)}%</td>
-                        <td class="text-right p-1.5 text-white">$${r.price?.toFixed(2)}</td>
-                        <td class="text-right p-1.5 ${r.change1h >= 0 ? 'text-bb-green' : 'text-bb-red'}">${r.change1h >= 0 ? '+' : ''}${r.change1h?.toFixed(2)}%</td>
+                        <td class="text-center p-1.5 text-bb-gold font-bold">${Utils.safeFixed(r.score ?? 0, 0)}%</td>
+                        <td class="text-right p-1.5 text-white">$${Utils.safeFixed(r.price ?? 0, 2)}</td>
+                        <td class="text-right p-1.5 ${r.change1h >= 0 ? 'text-bb-green' : 'text-bb-red'}">${r.change1h >= 0 ? '+' : ''}${Utils.safeFixed(r.change1h ?? 0, 2)}%</td>
                     </tr>
                 `).join('')}
             </tbody>
@@ -1044,6 +1293,26 @@ function attachEvents(container) {
     // Tab switching
     container.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => { currentTab = btn.dataset.tab; render(container); });
+    });
+
+    // Detail sub-tab delegation (attach once per container)
+    if (!container._detailTabDelegationAttached) {
+        container.addEventListener('click', (e) => {
+            const btn = e.target.closest('.detail-tab');
+            if (btn) {
+                currentDetailTab = btn.dataset.detail;
+                render(container);
+            }
+        });
+        container._detailTabDelegationAttached = true;
+    }
+
+    // Attach Composer Table Events (if present)
+    attachComposerTableEvents(container);
+
+    // Detail sub-tab switching (Details view on right)
+    container.querySelectorAll('.detail-tab').forEach(btn => {
+        btn.addEventListener('click', () => { currentDetailTab = btn.dataset.detail; render(container); });
     });
 
     // Profile/Timeframe selectors
@@ -1312,271 +1581,12 @@ function testSignal(container) {
         const res = evaluateSignal(activeComposition, coin, data);
         if (res.triggered) results.push({ coin, ...res });
     });
-    alert(results.length === 0 ? `No triggers across ${Object.keys(mkt).length} coins` : `Found ${results.length} triggers:\n${results.slice(0, 10).map(r => `${r.coin} → ${r.bias} (${r.score?.toFixed(0)}%)`).join('\n')}`);
+    alert(results.length === 0 ? `No triggers across ${Object.keys(mkt).length} coins` : `Found ${results.length} triggers:\n${results.slice(0, 10).map(r => `${r.coin} → ${r.bias} ${Utils.safeFixed(r.score ?? 0, 0)}%`).join('\n')}`);
 }
 
 // === COMPUTED VALUES ===
 // Normalizes the data structure to match expected paths
-function computeData(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
-    if (!data) return data;
 
-    // Extract nested structures like viewGlobal.js does
-    const raw = data.raw || {};
-    const dash = data.dashboard || {};
-    const sigRoot = data.signals || {};
-    const profileObj = sigRoot.profiles?.[profile] || {};
-    const tfObj = profileObj.timeframes?.[timeframe] || {};
-    const tfSignals = tfObj.signals || {};
-    const tfMaster = tfObj.masterSignal || {};
-    const analytics = data.analytics || {};
-
-    // Raw data
-    const price = raw.PRICE || sigRoot.PRICE || {};
-    const vol = raw.VOL || sigRoot.VOL || {};
-    const freq = raw.FREQ || sigRoot.FREQ || {};
-    const oiRaw = raw.OI || sigRoot.OI || {};
-    const fundingRaw = raw.FUNDING || sigRoot.FUNDING || {};
-    const lsrRaw = raw.LSR || sigRoot.LSR || {};
-    const obRaw = raw.OB || {};
-    const avgRaw = raw.AVG || sigRoot.AVG || {};
-
-    // Synthesis
-    const syn = data.synthesis || {};
-    const flow = syn.flow || {};
-    const eff = syn.efficiency || {};
-    const mom = syn.momentum || {};
-
-    // Funding analytics
-    const fundAn = analytics.funding || {};
-
-    // Helper for volume spike
-    const getVolSpike = (tf, mult) => {
-        const b = (vol[`vol_BUY_${tf}`] || 0);
-        const s = (vol[`vol_SELL_${tf}`] || 0);
-        const t = b + s;
-        const h1Base = ((vol.vol_BUY_1JAM || 0) + (vol.vol_SELL_1JAM || 0)) / 60;
-        const spike = h1Base > 0 ? (t / mult) / h1Base : 0;
-        // Historical avg spike
-        const histBuy = avgRaw[`avg_VOLCOIN_buy_${tf}`] || 0;
-        const histSell = avgRaw[`avg_VOLCOIN_sell_${tf}`] || 0;
-        const histTotal = histBuy + histSell;
-        const histPace = histTotal / mult;
-        const avgSpike = histPace > 0 ? (t / mult) / histPace : 0;
-        return { spike, avgSpike };
-    };
-
-    // Helper for frequency
-    const getFreq = (tf) => {
-        const b = freq[`freq_BUY_${tf}`] || 0;
-        const s = freq[`freq_SELL_${tf}`] || 0;
-        return { buy: b, sell: s, total: b + s, net: b - s, ratio: (b + s) > 0 ? (b - s) / (b + s) : 0 };
-    };
-
-    // Helper for BTC benchmark data
-    const getBtcData = () => {
-        const mkt = window.marketState || {};
-        const btc = mkt['BTC-USDT'] || {};
-        const btcPrice = btc.raw?.PRICE || btc.signals?.PRICE || {};
-        return {
-            change1m: btcPrice.percent_change_1MENIT || 0,
-            change5m: btcPrice.percent_change_5MENIT || 0,
-            change15m: btcPrice.percent_change_15MENIT || 0,
-            change1h: btcPrice.percent_change_1JAM || 0,
-            change24h: btcPrice.percent_change_24h || 0
-        };
-    };
-
-    const btcData = getBtcData();
-    const coinChange5m = price.percent_change_5MENIT || 0;
-    const coinChange15m = price.percent_change_15MENIT || 0;
-
-    // BTC correlation calculations
-    const btcDirection = btcData.change5m > 0.1 ? 'UP' : btcData.change5m < -0.1 ? 'DOWN' : 'FLAT';
-    const coinDirection = coinChange5m > 0.1 ? 'UP' : coinChange5m < -0.1 ? 'DOWN' : 'FLAT';
-
-    // Follows BTC = both moving same direction with similar magnitude
-    const btcFollows = btcDirection !== 'FLAT' && btcDirection === coinDirection;
-
-    // Diverges = opposite directions or coin moving while BTC flat
-    const btcDiverges = (btcDirection === 'UP' && coinDirection === 'DOWN') ||
-        (btcDirection === 'DOWN' && coinDirection === 'UP') ||
-        (btcDirection === 'FLAT' && coinDirection !== 'FLAT');
-
-    // Beta = ratio of coin move to BTC move (how much coin amplifies BTC move)
-    const btcBeta = Math.abs(btcData.change5m) > 0.05 ? coinChange5m / btcData.change5m : 1.0;
-
-    // Outperform = coin moving more in same direction as BTC
-    const btcOutperform = btcFollows && Math.abs(coinChange5m) > Math.abs(btcData.change5m) * 1.2;
-
-    // Compute derived values
-    const computed = {
-        // Volume spikes (normalized to multiplier)
-        volSpike1m: getVolSpike('1MENIT', 1).spike,
-        volSpike5m: getVolSpike('5MENIT', 5).spike,
-        volSpike15m: getVolSpike('15MENIT', 15).spike,
-        // Frequency
-        freqTotal1m: getFreq('1MENIT').total,
-        freqTotal5m: getFreq('5MENIT').total,
-        freqNetRatio: getFreq('5MENIT').ratio,
-        // Funding APY (annualized)
-        fundingApy: (fundAn.currentRate || fundingRaw.funding_Rate || 0) * 3 * 365 * 100,
-        // 24h price range %
-        range24h: (() => { const h = price.high || 0; const l = price.low || 1; return l > 0 ? ((h - l) / l) * 100 : 0; })(),
-        // Smart alerts
-        hasConvergence: (tfMaster.confirmations || 0) >= 4,
-        isWhaleActive: ['WHALE', 'INSTITUTIONAL'].includes(mom.aggression_level_15MENIT),
-        isDiscount: (price.percent_change_from_top || 0) < -10,
-        hasArbOpp: Math.abs(fundAn.currentRate || fundingRaw.funding_Rate || 0) > 0.0003,
-        // BTC Benchmark
-        btcChange1m: btcData.change1m,
-        btcChange5m: btcData.change5m,
-        btcChange15m: btcData.change15m,
-        btcChange1h: btcData.change1h,
-        btcDirection,
-        btcFollows,
-        btcDiverges,
-        btcBeta: Math.round(btcBeta * 100) / 100,
-        btcOutperform
-    };
-
-    // Build normalized data structure with correct paths
-    const normalized = {
-        raw: {
-            PRICE: {
-                last: price.last || 0,
-                high: price.high || 0,
-                low: price.low || 0,
-                percent_change_1MENIT: price.percent_change_1MENIT || 0,
-                percent_change_5MENIT: price.percent_change_5MENIT || 0,
-                percent_change_15MENIT: price.percent_change_15MENIT || 0,
-                percent_change_1JAM: price.percent_change_1JAM || 0,
-                percent_change_24h: price.percent_change_24h || 0,
-                percent_change_from_top: price.percent_change_from_top || 0,
-                percent_change_from_bottom: price.percent_change_from_bottom || 0
-            },
-            VOL: {
-                vol_total_1MENIT: vol.vol_total_1MENIT || (vol.vol_BUY_1MENIT || 0) + (vol.vol_SELL_1MENIT || 0),
-                vol_total_5MENIT: vol.vol_total_5MENIT || (vol.vol_BUY_5MENIT || 0) + (vol.vol_SELL_5MENIT || 0),
-                vol_total_15MENIT: vol.vol_total_15MENIT || (vol.vol_BUY_15MENIT || 0) + (vol.vol_SELL_15MENIT || 0),
-                vol_total_1JAM: vol.vol_total_1JAM || (vol.vol_BUY_1JAM || 0) + (vol.vol_SELL_1JAM || 0),
-                buy_sell_ratio_1MENIT: vol.vol_SELL_1MENIT > 0 ? (vol.vol_BUY_1MENIT || 0) / vol.vol_SELL_1MENIT : 1,
-                buy_sell_ratio_5MENIT: vol.vol_SELL_5MENIT > 0 ? (vol.vol_BUY_5MENIT || 0) / vol.vol_SELL_5MENIT : 1,
-                buy_sell_ratio_15MENIT: vol.vol_SELL_15MENIT > 0 ? (vol.vol_BUY_15MENIT || 0) / vol.vol_SELL_15MENIT : 1
-            },
-            OI: {
-                openInterest: oiRaw.oi || oiRaw.openInterest || 0,
-                oiChange5m: oiRaw.oiChange5m || 0,
-                oiChange15m: oiRaw.oiChange15m || 0,
-                oiChange1h: oiRaw.oiChange1h || 0,
-                oiChange4h: oiRaw.oiChange4h || 0,
-                oiChange24h: oiRaw.oiChange24h || 0,
-                tier: oiRaw.tier || 3,
-                marketDirection: oiRaw.oiChange1h > 1 ? 'BULLISH' : oiRaw.oiChange1h < -1 ? 'BEARISH' : 'NEUTRAL'
-            },
-            FUNDING: {
-                fundingRate: fundAn.currentRate !== undefined ? fundAn.currentRate : (fundingRaw.funding_Rate || 0),
-                nextFundingRate: fundAn.nextRate !== undefined ? fundAn.nextRate : (fundingRaw.funding_nextFundingRate || 0),
-                zScore: fundAn.zScore || 0,
-                marketBias: (() => {
-                    const rate = fundAn.currentRate || fundingRaw.funding_Rate || 0;
-                    if (rate > 0.0005) return 'EXTREME_BULL';
-                    if (rate > 0.0001) return 'BULLISH';
-                    if (rate < -0.0005) return 'EXTREME_BEAR';
-                    if (rate < -0.0001) return 'BEARISH';
-                    return 'NEUTRAL';
-                })()
-            },
-            LSR: {
-                ratio: (() => {
-                    const tfMap = { '1MENIT': 'timeframes_5min', '5MENIT': 'timeframes_5min', '15MENIT': 'timeframes_15min', '30MENIT': 'timeframes_15min', '1JAM': 'timeframes_1hour' };
-                    const key = tfMap[timeframe] || 'timeframes_15min';
-                    return lsrRaw[key]?.longShortRatio || 1.0;
-                })(),
-                longAccountRatio: lsrRaw.longAccountRatio || 50,
-                shortAccountRatio: lsrRaw.shortAccountRatio || 50,
-                z: tfSignals.sentiment?.sentimentAlignment?.metadata?.avgZScore || 0,
-                percentile: lsrRaw.percentile || 50
-            },
-            LIQ: {
-                liqRate: tfSignals.derivatives?.liquidationCascade?.normalizedScore || 0,
-                dominantSide: 'NONE'
-            },
-            ORDERBOOK: {
-                imbalance: obRaw.imbalance || 0,
-                depthRatio: obRaw.askDepth > 0 ? (obRaw.bidDepth || 0) / obRaw.askDepth : 1,
-                wallDetected: (obRaw.bidWalls?.length || 0) + (obRaw.askWalls?.length || 0) > 0,
-                wallSide: (obRaw.bidWalls?.length || 0) > (obRaw.askWalls?.length || 0) ? 'BID' : 'ASK'
-            }
-        },
-        signals: {
-            masterSignal: {
-                normalizedScore: tfMaster.normalizedScore || 0,
-                action: tfMaster.action || 'WAIT',
-                confidence: tfMaster.confidence || 0,
-                confirmations: tfMaster.confirmations || 0,
-                mtfAligned: tfMaster.mtfAligned || false
-            },
-            micro: {
-                vpin: { rawValue: tfSignals.microstructure?.vpin?.rawValue || dash.intensity?.intensity || 0, direction: 'NEUTRAL' },
-                ofi: { normalizedScore: tfSignals.orderBook?.ofi?.normalizedScore || 50 },
-                spread: { rawValue: obRaw.spreadBps / 100 || 0 },
-                toxicity: { rawValue: 0 }
-            },
-            enhanced: {
-                cvd: { rawValue: mom.velocity_15MENIT > 0 ? 0.5 : -0.5, divergence: false },
-                institutionalFootprint: { rawValue: mom.aggression_level_15MENIT === 'WHALE' ? 0.9 : mom.aggression_level_15MENIT === 'INSTITUTIONAL' ? 0.7 : 0.3 },
-                momentumQuality: { rawValue: Math.min(1, Math.abs(mom.velocity_15MENIT || 0) / 10000) },
-                bookResilience: { rawValue: dash.liqQuality?.qualityScore / 100 || 0.5 },
-                pressureAcceleration: { rawValue: 0 },
-                amihudIlliquidity: { rawValue: 0.5 }
-            },
-            marketRegime: {
-                currentRegime: sigRoot.marketRegime?.currentRegime || 'RANGING',
-                volRegime: sigRoot.volatilityRegime?.regime || 'NORMAL',
-                trendStrength: 0.5
-            },
-            volatility: {
-                atr: { pct: tfObj.volatility?.atrMomentum?.metadata?.atrPct || 0 }
-            }
-        },
-        synthesis: {
-            flow: {
-                net_flow_5MENIT: flow.net_flow_5MENIT || 0,
-                net_flow_15MENIT: flow.net_flow_15MENIT || 0,
-                capital_bias_15MENIT: flow.capital_bias_15MENIT || 'NEUTRAL'
-            },
-            efficiency: {
-                efficiency_5MENIT: eff.efficiency_5MENIT || 0,
-                efficiency_15MENIT: eff.efficiency_15MENIT || 0,
-                character_15MENIT: eff.character_15MENIT || 'NORMAL'
-            },
-            momentum: {
-                velocity_5MENIT: mom.velocity_5MENIT || 0,
-                velocity_15MENIT: mom.velocity_15MENIT || 0,
-                aggression_level_15MENIT: mom.aggression_level_15MENIT || 'RETAIL'
-            }
-        },
-        dashboard: {
-            bullishScore: dash.bullishScore || 0,
-            bearishScore: dash.bearishScore || 0,
-            totalScore: tfMaster.normalizedScore || 0,
-            recommendation: (() => {
-                const score = tfMaster.normalizedScore || 50;
-                const action = tfMaster.action || 'WAIT';
-                if (action === 'LONG' && score >= 75) return 'STRONG_LONG';
-                if (action === 'LONG') return 'LONG';
-                if (action === 'SHORT' && score >= 75) return 'STRONG_SHORT';
-                if (action === 'SHORT') return 'SHORT';
-                return 'HOLD';
-            })()
-        },
-        _computed: computed,
-        // Keep original data for debugging
-        _raw: data
-    };
-
-    return normalized;
-}
 
 // === EVALUATION ENGINE ===
 function evaluateSignal(sig, coin, data) {
@@ -1692,7 +1702,7 @@ export function runComposerEngine(marketState) {
 
 function executeSignal(sig, coin, result, data) {
     const price = data.raw?.PRICE?.last || 0;
-    console.log(`[COMPOSER] 🎼 ${sig.name}: ${result.bias} ${coin} @ $${price.toFixed(2)} (${result.score?.toFixed(0)}%)`);
+    console.log(`[COMPOSER] 🎼 ${sig.name}: ${result.bias} ${coin} @ $${Utils.safeFixed(price ?? 0, 2)} ${Utils.safeFixed(result.score ?? 0, 0)}%`);
 
     if (sig.outputAction === 'SIGNAL') {
         if (Notification.permission === 'granted') new Notification(`🎼 ${sig.name}`, { body: `${result.bias} ${coin}` });

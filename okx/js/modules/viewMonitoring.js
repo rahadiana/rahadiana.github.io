@@ -93,7 +93,7 @@ function updateDataQuality(data, analytics) {
     `).join('') + `
         <div class="col-span-3 bg-bb-panel border-2 ${qualityScore > 80 ? 'border-bb-green' : qualityScore > 50 ? 'border-bb-gold' : 'border-bb-red'} p-3 text-center">
             <div class="text-[10px] text-bb-muted mb-1 uppercase">OVERALL FEED QUALITY</div>
-            <div class="text-3xl font-bold ${qualityScore > 80 ? 'text-bb-green' : qualityScore > 50 ? 'text-bb-gold' : 'text-bb-red'}">${qualityScore.toFixed(0)}%</div>
+            <div class="text-3xl font-bold ${qualityScore > 80 ? 'text-bb-green' : qualityScore > 50 ? 'text-bb-gold' : 'text-bb-red'}">${Utils.safeFixed(qualityScore, 0)}%</div>
             <div class="text-xs mt-1 text-bb-muted">${totalAvailable}/${sources.length} feeds active</div>
         </div>
     `;
@@ -115,13 +115,13 @@ function updateAlerts(data, profile, timeframe, signals, analytics, micro) {
     // Check funding
     const fbi = micro.fbi?.fbi || 0;
     if (Math.abs(fbi) > 80) {
-        alerts.push({ level: 'EXTREME', icon: '⚡', msg: `Extreme funding bias: ${fbi.toFixed(0)}` });
+        alerts.push({ level: 'EXTREME', icon: '⚡', msg: `Extreme funding bias: ${Utils.safeFixed(fbi, 0)}` });
     }
 
     // Check OI change
     const oiChange = data.raw?.OI?.oi_chg_1JAM || 0;
     if (Math.abs(oiChange) > 20) {
-        alerts.push({ level: 'HIGH', icon: '📈', msg: `OI spike: ${oiChange > 0 ? '+' : ''}${oiChange.toFixed(1)}%` });
+        alerts.push({ level: 'HIGH', icon: '📈', msg: `OI spike: ${oiChange > 0 ? '+' : ''}${Utils.safeFixed(oiChange, 1)}%` });
     }
 
     // Check confluences

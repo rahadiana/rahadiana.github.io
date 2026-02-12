@@ -124,7 +124,9 @@ export function render(container) {
 }
 
 export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
-    const micro = data.signals?.profiles?.[profile]?.timeframes?.[timeframe]?.signals?.microstructure || {};
+    const signalsObj = data.signals?.profiles?.[profile]?.timeframes?.[timeframe]?.signals || {};
+    const microRoot = data.microstructure?.[profile] || {};
+    const micro = Object.assign({}, microRoot, signalsObj.microstructure || {});
     
     // 1. VPIN Update
     const vpin = micro.vpin || { rawValue: 0, metadata: {} };
@@ -132,7 +134,7 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
     const vpinVal = document.getElementById('vpin-val');
     const vpinLabel = document.getElementById('vpin-label');
 
-    if (vpinVal) vpinVal.innerText = (vpin.rawValue || 0).toFixed(2);
+    if (vpinVal) vpinVal.innerText = (vpin.rawValue || Utils.safeFixed(0), 2);
     if (vpinArc) vpinArc.style.strokeDasharray = `${(vpin.rawValue || 0) * 100}, 100`;
     if (vpinLabel) {
         vpinLabel.innerText = vpin.metadata?.informedTrading || 'LOW';
@@ -143,14 +145,14 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
     const kl = micro.kyleLambda || { rawValue: 0, metadata: {} };
     const elKlVal = document.getElementById('lambda-val');
     const elKlBar = document.getElementById('lambda-bar');
-    if (elKlVal) elKlVal.innerText = (kl.rawValue || 0).toFixed(4);
+    if (elKlVal) elKlVal.innerText = (kl.rawValue || Utils.safeFixed(0), 4);
     if (elKlBar) elKlBar.style.width = `${Math.min(100, (kl.rawValue || 0) * 20)}%`;
 
     // 3. Whale Divergence
     const whale = micro.volumeFreqDivergence || { rawValue: 0, metadata: {} };
     const elWhaleVal = document.getElementById('whale-val');
     const elWhaleBar = document.getElementById('whale-bar');
-    if (elWhaleVal) elWhaleVal.innerText = (whale.rawValue || 0).toFixed(2);
+    if (elWhaleVal) elWhaleVal.innerText = (whale.rawValue || Utils.safeFixed(0), 2);
     if (elWhaleBar) elWhaleBar.style.width = `${Math.min(100, (whale.rawValue || 0) * 100)}%`;
 
     // 3. Flow Imbalance & Skew (VWOI + Sizing)
@@ -178,7 +180,7 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
 
     if (zVal) {
         const z = lsr.z || 0;
-        zVal.innerText = z.toFixed(2);
+        zVal.innerText = Utils.safeFixed(z, 2);
 
         if (zPin) {
             // Scale -3 to 3 -> 0 to 100
@@ -203,7 +205,7 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
     const elSmiActivity = document.getElementById('smi-activity');
 
     if (elSmiVal) {
-        elSmiVal.innerText = (smi.normalizedScore || 50).toFixed(1);
+        elSmiVal.innerText = (smi.normalizedScore || Utils.safeFixed(50), 1);
         const score = smi.normalizedScore || 50;
         elSmiVal.className = `text-3xl font-black italic ${score > 60 ? 'text-bb-green' : score < 40 ? 'text-bb-red' : 'text-white'}`;
     }
@@ -239,7 +241,7 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
             <div class="flex justify-between items-center p-1.5 text-[9px]">
                 <span class="text-bb-muted uppercase font-bold">${m.name}</span>
                 <div class="flex gap-2 items-center">
-                    <span class="font-mono text-white/50">${typeof m.val === 'number' ? m.val.toFixed(2) : '---'}</span>
+                    <span class="font-mono text-white/50">${typeof m.val === 'number' ? Utils.safeFixed(m.val, 2) : '---'}</span>
                     <span class="text-[7px] font-black leading-none px-1 py-0.5 rounded border border-white/5 ${m.status?.includes('HIGH') || m.status?.includes('SMART') || m.status?.includes('ACCUM') ? 'text-bb-green bg-bb-green/5' : m.status?.includes('HOT') || m.status?.includes('SPEC') ? 'text-bb-red bg-bb-red/5' : 'text-bb-blue bg-bb-blue/5'}">${m.status || '---'}</span>
                 </div>
             </div>

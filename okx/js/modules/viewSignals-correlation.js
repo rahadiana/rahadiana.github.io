@@ -56,7 +56,7 @@ function updateCorrelation(signals) {
         <div class="space-y-1">
             <div class="flex justify-between items-center text-xs">
                 <span class="text-bb-muted">Correlation</span>
-                <span class="font-bold">${(correlation * 100).toFixed(0)}%</span>
+                <span class="font-bold">${(correlation * Utils.safeFixed(100), 0)}%</span>
             </div>
             <div class="w-full h-2 bg-bb-dark rounded overflow-hidden">
                 <div class="bg-bb-green h-full" style="width: ${correlation * 100}%"></div>

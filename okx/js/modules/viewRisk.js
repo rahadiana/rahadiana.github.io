@@ -58,7 +58,7 @@ function computeVaR() {
   const sorted = rets.slice().sort((a,b)=>a-b);
   const idx = Math.max(0, Math.floor((1 - conf) * sorted.length));
   const varVal = -sorted[idx];
-  document.getElementById('var-output').innerText = `VaR @ ${Math.round(conf*100)}% = ${(varVal*100).toFixed(2)}%`;
+  document.getElementById('var-output').innerText = `VaR @ ${Math.round(conf*100)}% = ${Utils.safeFixed(varVal * 100, 2)}%`;
 }
 
 function renderSummary() {
@@ -67,7 +67,7 @@ function renderSummary() {
   if (!el) return;
   const pnl = p.getPnL();
   const mdd = p.getMaxDrawdown();
-  el.innerHTML = `<div>Total PnL: ${pnl.toFixed(2)}</div><div>Max Drawdown: ${(mdd*100).toFixed(2)}%</div><div>Trades: ${p.trades.length}</div>`;
+  el.innerHTML = `<div>Total PnL: ${Utils.safeFixed(pnl, 2)}</div><div>Max Drawdown: ${Utils.safeFixed(mdd * 100, 2)}%</div><div>Trades: ${p.trades.length}</div>`;
 }
 
 function setDrawdownAlert() {
@@ -93,7 +93,7 @@ function calcPositionSize() {
   // size = (account * riskPct%) / stop (price units)
   const riskAmount = account * (riskPct/100);
   const size = riskAmount / Math.max(1e-8, stop);
-  document.getElementById('ps-output').innerText = `Position size (units): ${size.toFixed(4)} (risk ${riskAmount.toFixed(2)})`;
+  document.getElementById('ps-output').innerText = `Position size (units): ${Utils.safeFixed(size, 4)} (risk ${Utils.safeFixed(riskAmount, 2)})`;
 }
 
 export function init() { }

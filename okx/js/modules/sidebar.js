@@ -69,14 +69,14 @@ export function renderList(container, marketState, selectedCoin, onSelect) {
             <div class="flex justify-between items-center mb-1 pointer-events-none">
                 <div class="font-bold text-white text-xs">${coin}</div>
                 <div class="flex items-center gap-1">
-                    <span class="text-xxs text-bb-muted">${(funding * 100).toFixed(4)}%</span>
+                    <span class="text-xxs text-bb-muted">${Utils.safeFixed(funding * 100, 4)}%</span>
                     <span class="w-1.5 h-1.5 rounded-full ${sigColor}"></span>
                 </div>
             </div>
             
             <div class="flex justify-between items-center text-xs pointer-events-none">
                 <div class="${priceColor} font-mono">${internalFormatPrice(price)}</div>
-                <div class="${priceColor} font-bold">${change > 0 ? '+' : ''}${change.toFixed(2)}%</div>
+                <div class="${priceColor} font-bold">${change > 0 ? '+' : ''}${Utils.safeFixed(change, 2)}%</div>
             </div>
         `;
     });

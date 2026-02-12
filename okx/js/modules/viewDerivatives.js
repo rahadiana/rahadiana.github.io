@@ -127,7 +127,7 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
     const oiChg = oiDiv.metadata?.oiChange || rawOi.oiChange1h || 0;
 
     if (elOiVal) {
-        elOiVal.innerText = `${oiChg > 0 ? '+' : ''}${oiChg.toFixed(2)}%`;
+        elOiVal.innerText = `${oiChg > 0 ? '+' : ''}${Utils.safeFixed(oiChg, 2)}%`;
         elOiVal.className = `text-2xl font-black ${oiChg > 0.5 ? 'text-bb-green' : oiChg < -0.5 ? 'text-bb-red' : 'text-white'}`;
     }
     if (elOiType) elOiType.innerText = oiDiv.metadata?.signalType || 'STABLE_FLOW';
@@ -182,7 +182,7 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
 
     if (elFundVal) {
         const ratePct = arbMeta.fundingRate?.current || (rawOi.funding_Rate * 100) || 0;
-        elFundVal.innerText = `${ratePct.toFixed(4)}%`;
+        elFundVal.innerText = `${Utils.safeFixed(ratePct, 4)}%`;
         elFundVal.className = `text-xs font-mono font-bold ${ratePct > 0.01 ? 'text-bb-red' : ratePct < -0.01 ? 'text-bb-green' : 'text-white'}`;
     }
 
@@ -201,7 +201,7 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
 
     if (elArbYield) {
         const apr = arbMeta.returns?.expectedAnnualized || 0;
-        elArbYield.innerText = `${apr.toFixed(2)}% APR`;
+        elArbYield.innerText = `${Utils.safeFixed(apr, 2)}% APR`;
         elArbYield.className = `text-xs font-mono font-black ${apr > 50 ? 'text-bb-gold' : 'text-white/70'}`;
     }
 
@@ -225,7 +225,7 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
             <div class="flex justify-between items-center p-1 text-[9px]">
                 <span class="text-bb-muted">${labels[idx]} CROWD</span>
                 <div class="flex gap-2 items-center">
-                    <span class="font-mono text-white">Z:${z.toFixed(2)}</span>
+                    <span class="font-mono text-white">Z:${Utils.safeFixed(z, 2)}</span>
                     <span class="w-16 text-right font-bold ${z > 1 ? 'text-bb-green' : z < -1 ? 'text-bb-red' : 'text-bb-muted'}">${z > 1 ? 'BULLISH' : z < -1 ? 'BEARISH' : 'NEUTRAL'}</span>
                 </div>
             </div>

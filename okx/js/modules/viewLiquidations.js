@@ -88,36 +88,44 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
 }
 
 function calculateLiquidationMap(price, atr, liqData) {
-    // 1. Strategic Leverages (MMR Adjusted for OKX)
+    // 1. Leverage tiers with MMR per-tier (OKX-like approximations)
     const baseLeverages = [
-        { x: 100, distMult: 0.007, weight: 1.2 }, // 0.7% (High Risk)
-        { x: 50, distMult: 0.016, weight: 1.0 },  // 1.6%
-        { x: 25, distMult: 0.035, weight: 0.8 },  // 3.5%
-        { x: 10, distMult: 0.082, weight: 0.5 }   // 8.2%
+        { x: 100, mmr: 0.005, weight: 1.5 },
+        { x: 75,  mmr: 0.0065, weight: 1.3 },
+        { x: 50,  mmr: 0.01, weight: 1.2 },
+        { x: 25,  mmr: 0.015, weight: 1.0 },
+        { x: 20,  mmr: 0.02, weight: 0.9 },
+        { x: 10,  mmr: 0.05, weight: 0.7 },
+        { x: 5,   mmr: 0.10, weight: 0.5 }
     ];
 
     let clusters = [];
 
-    // Scale weights by current volume intensity
-    const volIntensity = (liqData.totalLiqCount > 0) ? 1.5 : 1.0;
+    // Volume intensity from realized liquidations (scale factor)
+    const volIntensity = liqData.totalLiqVol > 0 ? Math.min(2.0, 1.0 + (liqData.totalLiqVol / 1000000)) : 1.0;
 
     baseLeverages.forEach(l => {
-        // Shorts (RED) - Seller Liquidity
+        const entryBuffer = 0.001; // small buffer for spreads
+        const dist = l.mmr + entryBuffer;
+
+        // Shorts (RED) - will liquidate above current price
         clusters.push({
-            price: price * (1 + l.distMult),
+            price: price * (1 + dist),
             type: 'SHORT_LIQ',
             lev: l.x,
-            vol: 25 * l.weight * volIntensity,
-            isForecast: true
+            vol: 100 * l.weight * volIntensity,
+            isForecast: true,
+            mmr: l.mmr
         });
 
-        // Longs (GREEN) - Buyer Liquidity
+        // Longs (GREEN) - will liquidate below current price
         clusters.push({
-            price: price * (1 - l.distMult),
+            price: price * (1 - dist),
             type: 'LONG_LIQ',
             lev: l.x,
-            vol: 25 * l.weight * volIntensity,
-            isForecast: true
+            vol: 100 * l.weight * volIntensity,
+            isForecast: true,
+            mmr: l.mmr
         });
     });
 
@@ -169,9 +177,9 @@ function updateHeatmapDepth(clusters, price, liqData) {
             <!-- Price Axis Marker -->
             <div class="absolute w-full flex items-center z-30" style="top: 50%; transform: translateY(-50%);">
                 <div class="w-full border-t border-bb-gold/40 border-dashed"></div>
-                <span class="bg-bb-black text-bb-gold text-[10px] px-2 py-0.5 ml-2 border border-bb-gold rounded font-black shadow-[0_0_10px_rgba(251,191,36,0.3)]">
-                    $${price.toFixed(price < 1 ? 5 : 2)}
-                </span>
+                    <span class="bg-bb-black text-bb-gold text-[10px] px-2 py-0.5 ml-2 border border-bb-gold rounded font-black shadow-[0_0_10px_rgba(251,191,36,0.3)]">
+                        ${'$' + Utils.safeFixed(price, price < 1 ? 5 : 2)}
+                    </span>
             </div>
 
             <!-- Heat Clusters -->
@@ -202,7 +210,7 @@ function updateHeatmapDepth(clusters, price, liqData) {
                              </div>
                              <div class="flex justify-between">
                                 <span>PRICE:</span>
-                                <span class="text-white font-mono font-bold">$${c.price.toFixed(4)}</span>
+                                        <span class="text-white font-mono font-bold">${c.price ? '$' + Utils.safeFixed(c.price, 4) : '--'}</span>
                              </div>
                              <div class="flex justify-between">
                                 <span>LEVEL:</span>
@@ -222,9 +230,9 @@ function updateHeatmapDepth(clusters, price, liqData) {
 
             <!-- Axis Labels -->
             <div class="absolute inset-y-0 left-2 flex flex-col justify-between py-8 text-[8px] text-bb-muted font-bold tracking-tighter opacity-40 pointer-events-none">
-                <span>+$${(price * rangePct).toFixed(0)} (RESI)</span>
+                <span>+$${Utils.safeFixed(price * rangePct, 0)} (RESI)</span>
                 <span class="text-bb-gold opacity-100">MARKET PRICE</span>
-                <span>-$${(price * rangePct).toFixed(0)} (SUPP)</span>
+                <span>-$${Utils.safeFixed(price * rangePct, 0)} (SUPP)</span>
             </div>
         </div>
     `;
@@ -256,7 +264,7 @@ function updateCascadeRisk(clusters, price, liqData) {
     } else if (riskS || riskL) {
         status = 'CASCADE RISK';
         color = 'text-bb-gold animate-pulse';
-        msg = `Approaching concentrated ${riskS ? 'Short' : 'Long'} clusters (~${(riskS ? distS : distL).toFixed(1)}%). Squeeze likely.`;
+        msg = `Approaching concentrated ${riskS ? 'Short' : 'Long'} clusters (~${riskS ? Utils.safeFixed(distS, 1) : Utils.safeFixed(distL, 1)}%). Squeeze likely.`;
     }
 
     el.innerHTML = `
@@ -272,13 +280,13 @@ function updateCascadeRisk(clusters, price, liqData) {
         <div class="grid grid-cols-2 gap-2">
             <div class="p-2 bg-bb-dark rounded border border-white/5">
                 <div class="text-[7px] text-bb-muted uppercase">Short Wall</div>
-                <div class="text-[11px] font-mono font-bold text-bb-red">$${nearestShort?.price.toFixed(2) || '--'}</div>
-                <div class="text-[9px] text-white/40">${distS.toFixed(2)}% dist</div>
+                    <div class="text-[11px] font-mono font-bold text-bb-red">${nearestShort?.price ? '$' + Utils.safeFixed(nearestShort.price, 2) : '--'}</div>
+                    <div class="text-[9px] text-white/40">${Utils.safeFixed(distS, 2)}% dist</div>
             </div>
             <div class="p-2 bg-bb-dark rounded border border-white/5">
                 <div class="text-[7px] text-bb-muted uppercase">Long Wall</div>
-                <div class="text-[11px] font-mono font-bold text-bb-green">$${nearestLong?.price.toFixed(2) || '--'}</div>
-                <div class="text-[9px] text-white/40">${distL.toFixed(2)}% dist</div>
+                    <div class="text-[11px] font-mono font-bold text-bb-green">${nearestLong?.price ? '$' + Utils.safeFixed(nearestLong.price, 2) : '--'}</div>
+                    <div class="text-[9px] text-white/40">${Utils.safeFixed(distL, 2)}% dist</div>
             </div>
         </div>
     `;
@@ -312,8 +320,8 @@ function updateLevelsTable(clusters, price) {
                     <tr class="hover:bg-white/5 transition-colors">
                         <td class="p-2 font-bold ${c.type === 'SHORT_LIQ' ? 'text-bb-red' : 'text-bb-green'}">${c.type === 'SHORT_LIQ' ? 'SHORT' : 'LONG'}</td>
                         <td class="p-2 font-mono text-bb-muted">${c.lev}x</td>
-                        <td class="p-2 font-mono text-white">$${c.price.toFixed(price < 1 ? 5 : 2)}</td>
-                        <td class="p-2 text-right font-mono ${isUrgent ? 'text-bb-red font-black' : 'text-white/60'}">${dist > 0 ? '+' : ''}${dist.toFixed(2)}%</td>
+                        <td class="p-2 font-mono text-white">$${Utils.safeFixed(c.price, price < 1 ? 5 : 2)}</td>
+                        <td class="p-2 text-right font-mono ${isUrgent ? 'text-bb-red font-black' : 'text-white/60'}">${dist > 0 ? '+' : ''}${Utils.safeFixed(dist, 2)}%</td>
                     </tr>
                     `;
     }).join('')}

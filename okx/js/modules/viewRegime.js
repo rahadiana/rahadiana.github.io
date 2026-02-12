@@ -1,4 +1,5 @@
 import * as Utils from '../utils.js';
+import { getMasterSignal, getSignals, getMicrostructure } from '../data_helpers.js';
 
 export function render(container) {
     container.innerHTML = `
@@ -71,29 +72,36 @@ export function render(container) {
 }
 
 export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
-    const signalsObj = data.signals?.profiles?.[profile]?.timeframes?.[timeframe]?.signals || {};
-    const marketRegime = signalsObj.marketRegime || data.signals?.marketRegime || {};
-    const volRoot = signalsObj.volatility || {};
+    const master = getMasterSignal(data, profile, timeframe);
+    const signalsObj = getSignals(data, profile, timeframe);
+    const micro = getMicrostructure(data, profile);
+
+    // Market regime may be a string or an object under master
+    const regimeName = master.marketRegime || master.currentRegime || master.regime || 'RANGING';
+    const confidence = master.confidence ?? master.regimeScore ?? (master.normalizedScore ? Math.round(master.normalizedScore * 100) : 50);
+
+    // Volatility roots: prefer signals volatility then analytics
+    const volRoot = signalsObj.volatility || data.analytics?.volatility || {};
     const volRegime = volRoot.volatilityRegime || {};
-    const atrPct = volRoot.atrMomentum?.metadata?.atrPct || 0;
+    const atrPct = volRoot.atrMomentum?.metadata?.atrPct ?? data.analytics?.volatility?.atr ?? 0;
 
     // 1. Regime Update
     const elName = document.getElementById('reg-current-name');
     const elScore = document.getElementById('reg-current-score');
-    if (elName) elName.innerText = marketRegime.currentRegime || 'RANGING';
-    if (elScore) elScore.innerText = `STRENGTH: ${marketRegime.regimeScore || 50}`;
+    if (elName) elName.innerText = regimeName;
+    if (elScore) elScore.innerText = `STRENGTH: ${confidence}`;
 
     // 2. Vol Thermometer
     const elPin = document.getElementById('reg-vol-pin');
     const elAtr = document.getElementById('reg-atr-val');
     if (elPin) {
-        const score = volRegime.regime === 'EXTREME_VOL' ? 85 : volRegime.regime === 'HIGH_VOL' ? 70 : volRegime.regime === 'LOW_VOL' ? 15 : 50;
+        const score = volRegime?.regime === 'EXTREME_VOL' ? 95 : volRegime?.regime === 'HIGH_VOL' ? 75 : volRegime?.regime === 'LOW_VOL' ? 25 : 50;
         elPin.style.left = `${score}%`;
     }
-    if (elAtr) elAtr.innerText = `${atrPct.toFixed(4)}%`;
+    if (elAtr) elAtr.innerText = `${(atrPct * Utils.safeFixed(100), 3)}%`;
 
     // 3. Recommended Profiles
-    const rec = marketRegime.recommendedStrategy || 'MODERATE';
+    const rec = master.recommendedStrategy || master.profileName || master.recommendation || profile;
     const profiles = ['CONSERVATIVE', 'MODERATE', 'AGGRESSIVE'];
 
     profiles.forEach(p => {

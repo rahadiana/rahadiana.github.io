@@ -1,8 +1,11 @@
 import * as Utils from '../utils.js';
+import * as ViewSignalComposer from './viewSignalComposer.js';
+
+let currentDecDetailTab = 'MAIN';
 
 export function render(container) {
     container.innerHTML = `
-        <div class="min-h-full flex flex-col gap-4 p-4 bg-bb-black text-bb-text font-sans">
+        <div class="min-h-full flex flex-col gap-4 p-4 bg-bb-black text-bb-text font-sans relative">
             
             <!-- TOP DECISION CARD -->
             <div class="bg-bb-panel border-2 border-bb-border rounded-lg p-6 shadow-2xl flex flex-col items-center justify-center min-h-[180px] relative overflow-hidden" id="decision-main-card">
@@ -109,8 +112,24 @@ export function render(container) {
                         `).join('')}
                     </div>
 
-                    <div class="flex-1 overflow-y-auto scrollbar-thin space-y-1" id="dec-drivers">
-                        <!-- Transparency matrix items injected here -->
+                    <div class="flex-1 overflow-y-auto scrollbar-thin space-y-1">
+                        <div id="dec-coin-detail-tabs" class="flex gap-1 mb-2">
+                            <button class="detail-subtab px-2 py-0.5 text-[9px] font-bold text-bb-gold" data-detail="MAIN">Main</button>
+                            <button class="detail-subtab px-2 py-0.5 text-[9px] font-bold text-bb-muted" data-detail="DERIVATIVES">Derivatives</button>
+                            <button class="detail-subtab px-2 py-0.5 text-[9px] font-bold text-bb-muted" data-detail="ANALYTICS">Analytics</button>
+                            <button class="detail-subtab px-2 py-0.5 text-[9px] font-bold text-bb-muted" data-detail="SIGNALS">Signals</button>
+                            <button class="detail-subtab px-2 py-0.5 text-[9px] font-bold text-bb-muted" data-detail="LEVELS">Levels</button>
+                            <button class="detail-subtab px-2 py-0.5 text-[9px] font-bold text-bb-muted" data-detail="MICRO">Microstructure</button>
+                            <button id="dec-composer-tab" class="detail-subtab px-2 py-0.5 text-[9px] font-bold text-bb-muted" data-detail="COMPOSER">Composer</button>
+                        </div>
+
+                        <div id="dec-coin-detail-content">
+                            <div id="dec-coin-main-content">
+                                <!-- Transparency matrix items injected here -->
+                                <div id="dec-composer-slot" class="mt-2"></div>
+                            </div>
+                            <div id="dec-coin-composer-content" class="hidden mt-2"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -236,6 +255,48 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
         }
     }
 
+    // Attach coin-detail tab handlers (only once)
+    try {
+        const tabs = document.getElementById('dec-coin-detail-tabs');
+        const mainContent = document.getElementById('dec-coin-main-content');
+        const composerContent = document.getElementById('dec-coin-composer-content');
+        if (tabs && !tabs.dataset.bound) {
+            tabs.addEventListener('click', (e) => {
+                const btn = e.target.closest('.detail-subtab');
+                if (!btn) return;
+                const detail = btn.getAttribute('data-detail');
+                // mark active
+                tabs.querySelectorAll('.detail-subtab').forEach(b => b.classList.remove('text-bb-gold')); 
+                btn.classList.add('text-bb-gold');
+
+                if (detail === 'COMPOSER') {
+                    // render composer components table for selected coin
+                    const coin = window.selectedCoin || window.selectedCoin;
+                    if (composerContent) {
+                        composerContent.innerHTML = ViewSignalComposer.getComposerTableHTML(coin);
+                        composerContent.classList.remove('hidden');
+                        if (typeof ViewSignalComposer.attachComposerTableEvents === 'function') ViewSignalComposer.attachComposerTableEvents(composerContent);
+                    }
+                    if (mainContent) mainContent.classList.add('hidden');
+                } else {
+                    if (composerContent) composerContent.classList.add('hidden');
+                    if (mainContent) mainContent.classList.remove('hidden');
+                }
+            });
+            tabs.dataset.bound = '1';
+        }
+        // If a composer tab is already active, ensure content is rendered using current coin
+        const activeComposer = tabs?.querySelector('.detail-subtab.text-bb-gold')?.getAttribute('data-detail') === 'COMPOSER';
+        if (activeComposer && composerContent) {
+            const coin = window.selectedCoin || window.selectedCoin;
+            composerContent.innerHTML = ViewSignalComposer.getComposerDetailHTML(coin);
+            composerContent.classList.remove('hidden');
+            if (mainContent) mainContent.classList.add('hidden');
+        }
+    } catch (e) {
+        console.error('dec tab binding failed', e);
+    }
+
     // 1.5 Pillar Bias & Divergence Guard
     const pillars = calculatePillars(data, signals, master, syn);
     const hasDivergence = detectDivergence(pillars);
@@ -322,84 +383,67 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
 
     // 4. Model Transparency Matrix (Adaptive Weighting Breakdown)
     const elDrivers = document.getElementById('dec-drivers');
-    if (elDrivers && master.contributingSignals) {
+    if (elDrivers && Array.isArray(master.contributingSignals)) {
+        elDrivers.innerHTML = '';
         const categories = signals.signals || {};
-
-        elDrivers.innerHTML = master.contributingSignals.slice(0, 6).map(s => {
+        const items = master.contributingSignals.slice(0, 6);
+        items.forEach(s => {
             // Find detail in categories
             let detail = null;
             for (const cat in categories) {
-                if (categories[cat][s.key]) {
+                if (categories[cat] && categories[cat][s.key]) {
                     detail = categories[cat][s.key];
                     break;
                 }
             }
 
             const factors = detail?.adjustmentFactors || [];
-
-            // Skip universal/coin-level factors that are the same for all signals
             const UNIVERSAL_FACTORS = ['coinTier', 'coin_tier', 'tier'];
-            const signalSpecificFactors = factors.filter(f =>
-                !UNIVERSAL_FACTORS.includes(f.factor) &&
-                f.factor !== undefined
-            );
-
-            // Find most significant signal-specific factor (furthest from 1.0)
-            // Fall back to any factor if no signal-specific ones exist
+            const signalSpecificFactors = factors.filter(f => !UNIVERSAL_FACTORS.includes(f.factor) && f.factor !== undefined);
             const factorsToCheck = signalSpecificFactors.length > 0 ? signalSpecificFactors : factors;
             const topFactor = factorsToCheck.reduce((prev, curr) => {
                 if (!prev) return curr;
-                return Math.abs(curr.multiplier - 1) > Math.abs(prev.multiplier - 1) ? curr : prev;
+                return Math.abs((Number(curr.multiplier) || 0) - 1) > Math.abs((Number(prev.multiplier) || 0) - 1) ? curr : prev;
             }, null);
 
-            const weight = s.weight || 1.0;
-            // Format factor name to be more readable and limit decimal places
+            const weight = Number(s.weight) || 1.0;
             const formatFactorName = (name) => {
                 if (!name) return 'FACTOR';
-                return name
-                    .replace(/([a-z])([A-Z])/g, '$1 $2')
-                    .replace(/_/g, ' ')
-                    .toUpperCase()
-                    .trim();
+                return name.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ').toUpperCase().trim();
             };
 
-            // Build factor text with additional context for agreement
             let factorText = 'Neutral';
             if (topFactor) {
                 const factorName = formatFactorName(topFactor.factor);
-                const multiplierStr = Number(topFactor.multiplier).toFixed(2);
-
-                // Add context for agreement factor
+                const multiplierStr = Utils.formatNumber(Number(topFactor.multiplier) || 1, 2);
                 if (topFactor.factor === 'agreement' && topFactor.agreements !== undefined) {
                     factorText = `${topFactor.agreements}/${topFactor.total} AGREE: ${multiplierStr}X`;
                 } else {
                     factorText = `${factorName}: ${multiplierStr}X`;
                 }
             }
-            const factorColor = topFactor?.multiplier > 1 ? 'text-bb-green' : topFactor?.multiplier < 1 ? 'text-bb-red' : 'text-bb-muted';
+            const factorColor = (Number(topFactor?.multiplier) || 1) > 1 ? 'text-bb-green' : (Number(topFactor?.multiplier) || 1) < 1 ? 'text-bb-red' : 'text-bb-muted';
 
-            const formattedName = s.key
-                .replace(/([a-z])([A-Z])/g, '$1 $2')
-                .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')
-                .toUpperCase()
-                .trim();
+            const formattedName = String(s.key || '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Z])([A-Z][a-z])/g, '$1 $2').toUpperCase().trim();
 
-            return `
-                <div class="flex justify-between items-center py-1 px-2 bg-white/5 border border-white/5 rounded group hover:bg-white/10 transition-all">
-                    <div class="flex flex-col max-w-[60%]">
-                        <span class="text-[9px] font-black text-white uppercase tracking-tighter truncate">${formattedName}</span>
-                        <span class="text-[7px] text-bb-muted uppercase font-bold">${detail?.category || 'SIGNAL'}</span>
-                    </div>
-                    <div class="flex flex-col items-end">
-                        <div class="flex items-center gap-1.5">
-                             <span class="text-[8px] font-bold ${s.direction === 'BUY' ? 'text-bb-green' : s.direction === 'SELL' ? 'text-bb-red' : 'text-bb-muted'}">${s.score.toFixed(0)}</span>
-                             <span class="text-[9px] font-black text-bb-gold">${weight.toFixed(2)}w</span>
-                        </div>
-                        <span class="text-[7px] font-bold ${factorColor} uppercase tracking-tight">${factorText}</span>
-                    </div>
-                </div>
-            `;
-        }).join('');
+            const row = document.createElement('div');
+            row.className = 'flex justify-between items-center py-1 px-2 bg-white/5 border border-white/5 rounded group hover:bg-white/10 transition-all';
+            const left = document.createElement('div'); left.className = 'flex flex-col max-w-[60%]';
+            const nameEl = document.createElement('span'); nameEl.className = 'text-[9px] font-black text-white uppercase tracking-tighter truncate'; nameEl.textContent = formattedName;
+            const catEl = document.createElement('span'); catEl.className = 'text-[7px] text-bb-muted uppercase font-bold'; catEl.textContent = detail?.category || 'SIGNAL';
+            left.appendChild(nameEl); left.appendChild(catEl);
+
+            const right = document.createElement('div'); right.className = 'flex flex-col items-end';
+            const topRow = document.createElement('div'); topRow.className = 'flex items-center gap-1.5';
+            const scoreEl = document.createElement('span'); scoreEl.className = `text-[8px] font-bold ${s.direction === 'BUY' ? 'text-bb-green' : s.direction === 'SELL' ? 'text-bb-red' : 'text-bb-muted'}`; scoreEl.textContent = String(Math.round(Number(s.score) || 0));
+            const weightEl = document.createElement('span'); weightEl.className = 'text-[9px] font-black text-bb-gold'; weightEl.textContent = `${Utils.formatNumber(weight, 2)}w`;
+            topRow.appendChild(scoreEl); topRow.appendChild(weightEl);
+            const factorEl = document.createElement('span'); factorEl.className = `text-[7px] font-bold ${factorColor} uppercase tracking-tight`; factorEl.textContent = factorText;
+            right.appendChild(topRow); right.appendChild(factorEl);
+
+            row.appendChild(left); row.appendChild(right);
+            elDrivers.appendChild(row);
+        });
     }
 
     // 5. MTF Convergence Matrix update
@@ -469,7 +513,7 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
         const correlation = corr.correlation || 0.8;
         const alpha = confidence * (1 - correlation);
 
-        elAlphaVal.innerText = alpha.toFixed(1);
+        elAlphaVal.innerText = Utils.safeFixed(alpha, 1);
 
         if (correlation > 0.8) { // Changed from 0.85 to 0.8 as per instruction
             elAlphaBadge.innerText = 'MARKET META';
@@ -499,7 +543,7 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
         if (elVwapDelta && vwapVal > 0 && lastPx > 0) {
             const deltaPct = ((lastPx - vwapVal) / vwapVal) * 100;
             const isPremium = deltaPct > 0;
-            elVwapDelta.innerText = `${isPremium ? '+' : ''}${deltaPct.toFixed(2)}%`;
+            elVwapDelta.innerText = `${isPremium ? '+' : ''}${Utils.safeFixed(deltaPct, 2)}%`;
             elVwapDelta.className = `text-[8px] font-black px-1 rounded-sm ${isPremium ? 'bg-bb-red/20 text-bb-red' : 'bg-bb-green/20 text-bb-green'}`;
         }
     }
@@ -587,8 +631,27 @@ function updateNarrative(data, signals, master, regime, vol, syn = {}, pillars =
     // Extra badges
     if (Math.abs(netFlow) > 50000) tags.push({ text: 'WHALE CLUSTER', color: 'bg-bb-gold/40 text-white' });
 
-    elNarrative.innerHTML = brief.replace(/\*\*(.*?)\*\*/g, '<b class="text-bb-gold">$1</b>');
-    elTags.innerHTML = tags.map(t => `<span class="text-[7px] px-1.5 py-0.5 border rounded font-black uppercase ${t.color}">${t.text}</span>`).join('');
+    // Render brief with simple **bold** markers safely
+    elNarrative.textContent = '';
+    (function renderBold(el, text) {
+        const parts = String(text || '').split(/\*\*/);
+        for (let i = 0; i < parts.length; i++) {
+            if (i % 2 === 0) {
+                el.appendChild(document.createTextNode(parts[i]));
+            } else {
+                const b = document.createElement('b'); b.className = 'text-bb-gold'; b.textContent = parts[i]; el.appendChild(b);
+            }
+        }
+    })(elNarrative, brief);
+
+    // Render tags as safe elements
+    elTags.innerHTML = '';
+    tags.forEach(t => {
+        const sp = document.createElement('span');
+        sp.className = `text-[7px] px-1.5 py-0.5 border rounded font-black uppercase ${t.color}`;
+        sp.textContent = t.text;
+        elTags.appendChild(sp);
+    });
 }
 
 function calculatePillars(data, signals, master, syn) {

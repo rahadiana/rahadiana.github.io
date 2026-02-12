@@ -1,4 +1,5 @@
 import * as Utils from '../utils.js'; // Hybrid namespace resolution
+import { getMasterSignal, getSignals, getMicrostructure, calculateVolumePace, calculateDurability } from '../data_helpers.js';
 
 let onSelectCoin = null;
 
@@ -49,7 +50,7 @@ export function init(selectCoinCallback) {
 
 export function render(container) {
     const tabs = [
-        'ALERTS', 'OVERVIEW', 'DECISION', 'SMART', 'SYNTHESIS', 'VOLATILITY', 'MICROSTRUCTURE', 'LIQUIDITY', 'DERIVATIVES',
+        'ALERTS', 'META-GUARD', 'OVERVIEW', 'DECISION', 'SMART', 'SYNTHESIS', 'VOLATILITY', 'MICROSTRUCTURE', 'LIQUIDITY', 'DERIVATIVES',
         'REGIME', 'SENTIMENT', 'IO', 'PRICEMOVE', 'FREQUENCY',
         'VOLSPIKE', 'VOLDURABILITY', 'VOLRATIO', 'OPENINTEREST', 'FUNDING'
     ];
@@ -217,8 +218,9 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
         const sigRoot = data.signals || {};
         const profileObj = sigRoot.profiles?.[profile] || {};
         const tfObj = profileObj.timeframes?.[timeframe] || {};
-        const signals = tfObj.signals || {};
-        const master = tfObj.masterSignal || {};
+        const signals = getSignals(data, profile, timeframe);
+        const master = getMasterSignal(data, profile, timeframe);
+        const micro = getMicrostructure(data, profile);
         const volModule = tfObj.volatility || signals.volatility || {};
         const price = raw.PRICE || sigRoot.PRICE || {};
         const vol = raw.VOL || sigRoot.VOL || {};
@@ -227,23 +229,14 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
         const analytics = data.analytics || {};
         const fundAn = analytics.funding || {};
 
-        const getSpikeData = (tf, mult) => {
-            const b = (vol[`vol_BUY_${tf}`] || 0);
-            const s = (vol[`vol_SELL_${tf}`] || 0);
-            const t = b + s;
-            const h1Base = ((vol.vol_BUY_1JAM || 0) + (vol.vol_SELL_1JAM || 0)) / 60;
-            const ratio = t > 0 ? (b - s) / t : 0;
-            const durability = h1Base > 0 ? Math.min(1.0, (t / mult) / h1Base) : 0;
-            const spike = h1Base > 0 ? (t / mult) / h1Base : 0;
-
-            // ⭐ Institutional Upgrade: AVG-based Spike (Historical)
+        const getSpikeData = (tf, minutes) => {
             const avgVal = raw.AVG || sigRoot.AVG || {};
-            const histBuy = avgVal[`avg_VOLCOIN_buy_${tf}`] || 0;
-            const histSell = avgVal[`avg_VOLCOIN_sell_${tf}`] || 0;
-            const histTotal = histBuy + histSell;
-            const histPace = histTotal / mult;
-            const avgSpike = histPace > 0 ? (t / mult) / histPace : 0;
-
+            const { currentPace, histPace, spike: histSpike, total, buy, sell } = calculateVolumePace(vol, avgVal, tf, minutes);
+            const pace1hPerMin = ((vol.vol_BUY_1JAM || 0) + (vol.vol_SELL_1JAM || 0)) / 60;
+            const durability = calculateDurability(currentPace, pace1hPerMin);
+            const spike = pace1hPerMin > 0 ? (currentPace / pace1hPerMin) : 0;
+            const ratio = total > 0 ? ((buy - sell) / total) : 0;
+            const avgSpike = histPace > 0 ? (currentPace / histPace) : 0;
             return { spike, avgSpike, ratio, durability };
         };
 
@@ -284,8 +277,8 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
                 if (coinVol > 0 && px > 0) return coinVol * px;
                 return fiat || coinVol || 0;
             })(),
-            chg: price.percent_change_24h || 0,
-            chg1h: price.percent_change_1JAM || 0,
+            chg: Number(price.percent_change_24JAM ?? price.percent_change_24h) || 0,
+            chg1h: Number(price.percent_change_1JAM) || 0,
             chgFromLow: price.percent_change_from_bottom || 0,
             chgFromHigh: price.percent_change_from_top || 0,
             dashboard: master.normalizedScore || 0,
@@ -296,13 +289,13 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
 
             // SMART Matrix Mapping (REPAIRED)
             smi: master.normalizedScore || 0,
-            intensity: dash.intensity?.intensity || signals.microstructure?.vpin?.rawValue || 0,
+            intensity: dash.intensity?.intensity || micro?.vpin?.rawValue || signals.microstructure?.vpin?.rawValue || 0,
             divergence: signals.microstructure?.volumeFreqDivergence?.rawValue || 0,
             accum: dash.accumScore?.accumScore || 0,
             whale: signals.microstructure?.volumeFreqDivergence?.rawValue || 0,
             riRatio: dash.riRatio?.riRatio || 0,
             pressure: signals.microstructure?.vwoi?.rawValue || 0,
-            trend: sigRoot.marketRegime?.currentRegime || 'RANGING',
+            trend: master.marketRegime || master.currentRegime || sigRoot.marketRegime?.currentRegime || 'RANGING',
             breakout: dash.breakoutPct?.breakoutPct || 0,
             lsi: signals.sentiment?.sentimentAlignment?.normalizedScore || 50,
             mode: sigRoot.volatilityRegime?.regime || 'NORMAL',
@@ -368,10 +361,10 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
             tradeSizeImb: analytics.orderFlow?.tradeSizeImbalance || 0,
 
             // Other TF data
-            chg1m: price.percent_change_1MENIT || 0,
-            chg5m: price.percent_change_5MENIT || 0,
-            chg15m: price.percent_change_15MENIT || 0,
-            chg24h: price.percent_change_24h || 0,
+            chg1m: Number(price.percent_change_1MENIT) || 0,
+            chg5m: Number(price.percent_change_5MENIT) || 0,
+            chg15m: Number(price.percent_change_15MENIT) || 0,
+            chg24h: Number(price.percent_change_24JAM ?? price.percent_change_24h) || 0,
             s1m: getSpikeData('1MENIT', 1),
             s5m: getSpikeData('5MENIT', 5),
             s10m: getSpikeData('10MENIT', 10),
@@ -515,6 +508,12 @@ function renderHeader() {
         html += th('CONFLU', 'confCount', 'text-center');
         html += th('SNIPER', 'isAlpha', 'text-center');
         html += th('LIVE AGE', 'ts', 'text-right');
+    } else if (currentMatrix === 'META-GUARD') {
+        html += th('GUARD STATUS', 'guard', 'text-center');
+        html += th('ALLOWED', 'guardAllowed', 'text-center');
+        html += th('NOISE', 'guardNoise', 'text-center');
+        html += th('CONF ADJ', 'guardConfAdj', 'text-center');
+        html += th('REASON', 'guardReason', 'text-left');
     } else if (currentMatrix === 'VOLATILITY') {
         html += th('CHG% 24H', 'chg', 'text-right', 'w-24');
         html += th('ATR MOM%', 'atrPct', 'text-right');
@@ -678,6 +677,31 @@ function renderRows(data) {
             return 'text-bb-muted';
         };
 
+        // Compact META-GUARD view: show only coin + guard info
+        if (currentMatrix === 'META-GUARD') {
+            const g = r.guard || {};
+            const gStatus = g.status || 'SCANNING';
+            const allowed = g.allowed === undefined ? true : !!g.allowed;
+            const noise = g.noiseLevel || 'UNKNOWN';
+            const confAdj = g.confAdj || 0;
+            const reason = g.blockReason || '';
+
+            const gColor = gStatus === 'ALLOW' ? 'text-bb-green bg-bb-green/10 border-bb-green/30' :
+                gStatus === 'BLOCK' ? 'text-bb-red bg-bb-red/10 border-bb-red/30 font-black animate-pulse' :
+                    gStatus === 'DOWNGRADE' ? 'text-bb-gold bg-bb-gold/10 border-bb-gold/30' : 'text-bb-muted bg-white/5 border-bb-border/30';
+
+            return `
+                <tr data-coin="${r.id}" class="hover:bg-white/5 cursor-pointer group transition-none" mousedown="window.app.selectCoin('${r.id}')" onclick="window.app.selectCoin('${r.id}')">
+                    ${wrap(r.coin, 'text-left', 'font-black text-white group-hover:text-bb-gold', 'width: 128px;')}
+                    ${wrap(`<span class="px-1.5 py-0.5 text-[10px] font-black border rounded ${gColor}">${gStatus}</span>`, 'text-center')}
+                    ${wrap(allowed ? '<span class="text-bb-green font-black">ALLOWED</span>' : '<span class="text-bb-red font-black">BLOCKED</span>', 'text-center')}
+                    ${wrap(`<span class="text-[9px] text-bb-muted">${noise}</span>`, 'text-center')}
+                    ${wrap(`${Utils.safeFixed(confAdj, 2)}`, 'text-center', 'font-mono')}
+                    ${wrap(reason ? `<span title="${reason}" class="text-[9px] truncate block max-w-[220px]">${reason}</span>` : '-', 'text-left')}
+                </tr>
+            `;
+        }
+
         let rowHtml = wrap(r.coin, 'text-left', 'font-black text-white group-hover:text-bb-gold', 'width: 128px;');
 
         if (currentMatrix === 'OVERVIEW') {
@@ -702,10 +726,10 @@ function renderRows(data) {
             rowHtml += wrap(`<span class="px-1 bg-white/5 rounded-[2px] text-[8px] ${mColor}">${r.mtf}</span>`, 'text-center');
 
             const lsrColor = r.lsrRatio > 1.3 ? 'text-bb-red' : r.lsrRatio < 0.8 ? 'text-bb-green' : 'text-white';
-            rowHtml += wrap(r.lsrRatio.toFixed(2), 'text-center', `font-mono font-bold ${lsrColor}`);
+            rowHtml += wrap(Utils.safeFixed(r.lsrRatio, 2), 'text-center', `font-mono font-bold ${lsrColor}`);
 
             const vColor = r.vwapDelta > 0.5 ? 'text-bb-red' : r.vwapDelta < -0.5 ? 'text-bb-green font-bold' : 'text-white/60';
-            rowHtml += wrap(`${r.vwapDelta > 0 ? '+' : ''}${r.vwapDelta.toFixed(2)}%`, 'text-center', `font-mono text-[9px] ${vColor}`);
+            rowHtml += wrap(`${r.vwapDelta > 0 ? '+' : ''}${Utils.safeFixed(r.vwapDelta, 2)}%`, 'text-center', `font-mono text-[9px] ${vColor}`);
 
             let synthBadge = '-';
             if (r.char15m === 'ABSORPTION') synthBadge = '<span class="text-bb-gold font-black animate-pulse">ABS</span>';
@@ -714,19 +738,19 @@ function renderRows(data) {
             else if (r.netFlow15m < 0) synthBadge = '<span class="text-bb-red opacity-40">OUT</span>';
             rowHtml += wrap(synthBadge, 'text-center', 'text-[8px] font-black');
 
-            rowHtml += wrap(`${r.chg > 0 ? '+' : ''}${r.chg.toFixed(2)}%`, 'text-right', `font-mono ${r.chg >= 0 ? 'text-bb-green' : 'text-bb-red'} font-bold`, 'width: 96px;');
+            rowHtml += wrap(`${r.chg > 0 ? '+' : ''}${Utils.safeFixed(r.chg, 2)}%`, 'text-right', `font-mono ${r.chg >= 0 ? 'text-bb-green' : 'text-bb-red'} font-bold`, 'width: 96px;');
         } else if (currentMatrix === 'SMART') {
             // High Density Smart Columns (Verified Data)
-            rowHtml += wrap(`<span class="${r.smi > 60 ? 'text-bb-green' : r.smi < 40 ? 'text-bb-red' : 'text-bb-muted'} font-black">${r.smi.toFixed(0)}</span>`, 'text-center');
-            rowHtml += wrap(r.intensity ? r.intensity.toFixed(2) : '-', 'text-center', r.intensity > 1.8 ? 'text-bb-red font-bold' : 'text-bb-muted');
-            rowHtml += wrap(r.divergence ? r.divergence.toFixed(2) : '-', 'text-center', r.divergence > 0.3 ? 'text-bb-gold font-bold' : 'text-bb-muted');
-            rowHtml += wrap(r.accum ? r.accum.toFixed(0) : '-', 'text-center', r.accum > 60 ? 'text-bb-green' : r.accum < 40 ? 'text-bb-red' : 'text-bb-muted');
+            rowHtml += wrap(`<span class="${r.smi > 60 ? 'text-bb-green' : r.smi < 40 ? 'text-bb-red' : 'text-bb-muted'} font-black">${Utils.safeFixed(r.smi, 0)}</span>`, 'text-center');
+            rowHtml += wrap(r.intensity ? Utils.safeFixed(r.intensity, 2) : '-', 'text-center', r.intensity > 1.8 ? 'text-bb-red font-bold' : 'text-bb-muted');
+            rowHtml += wrap(r.divergence ? Utils.safeFixed(r.divergence, 2) : '-', 'text-center', r.divergence > 0.3 ? 'text-bb-gold font-bold' : 'text-bb-muted');
+            rowHtml += wrap(r.accum ? Utils.safeFixed(r.accum, 0) : '-', 'text-center', r.accum > 60 ? 'text-bb-green' : r.accum < 40 ? 'text-bb-red' : 'text-bb-muted');
             rowHtml += wrap(r.whale > 0.3 ? '🐋' : '-', 'text-center');
-            rowHtml += wrap(r.riRatio ? `${(r.riRatio * 100).toFixed(0)}%` : '-', 'text-center', r.riRatio > 0.7 ? 'text-bb-green' : r.riRatio < 0.3 ? 'text-bb-muted/50' : 'text-bb-muted');
-            rowHtml += wrap(r.pressure ? r.pressure.toFixed(2) : '0', 'text-center', r.pressure > 0.1 ? 'text-bb-green' : r.pressure < -0.1 ? 'text-bb-red' : 'text-bb-muted');
+            rowHtml += wrap(r.riRatio ? `${Utils.safeFixed(r.riRatio * 100, 0)}%` : '-', 'text-center', r.riRatio > 0.7 ? 'text-bb-green' : r.riRatio < 0.3 ? 'text-bb-muted/50' : 'text-bb-muted');
+            rowHtml += wrap(r.pressure ? Utils.safeFixed(r.pressure, 2) : '0', 'text-center', r.pressure > 0.1 ? 'text-bb-green' : r.pressure < -0.1 ? 'text-bb-red' : 'text-bb-muted');
             rowHtml += wrap(`<span class="px-1 bg-white/5 text-[8px]">${r.trend}</span>`, 'text-center');
-            rowHtml += wrap(r.breakout ? `${r.breakout.toFixed(0)}%` : '0%', 'text-center', r.breakout > 70 ? 'text-bb-gold font-bold' : 'text-bb-muted');
-            rowHtml += wrap(r.lsi ? r.lsi.toFixed(0) : '-', 'text-center', r.lsi > 65 ? 'text-bb-green' : r.lsi < 35 ? 'text-bb-red' : 'text-bb-muted');
+            rowHtml += wrap(r.breakout ? `${Utils.safeFixed(r.breakout, 0)}%` : '0%', 'text-center', r.breakout > 70 ? 'text-bb-gold font-bold' : 'text-bb-muted');
+            rowHtml += wrap(r.lsi ? Utils.safeFixed(r.lsi, 0) : '-', 'text-center', r.lsi > 65 ? 'text-bb-green' : r.lsi < 35 ? 'text-bb-red' : 'text-bb-muted');
             rowHtml += wrap(r.mode, 'text-center', 'text-[8px] opacity-70');
             const sigColor = r.signal === 'LONG' ? 'text-bb-green' : r.signal === 'SHORT' ? 'text-bb-red' : 'text-bb-muted';
             const sigText = r.signal === 'LONG' ? 'LONG' : r.signal === 'SHORT' ? 'SHORT' : 'WAIT';
@@ -736,14 +760,14 @@ function renderRows(data) {
             const fRate = r.fundingDiv?.rate || 0;
             const fDiv = r.fundingDiv?.hasDivergence || false;
             const fColor = fRate > 0.0005 ? 'text-bb-red' : fRate < -0.0005 ? 'text-bb-green' : 'text-bb-muted';
-            const fText = `${(fRate * 100).toFixed(3)}%`;
+            const fText = `${Utils.safeFixed(fRate * 100, 3)}%`;
             rowHtml += wrap(`<span class="${fColor} ${fDiv ? 'ring-1 ring-bb-gold rounded px-0.5' : ''}">${fDiv ? '⚠️' : ''}${fText}</span>`, 'text-center', 'text-[8px] font-mono');
 
-            rowHtml += wrap(r.liqQuality ? `${r.liqQuality.toFixed(0)}%` : '0%', 'text-center', r.liqQuality > 70 ? 'text-bb-red' : 'text-bb-muted');
-            rowHtml += wrap(r.momentum ? r.momentum.toFixed(1) : '-', 'text-center', r.momentum > 2.0 ? 'text-bb-red' : r.momentum < 0.5 ? 'text-bb-green' : 'text-bb-muted');
+            rowHtml += wrap(r.liqQuality ? `${Utils.safeFixed(r.liqQuality, 0)}%` : '0%', 'text-center', r.liqQuality > 70 ? 'text-bb-red' : 'text-bb-muted');
+            rowHtml += wrap(r.momentum ? Utils.safeFixed(r.momentum, 1) : '-', 'text-center', r.momentum > 2.0 ? 'text-bb-red' : r.momentum < 0.5 ? 'text-bb-green' : 'text-bb-muted');
 
         } else {
-            rowHtml += wrap(`${r.chg > 0 ? '+' : ''}${r.chg.toFixed(2)}%`, 'text-right', `font-mono ${r.chg >= 0 ? 'text-bb-green' : 'text-bb-red'} font-bold`, 'width: 96px;');
+            rowHtml += wrap(`${r.chg > 0 ? '+' : ''}${Utils.safeFixed(r.chg, 2)}%`, 'text-right', `font-mono ${r.chg >= 0 ? 'text-bb-green' : 'text-bb-red'} font-bold`, 'width: 96px;');
 
             if (currentMatrix === 'DECISION') {
                 const action = r.action || 'WAIT';
@@ -768,10 +792,10 @@ function renderRows(data) {
                 rowHtml += wrap(`${Math.round(r.conf)}%`, 'text-center', 'text-bb-gold font-bold');
                 rowHtml += wrap(`${r.confCount}/${r.confRequired}`, 'text-center', 'text-white opacity-60');
             } else if (currentMatrix === 'MICROSTRUCTURE') {
-                rowHtml += wrap(r.vpin.toFixed(3), 'text-center', r.vpin > 0.6 ? 'text-bb-red' : 'text-white');
-                rowHtml += wrap(r.lambda.toFixed(6), 'text-center', 'text-bb-blue');
-                rowHtml += wrap(r.vwoi.toFixed(2), 'text-center', r.vwoi > 0.1 ? 'text-bb-green' : r.vwoi < -0.1 ? 'text-bb-red' : 'text-bb-muted');
-                rowHtml += wrap(r.whale.toFixed(2), 'text-center', 'text-bb-gold');
+                rowHtml += wrap(Utils.safeFixed(r.vpin, 3), 'text-center', r.vpin > 0.6 ? 'text-bb-red' : 'text-white');
+                rowHtml += wrap(Utils.safeFixed(r.lambda, 6), 'text-center', 'text-bb-blue');
+                rowHtml += wrap(Utils.safeFixed(r.vwoi, 2), 'text-center', r.vwoi > 0.1 ? 'text-bb-green' : r.vwoi < -0.1 ? 'text-bb-red' : 'text-bb-muted');
+                rowHtml += wrap(Utils.safeFixed(r.whale, 2), 'text-center', 'text-bb-gold');
             } else if (currentMatrix === 'SYNTHESIS') {
                 const fColor = r.netFlow15m > 0 ? 'text-bb-green' : r.netFlow15m < 0 ? 'text-bb-red' : 'text-bb-muted';
                 rowHtml += wrap(`$${Utils.formatNumber(r.netFlow15m, 0)}`, 'text-right', `font-mono ${fColor}`);
@@ -787,8 +811,8 @@ function renderRows(data) {
                 const aColor = r.aggr15m === 'INSTITUTIONAL' ? 'text-bb-gold' : r.aggr15m === 'ACTIVE' ? 'text-bb-blue' : 'text-bb-muted/50';
                 rowHtml += wrap(r.aggr15m, 'text-center', `text-[8px] font-bold ${aColor}`);
 
-                rowHtml += wrap(r.eff15m.toFixed(4), 'text-center', 'text-white opacity-60');
-                rowHtml += wrap(r.fric15m.toFixed(4), 'text-center', 'text-white opacity-60');
+                rowHtml += wrap(Utils.safeFixed(r.eff15m, 4), 'text-center', 'text-white opacity-60');
+                rowHtml += wrap(Utils.safeFixed(r.fric15m, 4), 'text-center', 'text-white opacity-60');
                 rowHtml += wrap(`$${Utils.formatNumber(r.velocity15m, 0)}`, 'text-right', 'font-mono text-bb-gold');
             } else if (currentMatrix === 'LIQUIDITY') {
                 rowHtml += wrap(r.ofi, 'text-center', r.ofi > 60 ? 'text-bb-green' : r.ofi < 40 ? 'text-bb-red' : 'text-white');
@@ -800,32 +824,49 @@ function renderRows(data) {
                         ['CRITICAL', 'DISRUPTED'].includes(r.bookHealth) ? 'text-bb-red font-bold' : 'text-bb-muted';
                 rowHtml += wrap(`<span class="px-1 bg-white/5 rounded-[2px] text-[8px] ${hColor}">${r.bookHealth}</span>`, 'text-center');
 
-                rowHtml += wrap(`${r.slip100k.toFixed(3)}%`, 'text-center', `font-mono ${r.slip100k > 0.5 ? 'text-bb-red font-bold' : r.slip100k > 0.1 ? 'text-bb-gold' : 'text-bb-blue'}`);
+                rowHtml += wrap(`${Utils.safeFixed(r.slip100k, 3)}%`, 'text-center', `font-mono ${r.slip100k > 0.5 ? 'text-bb-red font-bold' : r.slip100k > 0.1 ? 'text-bb-gold' : 'text-bb-blue'}`);
                 rowHtml += wrap(r.wallCount > 0 ? `⚠️ ${r.wallCount}` : '-', 'text-center', r.wallCount > 0 ? 'text-bb-gold font-bold' : 'text-bb-muted');
-                rowHtml += wrap(r.spread.toFixed(2), 'text-center', 'text-bb-gold');
+                rowHtml += wrap(Utils.safeFixed(r.spread, 2), 'text-center', 'text-bb-gold');
             } else if (currentMatrix === 'DERIVATIVES') {
-                rowHtml += wrap(`${r.oi > 0 ? '+' : ''}${r.oi.toFixed(2)}%`, 'text-center', r.oi > 0.5 ? 'text-bb-green' : r.oi < -0.5 ? 'text-bb-red' : 'text-white');
-                rowHtml += wrap(`${(r.funding * 100).toFixed(4)}%`, 'text-right', r.funding > 0.01 ? 'text-bb-red' : 'text-bb-green');
+                rowHtml += wrap(`${r.oi > 0 ? '+' : ''}${Utils.safeFixed(r.oi, 2)}%`, 'text-center', r.oi > 0.5 ? 'text-bb-green' : r.oi < -0.5 ? 'text-bb-red' : 'text-white');
+                rowHtml += wrap(`${Utils.safeFixed(r.funding * 100, 4)}%`, 'text-right', r.funding > 0.01 ? 'text-bb-red' : 'text-bb-green');
                 rowHtml += wrap(`<div class="h-1.5 w-12 bg-bb-border/20 rounded overflow-hidden mx-auto"><div class="h-full bg-bb-red" style="width: ${r.liqRisk}%"></div></div>`, 'text-center');
             } else if (currentMatrix === 'REGIME') {
                 rowHtml += wrap(`<span class="px-1 bg-bb-blue/10 text-bb-blue text-[8px]">${r.marketRegime}</span>`, 'text-center');
                 rowHtml += wrap(`<span class="px-1 text-[8px] ${r.volRegime === 'EXTREME_VOL' ? 'text-bb-red' : 'text-white'}">${r.volRegime}</span>`, 'text-center');
+            } else if (currentMatrix === 'META-GUARD') {
+                const g = r.guard || {};
+                const gStatus = g.status || 'SCANNING';
+                const allowed = g.allowed === undefined ? true : !!g.allowed;
+                const noise = g.noiseLevel || 'UNKNOWN';
+                const confAdj = g.confAdj || 0;
+                const reason = g.blockReason || '';
+
+                const gColor = gStatus === 'ALLOW' ? 'text-bb-green bg-bb-green/10 border-bb-green/30' :
+                    gStatus === 'BLOCK' ? 'text-bb-red bg-bb-red/10 border-bb-red/30 font-black animate-pulse' :
+                        gStatus === 'DOWNGRADE' ? 'text-bb-gold bg-bb-gold/10 border-bb-gold/30' : 'text-bb-muted bg-white/5 border-bb-border/30';
+
+                rowHtml += wrap(`<span class="px-1.5 py-0.5 text-[10px] font-black border rounded ${gColor}">${gStatus}</span>`, 'text-center');
+                rowHtml += wrap(allowed ? '<span class="text-bb-green font-black">ALLOWED</span>' : '<span class="text-bb-red font-black">BLOCKED</span>', 'text-center');
+                rowHtml += wrap(`<span class="text-[9px] text-bb-muted">${noise}</span>`, 'text-center');
+                rowHtml += wrap(`${Utils.safeFixed(confAdj, 2)}`, 'text-center', 'font-mono');
+                rowHtml += wrap(reason ? `<span title="${reason}" class="text-[9px] truncate block max-w-[220px]">${reason}</span>` : '-', 'text-left');
             } else if (currentMatrix === 'SENTIMENT') {
                 rowHtml += wrap(r.lsr, 'text-center', r.lsr > 60 ? 'text-bb-green' : r.lsr < 40 ? 'text-bb-red' : 'text-white');
-                rowHtml += wrap(r.lsrZ.toFixed(2), 'text-center', Math.abs(r.lsrZ) > 2 ? 'text-bb-red' : 'text-white');
+                rowHtml += wrap(Utils.safeFixed(r.lsrZ, 2), 'text-center', Math.abs(r.lsrZ) > 2 ? 'text-bb-red' : 'text-white');
             } else if (currentMatrix === 'IO') {
                 rowHtml += wrap(`<div class="h-1 bg-bb-dark rounded overflow-hidden"><div class="h-full bg-bb-green" style="width: ${r.takerBuy * 100}%"></div></div>`, 'text-center');
                 rowHtml += wrap(`<div class="h-1 bg-bb-dark rounded overflow-hidden"><div class="h-full bg-bb-blue" style="width: ${r.aggressive * 100}%"></div></div>`, 'text-center');
                 const imbColor = r.tradeSizeImb > 0.2 ? 'text-bb-green' : r.tradeSizeImb < -0.2 ? 'text-bb-red' : 'text-bb-muted';
-                rowHtml += wrap(`<span class="${imbColor} font-mono">${r.tradeSizeImb > 0 ? '+' : ''}${(r.tradeSizeImb * 100).toFixed(1)}%</span>`, 'text-center');
+                rowHtml += wrap(`<span class="${imbColor} font-mono">${r.tradeSizeImb > 0 ? '+' : ''}${Utils.safeFixed(r.tradeSizeImb * 100, 1)}%</span>`, 'text-center');
             } else if (currentMatrix === 'PRICEMOVE') {
                 const c = (v) => v > 0 ? 'text-bb-green' : v < 0 ? 'text-bb-red' : 'text-bb-muted';
-                rowHtml += wrap(`${(r.chg1m || 0).toFixed(2)}%`, 'text-center', c(r.chg1m));
-                rowHtml += wrap(`${(r.chg5m || 0).toFixed(2)}%`, 'text-center', c(r.chg5m));
-                rowHtml += wrap(`${(r.chg15m || 0).toFixed(2)}%`, 'text-center', c(r.chg15m));
-                rowHtml += wrap(`${(r.chg24h || 0).toFixed(2)}%`, 'text-center', c(r.chg24h));
-                rowHtml += wrap(`${(r.chgFromLow || 0).toFixed(2)}%`, 'text-center', 'text-bb-green font-black');
-                rowHtml += wrap(`${(r.chgFromHigh || 0).toFixed(2)}%`, 'text-center', 'text-bb-red font-black');
+                rowHtml += wrap(`${Utils.safeFixed(r.chg1m || 0, 2)}%`, 'text-center', c(r.chg1m));
+                rowHtml += wrap(`${Utils.safeFixed(r.chg5m || 0, 2)}%`, 'text-center', c(r.chg5m));
+                rowHtml += wrap(`${Utils.safeFixed(r.chg15m || 0, 2)}%`, 'text-center', c(r.chg15m));
+                rowHtml += wrap(`${Utils.safeFixed(r.chg24h || 0, 2)}%`, 'text-center', c(r.chg24h));
+                rowHtml += wrap(`${Utils.safeFixed(r.chgFromLow || 0, 2)}%`, 'text-center', 'text-bb-green font-black');
+                rowHtml += wrap(`${Utils.safeFixed(r.chgFromHigh || 0, 2)}%`, 'text-center', 'text-bb-red font-black');
             } else if (currentMatrix === 'FREQUENCY') {
                 const fCell = (v) => {
                     const color = v.ratio > 0.05 ? 'text-bb-green font-bold' : v.ratio < -0.05 ? 'text-bb-red font-bold' : 'text-white opacity-60';
@@ -849,8 +890,8 @@ function renderRows(data) {
                     const avgColor = v.avgSpike > 3.0 ? 'text-bb-gold font-black underline' : v.avgSpike > 1.5 ? 'text-white font-bold' : 'text-bb-muted/50';
                     return `
                         <div class="flex flex-col items-center leading-tight">
-                            <span class="${color}">${v.spike.toFixed(2)}x</span>
-                            <span class="${avgColor} text-[7px] tracking-tighter">AVG:${v.avgSpike.toFixed(1)}x</span>
+                            <span class="${color}">${Utils.safeFixed(v.spike, 2)}x</span>
+                            <span class="${avgColor} text-[7px] tracking-tighter">AVG:${Utils.safeFixed(v.avgSpike, 1)}x</span>
                         </div>
                     `;
                 };
@@ -898,11 +939,11 @@ function renderRows(data) {
                 rowHtml += wrap(`<span class="text-bb-muted font-mono">${ageStr} AGO</span>`, 'text-right');
             } else if (currentMatrix === 'VOLATILITY') {
                 const getVolColor = (v) => v > 10 ? 'text-bb-red font-bold' : v > 5 ? 'text-bb-gold' : 'text-bb-green opacity-70';
-                rowHtml += wrap(`${r.atrPct.toFixed(4)}%`, 'text-right', 'font-mono text-white');
-                rowHtml += wrap(`${r.gkPct.toFixed(2)}%`, 'text-right', `font-mono ${getVolColor(r.gkPct)}`);
+                rowHtml += wrap(`${Utils.safeFixed(r.atrPct, 4)}%`, 'text-right', 'font-mono text-white');
+                rowHtml += wrap(`${Utils.safeFixed(r.gkPct, 2)}%`, 'text-right', `font-mono ${getVolColor(r.gkPct)}`);
                 rowHtml += wrap(`<span class="px-1 text-[8px] border border-bb-border rounded ${r.volRegime.includes('HIGH') || r.volRegime.includes('EXTREME') ? 'text-bb-red border-bb-red' : 'text-bb-muted'}">${r.volRegime}</span>`, 'text-center');
-                rowHtml += wrap(`${r.avgVol.toFixed(2)}%`, 'text-right', 'font-mono text-bb-gold');
-                rowHtml += wrap(r.momentum.toFixed(2), 'text-center', r.momentum > 1.5 ? 'text-bb-red' : 'text-bb-muted');
+                rowHtml += wrap(`${Utils.safeFixed(r.avgVol, 2)}%`, 'text-right', 'font-mono text-bb-gold');
+                rowHtml += wrap(Utils.safeFixed(r.momentum, 2), 'text-center', r.momentum > 1.5 ? 'text-bb-red' : 'text-bb-muted');
             } else if (currentMatrix === 'VOLDURABILITY') {
                 const dCell = (v) => {
                     const barWidth = Math.round(v.durability * 5);
@@ -926,7 +967,7 @@ function renderRows(data) {
                 const rCell = (v) => {
                     const color = getRatioColor(v.ratio);
                     const label = v.ratio >= 0.10 ? 'LONG' : v.ratio <= -0.10 ? 'SHORT' : 'NEUT';
-                    return `<div class="flex flex-col items-center"><span class="${color} font-bold">${v.ratio > 0 ? '+' : ''}${v.ratio.toFixed(2)}</span><span class="${color} text-[6px]">${label}</span></div>`;
+                    return `<div class="flex flex-col items-center"><span class="${color} font-bold">${v.ratio > 0 ? '+' : ''}${Utils.safeFixed(v.ratio, 2)}</span><span class="${color} text-[6px]">${label}</span></div>`;
                 };
                 rowHtml += wrap(rCell(r.s1m), 'text-center');
                 rowHtml += wrap(rCell(r.s5m), 'text-center');
@@ -940,7 +981,7 @@ function renderRows(data) {
             } else if (currentMatrix === 'OPENINTEREST') {
                 const oCell = (v) => {
                     const color = v > 1.0 ? 'text-bb-green font-bold' : v < -1.0 ? 'text-bb-red font-bold' : 'text-white opacity-60';
-                    return `<span class="${color}">${v > 0 ? '+' : ''}${v.toFixed(2)}%</span>`;
+                    return `<span class="${color}">${v > 0 ? '+' : ''}${Utils.safeFixed(v, 2)}%</span>`;
                 };
                 rowHtml += wrap(oCell(r.oi5m), 'text-center');
                 rowHtml += wrap(oCell(r.oi15m), 'text-center');
@@ -951,11 +992,11 @@ function renderRows(data) {
                 const fCell = (v) => {
                     const absV = Math.abs(v);
                     const color = absV > 0.01 ? 'text-bb-red font-bold' : absV < 0.005 ? 'text-bb-muted' : 'text-white';
-                    return `<span class="${color} font-mono">${(v * 100).toFixed(4)}%</span>`;
+                    return `<span class="${color} font-mono">${Utils.safeFixed(v * 100, 4)}%</span>`;
                 };
                 rowHtml += wrap(fCell(r.funding), 'text-right');
                 rowHtml += wrap(fCell(r.nextFunding), 'text-right');
-                rowHtml += wrap(`<span class="font-mono text-bb-gold">${r.payout8h.toFixed(2)}% APR</span>`, 'text-right');
+                rowHtml += wrap(`<span class="font-mono text-bb-gold">${Utils.safeFixed(r.payout8h, 2)}% APR</span>`, 'text-right');
 
                 const bColor = r.fundingBias.includes('LONG') ? 'text-bb-red' : r.fundingBias.includes('SHORT') ? 'text-bb-green' : 'text-bb-muted';
                 rowHtml += wrap(`<span class="${bColor} font-black text-[8px] tracking-tight truncate">${r.fundingBias}</span>`, 'text-center');

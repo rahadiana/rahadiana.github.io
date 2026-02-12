@@ -1,4 +1,5 @@
 import * as Utils from '../utils.js';
+import { calculateVolumePace, calculateDurability } from '../data_helpers.js';
 
 export function render(container) {
     container.innerHTML = `
@@ -57,54 +58,31 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
     if (Object.keys(volData).length === 0) return;
 
     const tfs = [
-        { label: '1M', key: '1MENIT' },
-        { label: '5M', key: '5MENIT' },
-        { label: '10M', key: '10MENIT' },
-        { label: '15M', key: '15MENIT' },
-        { label: '20M', key: '20MENIT' },
-        { label: '30M', key: '30MENIT' },
-        { label: '1H', key: '1JAM' },
-        { label: '2H', key: '2JAM' },
-        { label: '1D', key: '24JAM' }
+        { label: '1M', key: '1MENIT', minutes: 1 },
+        { label: '5M', key: '5MENIT', minutes: 5 },
+        { label: '10M', key: '10MENIT', minutes: 10 },
+        { label: '15M', key: '15MENIT', minutes: 15 },
+        { label: '20M', key: '20MENIT', minutes: 20 },
+        { label: '30M', key: '30MENIT', minutes: 30 },
+        { label: '1H', key: '1JAM', minutes: 60 },
+        { label: '2H', key: '2JAM', minutes: 120 },
+        { label: '1D', key: '24JAM', minutes: 1440 }
     ];
 
+    const avgVal = data.raw?.AVG || {};
+    const v1hTotal = (volData.vol_BUY_1JAM || 0) + (volData.vol_SELL_1JAM || 0);
+    const pace1hPerMin = v1hTotal / 60;
+
     const processedData = tfs.map(tf => {
-        const buy = volData[`vol_BUY_${tf.key}`] || 0;
-        const sell = volData[`vol_SELL_${tf.key}`] || 0;
-        const total = buy + sell;
+        const pace = calculateVolumePace(volData, avgVal, tf.key, tf.minutes);
+        const buy = pace.buy;
+        const sell = pace.sell;
+        const total = pace.total;
         const buyPct = total > 0 ? (buy / total) * 100 : 50;
         const pChg = priceData[`percent_change_${tf.key}`] || 0;
 
-        // Durability Score Logic: 
-        const v5m = (volData.vol_BUY_5MENIT || 0) + (volData.vol_SELL_5MENIT || 0);
-        const v1h = (volData.vol_BUY_1JAM || 0) + (volData.vol_SELL_1JAM || 0);
-        const paceBase = v1h / 60; // 1h avg pace
-
-        let multiplier = 1;
-        if (tf.key === '1MENIT') multiplier = 1;
-        if (tf.key === '5MENIT') multiplier = 5;
-        if (tf.key === '10MENIT') multiplier = 10;
-        if (tf.key === '15MENIT') multiplier = 15;
-        if (tf.key === '20MENIT') multiplier = 20;
-        if (tf.key === '30MENIT') multiplier = 30;
-        if (tf.key === '1JAM') multiplier = 60;
-        if (tf.key === '2JAM') multiplier = 120;
-        if (tf.key === '24JAM') multiplier = 1440;
-
-        const currentPace = total / multiplier;
-        let score = paceBase > 0 ? (currentPace / paceBase) : 0.5;
-
-        // ⭐ Institutional Upgrade: AVG-based Spike (Historical)
-        const avgVal = data.raw?.AVG || {};
-        const histBuy = avgVal[`avg_VOLCOIN_buy_${tf.key}`] || 1;
-        const histSell = avgVal[`avg_VOLCOIN_sell_${tf.key}`] || 1;
-        const histTotal = histBuy + histSell;
-        const histPace = histTotal / multiplier;
-        const avgSpike = histPace > 0 ? (currentPace / histPace) : 1.0;
-
-        // Normalize score to 0-1 range for the visual bar (Clamped 1.0 = Max Visual)
-        // Adjust scaling: 0.5x = Normal, > 1x = Strong
-        const normalizedScore = Math.min(1.0, score / 2);
+        const rawDur = pace1hPerMin > 0 ? (pace.currentPace / pace1hPerMin) : 0.5;
+        const normalizedScore = calculateDurability(pace.currentPace, pace1hPerMin);
 
         // State Logic
         const isImpulsive = Math.abs(pChg) > 0.3; // Threshold for impulsive move
@@ -113,8 +91,8 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
         return {
             ...tf,
             score: normalizedScore,
-            rawScore: score,
-            avgSpike,
+            rawScore: rawDur,
+            avgSpike: pace.spike,
             buyPct,
             pChg,
             state,
@@ -170,10 +148,10 @@ function updateBarsUI(tfs) {
                     <div class="flex-1 flex gap-0.5 items-center">
                         ${barHtml}
                     </div>
- 
+
                     <!-- Score Numeric -->
-                    <div class="w-10 text-[10px] font-mono text-center">${tf.rawScore.toFixed(2)}</div>
- 
+                    <div class="w-10 text-[10px] font-mono text-center">${Utils.safeFixed(tf.rawScore, 2)}</div>
+
                     <!-- Status Label -->
                     <div class="w-24 text-[10px] font-bold px-2 py-0.5 rounded-sm bg-white/5 text-center">${getLabel(tf.score)}</div>
  
@@ -197,7 +175,7 @@ function updateBarsUI(tfs) {
                             <div class="h-px bg-bb-border/30 my-2"></div>
                             <div class="flex justify-between items-center px-1">
                                 <span>PRICE DELTA</span>
-                                <span class="${tf.pChg >= 0 ? 'text-bb-green' : 'text-bb-red'} font-bold">${tf.pChg > 0 ? '+' : ''}${tf.pChg.toFixed(2)}%</span>
+                                <span class="${tf.pChg >= 0 ? 'text-bb-green' : 'text-bb-red'} font-bold">${tf.pChg > 0 ? '+' : ''}${Utils.safeFixed(tf.pChg, 2)}%</span>
                             </div>
                             <div class="flex justify-between items-center px-1">
                                 <span>FLOW MODEL</span>
@@ -207,11 +185,11 @@ function updateBarsUI(tfs) {
                                 <div class="flex flex-col gap-1">
                                     <div class="flex justify-between items-center text-white font-black">
                                         <span class="text-[9px] text-bb-gold/80 uppercase">1H Pace Score</span>
-                                        <span class="text-lg">${(tf.score * 100).toFixed(0)}%</span>
+                                        <span class="text-lg">${Utils.safeFixed(tf.score * 100, 0)}%</span>
                                     </div>
                                     <div class="flex justify-between items-center text-white font-black border-t border-bb-gold/10 pt-1">
                                         <span class="text-[9px] text-bb-gold/80 uppercase">Hist AVG Spike</span>
-                                        <span class="text-xs text-bb-gold">${tf.avgSpike.toFixed(2)}x</span>
+                                        <span class="text-xs text-bb-gold">${Utils.safeFixed(tf.avgSpike, 2)}x</span>
                                     </div>
                                 </div>
                             </div>

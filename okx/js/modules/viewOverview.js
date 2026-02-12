@@ -1,4 +1,5 @@
 import * as Utils from '../utils.js';
+import { getMasterSignal, getMicrostructure, getSignals } from '../data_helpers.js';
 
 // Callback for navigation
 let onSelectCoin = null;
@@ -81,34 +82,35 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
     let items = coins.map(coin => {
         const data = marketState[coin];
         const raw = data.raw || {};
-        const signals = data.signals || {};
-        const master = data.masterSignals?.[timeframe]?.[profile];
-        const analytics = data.analytics || {};
+        const master = getMasterSignal(data, profile, timeframe);
+        const signalsObj = getSignals(data, profile, timeframe);
+        const micro = getMicrostructure(data, profile);
 
         // Stats accumulation
-        if (data.FUNDING?.funding_Rate) totalFunding += data.FUNDING.funding_Rate;
-        if (raw.LSR?.lsr_1h) totalLSR += raw.LSR.lsr_1h;
+        if (raw.FUNDING?.funding_Rate) totalFunding += raw.FUNDING.funding_Rate;
+        const lsrVal = raw.LSR?.timeframes_1hour?.longShortRatio ?? raw.LSR?.lsr_1h ?? 1;
+        totalLSR += lsrVal;
 
-        const trend = signals.marketRegime?.currentRegime || 'NEUTRAL';
-        if (trend.includes('BULL')) bullCount++;
-        if (trend.includes('BEAR')) bearCount++;
+        const trend = master.marketRegime || master.currentRegime || 'NEUTRAL';
+        if (String(trend).includes('BULL')) bullCount++;
+        if (String(trend).includes('BEAR')) bearCount++;
         validCount++;
 
         return {
             coin: coin,
             fullCoin: coin,
             price: raw.PRICE?.last || 0,
-            chg24h: raw.PRICE?.percent_change_24h || 0,
+            chg24h: (raw.PRICE?.percent_change_24JAM ?? raw.PRICE?.percent_change_24h) || 0,
             chg1h: raw.PRICE?.percent_change_1JAM || 0,
             trend: trend,
-            score: master?.score || 0,
-            action: master?.action || 'NEUT',
-            vol: analytics.volatility?.volatilityRegime || 'LOW',
-            intensity: data.microstructure?.[profile]?.intensity || 0
+            score: master?.normalizedScore ?? master?.score ?? 0,
+            action: master?.action || master?.recommendation?.action || 'NEUT',
+            vol: signalsObj.volatility?.volatilityRegime?.regime || data.analytics?.volatility?.volatilityRegime || 'NORMAL',
+            intensity: micro?.zPress?.zPress ?? micro?.intensity ?? 0
         };
     });
 
-    updateGlobalStats(totalFunding / validCount, totalLSR / validCount, bullCount, bearCount, coins.length);
+    updateGlobalStats((totalFunding / Math.max(1, validCount)), (totalLSR / Math.max(1, validCount)), bullCount, bearCount, coins.length);
     updateTable(items);
 }
 
@@ -127,12 +129,12 @@ function updateGlobalStats(avgFunding, avgLSR, bulls, bears, total) {
     }
 
     if (elFund) {
-        const fVal = (avgFunding * 100).toFixed(4);
+        const fVal = (avgFunding * Utils.safeFixed(100), 4);
         elFund.innerHTML = `<span class="${avgFunding > 0.01 ? 'text-bb-red' : avgFunding < -0.01 ? 'text-bb-green' : 'text-white'}">${fVal}%</span>`;
     }
 
     if (elLSR) {
-        elLSR.innerText = avgLSR.toFixed(2);
+        elLSR.innerText = Utils.safeFixed(avgLSR, 2);
     }
 }
 
@@ -159,8 +161,8 @@ function updateTable(items) {
                         ${item.coin}
                     </div>
                 </td>
-                <td class="p-3 font-mono text-white">$${item.price.toFixed(item.price < 1 ? 5 : 2)}</td>
-                <td class="p-3 font-mono text-right ${pColor}">${item.chg24h > 0 ? '+' : ''}${item.chg24h.toFixed(2)}%</td>
+                <td class="p-3 font-mono text-white">${'$' + Utils.safeFixed(item.price, item.price < 1 ? 5 : 2)}</td>
+                <td class="p-3 font-mono text-right ${pColor}">${item.chg24h > 0 ? '+' : ''}${Utils.safeFixed(item.chg24h, 2)}%</td>
                 <td class="p-3 text-center">
                     <span class="px-2 py-0.5 rounded text-[10px] font-bold border ${isLong ? 'border-green-800 bg-green-900/40 text-green-300' : isShort ? 'border-red-800 bg-red-900/40 text-red-300' : 'border-gray-700 text-gray-400'}">
                         ${item.action}

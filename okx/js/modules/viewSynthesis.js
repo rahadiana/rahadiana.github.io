@@ -82,7 +82,9 @@ export function update(assetData) {
     lastAssetData = assetData;
 
     const syn = assetData.synthesis || {};
-    if (!syn.flow || !syn.efficiency || !syn.momentum) return;
+    const flow = syn.flow || {};
+    const efficiency = syn.efficiency || {};
+    const momentum = syn.momentum || {};
 
     // Update Last Update
     const updateEl = document.getElementById('syn-last-update');
@@ -93,10 +95,11 @@ export function update(assetData) {
     if (flowBody) {
         const tfs = ['1MENIT', '5MENIT', '15MENIT', '1JAM', '24JAM'];
         flowBody.innerHTML = tfs.map(tf => {
-            const val = syn.flow[`net_flow_${tf}`] || 0;
-            const bias = syn.flow[`capital_bias_${tf}`] || 'UNKNOWN';
+            const valRaw = flow[`net_flow_${tf}`] ?? 0;
+            const val = Number(valRaw) || 0;
+            const bias = flow[`capital_bias_${tf}`] ?? 'NEUTRAL';
             const color = val > 0 ? 'text-bb-green' : val < 0 ? 'text-bb-red' : 'text-bb-muted';
-            const biasColor = bias === 'ACCUMULATION' ? 'bg-bb-green/10 text-bb-green border-bb-green/20' : 'bg-bb-red/10 text-bb-red border-bb-red/20';
+            const biasColor = bias === 'ACCUMULATION' ? 'bg-bb-green/10 text-bb-green border-bb-green/20' : bias === 'DISTRIBUTION' ? 'bg-bb-red/10 text-bb-red border-bb-red/20' : 'bg-bb-panel border-bb-border text-bb-muted';
 
             return `
                 <tr class="hover:bg-white/5">
@@ -112,9 +115,9 @@ export function update(assetData) {
 
     const flowBiasEl = document.getElementById('flow-dominant-bias');
     if (flowBiasEl) {
-        const dominant = syn.flow.dominantFlow || 'NEUTRAL';
+        const dominant = flow.dominantFlow ?? 'NEUTRAL';
         flowBiasEl.innerText = dominant;
-        flowBiasEl.className = `text-[9px] px-2 py-0.5 rounded border ${dominant === 'BULLISH' ? 'bg-bb-green text-black border-bb-green' : 'bg-bb-red text-white border-bb-red/50'}`;
+        flowBiasEl.className = `text-[9px] px-2 py-0.5 rounded border ${dominant === 'BULLISH' ? 'bg-bb-green text-black border-bb-green' : dominant === 'BEARISH' ? 'bg-bb-red text-white border-bb-red/50' : 'bg-bb-panel text-white border-bb-border'}`;
     }
 
     // 2. CHARACTER CARDS
@@ -122,9 +125,11 @@ export function update(assetData) {
     if (charContainer) {
         const tfs = ['1MENIT', '5MENIT', '15MENIT', '1JAM'];
         charContainer.innerHTML = tfs.map(tf => {
-            const char = syn.efficiency[`character_${tf}`] || 'NORMAL';
-            const eff = syn.efficiency[`efficiency_${tf}`] || 0;
-            const fric = syn.efficiency[`friction_${tf}`] || 0;
+            const char = efficiency[`character_${tf}`] ?? 'NORMAL';
+            const effRaw = efficiency[`efficiency_${tf}`] ?? 0;
+            const fricRaw = efficiency[`friction_${tf}`] ?? 0;
+            const eff = Number(effRaw) || 0;
+            const fric = Number(fricRaw) || 0;
 
             let badgeClass = 'bg-bb-panel border-bb-border text-bb-muted';
             if (char === 'ABSORPTION') badgeClass = 'bg-bb-gold/10 border-bb-gold text-bb-gold animate-pulse';
@@ -139,11 +144,11 @@ export function update(assetData) {
                     <div class="grid grid-cols-2 gap-2 text-[9px]">
                         <div>
                             <div class="text-bb-muted mb-0.5 uppercase tracking-tighter">Efficiency</div>
-                            <div class="text-white font-mono">${eff.toFixed(4)} <span class="text-[7px] text-bb-muted tracking-tighter">%/M</span></div>
+                                <div class="text-white font-mono">${Utils.safeFixed(eff, 4)} <span class="text-[7px] text-bb-muted tracking-tighter">%/M</span></div>
                         </div>
                         <div class="text-right">
                             <div class="text-bb-muted mb-0.5 uppercase tracking-tighter">Friction</div>
-                            <div class="text-white font-mono">${fric.toFixed(4)} <span class="text-[7px] text-bb-muted tracking-tighter">M/%</span></div>
+                                <div class="text-white font-mono">${Utils.safeFixed(fric, 4)} <span class="text-[7px] text-bb-muted tracking-tighter">M/%</span></div>
                         </div>
                     </div>
                 </div>
@@ -156,16 +161,17 @@ export function update(assetData) {
     if (velContainer) {
         const tfs = ['1MENIT', '5MENIT', '15MENIT'];
         velContainer.innerHTML = tfs.map(tf => {
-            const vel = syn.momentum[`velocity_${tf}`] || 0;
-            const level = syn.momentum[`aggression_level_${tf}`] || 'RETAIL';
+            const velRaw = momentum[`velocity_${tf}`] ?? 0;
+            const level = momentum[`aggression_level_${tf}`] ?? 'RETAIL';
+            const vel = Number(velRaw) || 0;
 
             let color = 'bg-bb-muted';
             let textColor = 'text-bb-muted';
             if (level === 'INSTITUTIONAL') { color = 'bg-bb-gold'; textColor = 'text-bb-gold'; }
             else if (level === 'ACTIVE') { color = 'bg-bb-blue'; textColor = 'text-bb-blue'; }
 
-            // simple bar
-            const barWidth = Math.min(100, (vel / 2000) * 100);
+            // simple bar, guard division
+            const barWidth = Math.min(100, vel > 0 ? ((vel / 2000) * 100) : 0);
 
             return `
                 <div>

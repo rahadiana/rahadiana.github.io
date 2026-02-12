@@ -21,6 +21,12 @@ export const formatPct = (value) => {
     return `${(value * 100).toFixed(2)}%`;
 };
 
+export const safeFixed = (value, decimals = 2) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return (decimals === 0) ? '0' : Number(0).toFixed(decimals);
+    return n.toFixed(decimals);
+};
+
 export const formatTime = (ts) => {
     return new Date(ts).toLocaleTimeString('en-US', { hour12: false });
 };
@@ -55,11 +61,21 @@ export function downloadFile(content, filename = 'download.txt', mime = 'text/pl
     }
 }
 
+export const formatCompactNumber = (number, decimals = 1) => {
+    if (number === undefined || number === null) return '--';
+    return new Intl.NumberFormat('en-US', {
+        notation: "compact",
+        compactDisplay: "short",
+        maximumFractionDigits: decimals
+    }).format(number);
+};
+
 // Hybrid Export for resolution resilience
 export default {
     formatCurrency,
     formatNumber,
     formatPrice,
+    formatCompactNumber,
     formatPct,
     formatTime,
     getColor

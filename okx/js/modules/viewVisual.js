@@ -94,6 +94,20 @@ export function render(container) {
     if (lastState) {
         setTimeout(() => update(lastState, true), 50);
     }
+
+    // Delegated click handler for heatmap items (redirects data-coin to app handler)
+    const heatmapGrid = container.querySelector('#heatmap-grid');
+    if (heatmapGrid && !heatmapGrid._delegatedClick) {
+        heatmapGrid._delegatedClick = function (e) {
+            const el = e.target.closest && e.target.closest('[data-coin]');
+            if (!el) return;
+            const coin = el.getAttribute('data-coin');
+            if (coin && window && window.app && typeof window.app.selectCoin === 'function') {
+                try { window.app.selectCoin(coin); } catch (err) { console.error('selectCoin error', err); }
+            }
+        };
+        heatmapGrid.addEventListener('click', heatmapGrid._delegatedClick);
+    }
 }
 
 function switchMode(mode) {
@@ -175,27 +189,20 @@ function renderTreemap(marketState, container) {
     if (currentMode === 'LIQUIDATION') {
         data = Object.keys(marketState).map(id => {
             const liq = marketState[id].raw?.LIQ || {};
-            const total = (liq.longLiqVol || 0) + (liq.shortLiqVol || 0);
-            return {
-                id, coin: id, value: total,
-                ratio: total > 0 ? (liq.longLiqVol / total) : 0.5,
-                displayVal: total >= 1000000 ? `$${(total / 1000000).toFixed(2)}M` : `$${(total / 1000).toFixed(1)}K`
-            };
+            const longV = Number(liq.longLiqVol) || 0;
+            const shortV = Number(liq.shortLiqVol) || 0;
+            const total = longV + shortV;
+            const ratio = total > 0 ? (longV / total) : 0.5;
+            const displayVal = total >= 1000000 ? `$${Utils.formatNumber(total / 1000000, 2)}M` : `$${Utils.formatNumber(total / 1000, 1)}K`;
+            return { id, coin: id, value: total, ratio, displayVal };
         }).filter(d => d.value > 0);
     } else { // PRICE mode
         data = Object.keys(marketState).map(id => {
             const price = marketState[id].raw?.PRICE || {};
-            const chg = price.percent_change_24h || 0;
-            // Size = Magnitude of move (% away from zero)
+            const chg = Number(price.percent_change_24h) || 0;
             const magnitude = Math.abs(chg);
-            // Normalize: 0.5 neutral, 0 = -8%, 1 = +8%
             const normalizedChg = Math.max(0, Math.min(1, (chg + 8) / 16));
-            return {
-                id, coin: id, value: magnitude,
-                ratio: normalizedChg,
-                chg: chg,
-                displayVal: `${chg > 0 ? '+' : ''}${chg.toFixed(2)}%`
-            };
+            return { id, coin: id, value: magnitude, ratio: normalizedChg, chg, displayVal: `${chg > 0 ? '+' : ''}${Utils.safeFixed(chg, 2)}%` };
         }).filter(d => d.value > 0.1);
     }
 
@@ -212,11 +219,11 @@ function renderTreemap(marketState, container) {
 
     if (totalEl) {
         if (currentMode === 'LIQUIDATION') {
-            totalEl.innerText = totalValue >= 1000000 ? `$${(totalValue / 1000000).toFixed(2)}M` : `$${(totalValue / 1000).toFixed(1)}K`;
+            totalEl.innerText = totalValue >= 1000000 ? `$${Utils.formatNumber(totalValue / 1000000, 2)}M` : `$${Utils.formatNumber(totalValue / 1000, 1)}K`;
             labelEl.innerText = 'TOTAL 24H LIQ:';
             legendEl.innerText = 'Block Size = Total Liquidation | Green = Long Liq | Red = Short Liq';
         } else { // PRICE mode
-            totalEl.innerText = `${(totalValue / data.length).toFixed(2)}%`;
+            totalEl.innerText = `${Utils.formatNumber(totalValue / Math.max(1, data.length), 2)}%`;
             labelEl.innerText = 'AVG % CHANGE:';
             legendEl.innerText = 'Block Size = % Movement Intensity | Color = Change Direction';
         }
@@ -272,9 +279,9 @@ function renderTreemap(marketState, container) {
         let hlBadgeHtml = '';
         try {
             const det = window.hiddenLiquidityDetector;
-            if (det && det.getSignal) {
-                const sig = det.getSignal(l.id);
-                const s = sig?.score || 0;
+            if (det && typeof det.getSignal === 'function') {
+                const sig = det.getSignal(l.id) || {};
+                const s = Number(sig.score) || 0;
                 const threshold = 0.35; // show only meaningful signals
                 if (hlOverlay && s >= threshold) {
                     const color = s > 0.7 ? 'bg-bb-red' : 'bg-bb-gold';
@@ -283,13 +290,13 @@ function renderTreemap(marketState, container) {
             }
         } catch (e) { /* ignore */ }
 
+        // use data-coin attribute for safe delegation
         return `
-            <div class="absolute border border-black/40 flex flex-col items-center justify-center overflow-hidden transition-all duration-300 cursor-pointer hover:ring-1 hover:ring-white/50 z-10"
-                 style="left: ${l.x}px; top: ${l.y}px; width: ${l.w}px; height: ${l.h}px; background-color: rgba(${bgColor}, ${opacity});"
-                 onclick="window.app.selectCoin('${l.id}')">
+            <div data-coin="${String(l.id)}" class="absolute border border-black/40 flex flex-col items-center justify-center overflow-hidden transition-all duration-300 cursor-pointer hover:ring-1 hover:ring-white/50 z-10"
+                 style="left: ${l.x}px; top: ${l.y}px; width: ${l.w}px; height: ${l.h}px; background-color: rgba(${bgColor}, ${opacity});">
                 ${hlBadgeHtml}
-                <div class="font-black text-white leading-none mb-0.5 select-none" style="font-size: ${fontSize}px">${l.coin}</div>
-                <div class="font-bold text-white/90 leading-none select-none" style="font-size: ${subFontSize}px">${l.displayVal}</div>
+                <div class="font-black text-white leading-none mb-0.5 select-none" style="font-size: ${fontSize}px">${String(l.coin)}</div>
+                <div class="font-bold text-white/90 leading-none select-none" style="font-size: ${subFontSize}px">${String(l.displayVal)}</div>
             </div>
         `;
     }).join('');
@@ -350,7 +357,7 @@ function renderRadar(marketState, container) {
         return `
                     <g class="cursor-pointer group" onclick="window.app.selectCoin('${c.id}')">
                         <circle cx="${cx}" cy="${cy}" r="4" fill="${color}" opacity="0.6" class="group-hover:opacity-100 transition-all shadow-lg" />
-                        <text x="${cx}" y="${cy - 8}" text-anchor="middle" class="fill-white font-black text-[8px] opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">${c.coin} (${c.smi.toFixed(0)})</text>
+                        <text x="${cx}" y="${cy - 8}" text-anchor="middle" class="fill-white font-black text-[8px] opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">${c.coin} ${Utils.safeFixed(c.smi, 0)}</text>
                     </g>
                 `;
     }).join('')}
@@ -359,7 +366,7 @@ function renderRadar(marketState, container) {
 
     document.getElementById('legend-text').innerText = 'X-Axis: Intelligence Score (SMI) | Y-Axis: 24H Price Performance';
     document.getElementById('heatmap-total-label').innerText = 'AVG SMI:';
-    document.getElementById('heatmap-total').innerText = `${(coins.reduce((sum, c) => sum + c.smi, 0) / coins.length).toFixed(1)}`;
+        document.getElementById('heatmap-total').innerText = `${Utils.formatNumber(coins.reduce((sum, c) => sum + c.smi, 0) / Math.max(1, coins.length), 1)}`;
 }
 
 /**
@@ -401,7 +408,7 @@ function renderConvergence(marketState, container) {
     document.getElementById('heatmap-total-label').innerText = 'MARKET BREADTH (BULLISH):';
     const totalEl = document.getElementById('heatmap-total');
     if (totalEl) {
-        totalEl.innerText = `${breadthPct.toFixed(1)}%`;
+           totalEl.innerText = `${Utils.safeFixed(breadthPct, 1)}%`;
         totalEl.className = `text-[10px] font-bold ${breadthPct > 60 ? 'text-bb-green' : breadthPct < 40 ? 'text-bb-red' : 'text-white'}`;
     }
 }
@@ -476,11 +483,11 @@ function renderAlpha(marketState, container) {
                     <div class="p-4 bg-bb-panel border border-bb-gold/30 rounded flex flex-col gap-2 cursor-pointer hover:bg-bb-gold/10 transition-all group" onclick="window.app.selectCoin('${c.id}')">
                         <div class="flex justify-between items-center">
                             <span class="text-sm font-black text-white group-hover:text-bb-gold">${c.coin}</span>
-                            <span class="text-[9px] px-1.5 py-0.5 bg-bb-gold text-black font-black rounded uppercase">ALPHA ID: ${(c.alpha).toFixed(1)}</span>
+                            <span class="text-[9px] px-1.5 py-0.5 bg-bb-gold text-black font-black rounded uppercase">ALPHA ID: ${Utils.safeFixed(c.alpha, 1)}</span>
                         </div>
                         <div class="flex justify-between text-[9px] text-bb-muted uppercase font-bold">
                             <span>SMI Signal: ${Math.round(c.score)}</span>
-                            <span>BTC Correlation: ${(c.corr).toFixed(2)}</span>
+                            <span>BTC Correlation: ${Utils.safeFixed(c.corr, 2)}</span>
                         </div>
                         <div class="h-1.5 bg-bb-black rounded-full overflow-hidden mt-1">
                             <div class="h-full bg-bb-gold shadow-[0_0_8px_gold]" style="width: ${c.alpha}%"></div>
@@ -518,11 +525,11 @@ function renderFunding(marketState, container) {
                     <div class="p-3 ${bg} border border-white/5 rounded flex flex-col gap-1 cursor-pointer hover:bg-white/10 transition-all" onclick="window.app.selectCoin('${c.id}')">
                         <div class="flex justify-between items-center">
                             <span class="text-[10px] font-black text-white uppercase">${c.coin}</span>
-                            <span class="text-[8px] font-mono ${color}">${(c.rate * 100).toFixed(4)}%</span>
+                            <span class="text-[8px] font-mono ${color}">${Utils.formatNumber(c.rate * 100, 4)}%</span>
                         </div>
                         <div class="flex justify-between items-center text-[7px] text-bb-muted uppercase font-bold">
                             <span>NEXT PERIOD</span>
-                            <span class="text-white/40">${(c.pred * 100).toFixed(4)}%</span>
+                            <span class="text-white/40">${Utils.formatNumber(c.pred * 100, 4)}%</span>
                         </div>
                     </div>
                 `;
@@ -533,7 +540,7 @@ function renderFunding(marketState, container) {
     document.getElementById('heatmap-total-label').innerText = 'AVG FUNDING RATE:';
     const activeRates = coins.filter(c => c.rate !== 0);
     const avg = activeRates.length > 0 ? activeRates.reduce((s, c) => s + c.rate, 0) / activeRates.length : 0;
-    document.getElementById('heatmap-total').innerText = `${(avg * 100).toFixed(4)}%`;
+    document.getElementById('heatmap-total').innerText = `${Utils.formatNumber(avg * 100, 4)}%`;
 }
 
 /**
@@ -572,8 +579,8 @@ function renderVolatility(marketState, container) {
             <line x1="${padding}" y1="${h - padding}" x2="${w - padding}" y2="${h - padding}" stroke="white" stroke-opacity="0.1" />
             <line x1="${padding}" y1="${padding}" x2="${padding}" y2="${h - padding}" stroke="white" stroke-opacity="0.1" />
             
-            <text x="${w / 2}" y="${h - 20}" text-anchor="middle" class="fill-bb-gold/60 text-[9px] font-black uppercase">15M Intensity (Max: ${(maxV15 * 100).toFixed(1)}%)</text>
-            <text x="${20}" y="${h / 2}" text-anchor="middle" transform="rotate(-90 20 ${h / 2})" class="fill-bb-gold/60 text-[9px] font-black uppercase">1H Expansion (Max: ${(maxV1h * 100).toFixed(1)}%)</text>
+            <text x="${w / 2}" y="${h - 20}" text-anchor="middle" class="fill-bb-gold/60 text-[9px] font-black uppercase">15M Intensity (Max: ${Utils.formatNumber(maxV15 * 100, 1)}%)</text>
+            <text x="${20}" y="${h / 2}" text-anchor="middle" transform="rotate(-90 20 ${h / 2})" class="fill-bb-gold/60 text-[9px] font-black uppercase">1H Expansion (Max: ${Utils.formatNumber(maxV1h * 100, 1)}%)</text>
 
             ${coins.map(c => {
         const cx = mapX(c.v15); const cy = mapY(c.v1h);
@@ -618,11 +625,11 @@ function renderSkew(marketState, container) {
                             <span class="text-[7px] px-1 bg-white/5 rounded text-bb-muted uppercase">SKEW ID</span>
                         </div>
                         <div class="text-xl font-bold ${c.skew > 0 ? 'text-bb-green' : c.skew < 0 ? 'text-bb-red' : 'text-white'}">
-                            ${c.skew > 0 ? '+' : ''}${(c.skew * 100).toFixed(1)}%
+                            ${c.skew > 0 ? '+' : ''}${Utils.formatNumber(c.skew * 100, 1)}%
                         </div>
                         <div class="flex justify-between text-[7px] text-bb-muted uppercase font-bold mt-1">
                             <span>KYLE λ IMPACT</span>
-                            <span>${(c.impact).toFixed(4)}</span>
+                            <span>${Utils.safeFixed(c.impact, 4)}</span>
                         </div>
                     </div>
                 `).join('')}
@@ -752,7 +759,7 @@ function renderSentimentZ(marketState, container) {
                             <div class="absolute rounded-full cursor-pointer hover:scale-150 border border-black/40 transition-transform ${size} ${color} ${isExtreme ? 'animate-pulse shadow-[0_0_12px_rgba(255,255,255,0.8)] z-20' : 'opacity-30 z-10 hover:opacity-100'}"
                                  style="left: ${x}px; bottom: ${yOffset}px"
                                  onclick="window.app.selectCoin('${c.id}')"
-                                 title="${c.coin}: Z=${c.z.toFixed(2)}">
+                                 title="${c.coin}: Z=${Utils.safeFixed(c.z, 2)}">
                                  ${isExtreme ? `<span class="absolute -top-4 left-1/2 -translate-x-1/2 text-[7px] font-black text-white whitespace-nowrap bg-black/80 px-1 rounded border border-white/10 shadow-lg">${c.coin}</span>` : ''}
                             </div>
                         `;
@@ -779,7 +786,7 @@ function renderSentimentZ(marketState, container) {
                         ${coins.slice(0, 3).concat(coins.slice(-3)).sort((a, b) => Math.abs(b.z) - Math.abs(a.z)).slice(0, 4).map(c => `
                             <div class="flex justify-between text-[7px] font-bold">
                                 <span class="text-white">${c.coin}</span>
-                                <span class="${Math.abs(c.z) > 1.5 ? 'text-bb-gold' : 'text-bb-muted'}">${c.z > 0 ? '+' : ''}${c.z.toFixed(2)}σ</span>
+                                <span class="${Math.abs(c.z) > 1.5 ? 'text-bb-gold' : 'text-bb-muted'}">${c.z > 0 ? '+' : ''}${Utils.safeFixed(c.z, 2)}σ</span>
                             </div>
                         `).join('')}
                     </div>

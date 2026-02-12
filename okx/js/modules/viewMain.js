@@ -216,7 +216,7 @@ function updateRegime(regime, vol) {
         </div>
         <div class="flex items-center justify-between">
             <span class="text-[10px] text-bb-muted">TREND STR</span>
-            <span class="font-bold text-white">${regime.trendStrength?.toFixed(2)}</span>
+            <span class="font-bold text-white">${Utils.safeFixed(regime.trendStrength, 2)}</span>
         </div>
         <div class="flex items-center justify-between">
             <span class="text-[10px] text-bb-muted">VOLATILITY</span>
@@ -291,10 +291,10 @@ function updateRisk(vol, masterSig) {
             <div class="text-bb-muted text-[10px]">POSITION SIZE</div>
             <div class="text-white font-bold">${sizeRec}</div>
         </div>
-        <div class="bg-bb-dark p-2 border border-bb-border">
-             <div class="text-bb-muted text-[10px]">STOP MULT.</div>
-             <div class="text-bb-gold font-bold">${(3 + (atr / 100)).toFixed(1)}x ATR</div>
-        </div>
+           <div class="bg-bb-dark p-2 border border-bb-border">
+               <div class="text-bb-muted text-[10px]">STOP MULT.</div>
+               <div class="text-bb-gold font-bold">${Utils.safeFixed(3 + (atr / 100), 1)}x ATR</div>
+           </div>
         <div class="col-span-2 bg-bb-dark p-1 px-2 border border-bb-border flex justify-between">
             <span class="text-bb-muted text-[10px]">RISK TIER</span>
             <span class="${atr > 80 ? 'text-bb-red' : 'text-bb-green'} text-[10px] uppercase font-bold">${atr > 80 ? 'HIGH VOL' : 'STD'}</span>
@@ -401,12 +401,10 @@ function updatePriceAction(priceData, pa, timeframe) {
     const fromBot = low > 0 ? ((current - low) / low) * 100 : 0;
 
     el.innerHTML = `
-        <div class="text-3xl font-bold font-mono ${chgTF >= 0 ? 'text-bb-green' : 'text-bb-red'}">
-            $${current.toFixed(current < 1 ? 5 : 2)}
-        </div>
+        <div class="text-3xl font-bold font-mono ${chgTF >= 0 ? 'text-bb-green' : 'text-bb-red'}">${Utils.formatPrice(current)}</div>
         <div class="flex justify-between text-xs font-mono">
-            <span class="${chgTF >= 0 ? 'text-bb-green' : 'text-bb-red'}">${chgTF > 0 ? '▲' : '▼'} ${chgTF.toFixed(2)}% (${timeframe.replace('MENIT', 'm').replace('JAM', 'h')})</span>
-            <span class="${chg24h >= 0 ? 'text-bb-green' : 'text-bb-red'}">${chg24h > 0 ? '+' : ''}${chg24h.toFixed(2)}% (24h)</span>
+            <span class="${chgTF >= 0 ? 'text-bb-green' : 'text-bb-red'}">${chgTF > 0 ? '▲' : '▼'} ${Utils.safeFixed(chgTF, 2)}% (${timeframe.replace('MENIT', 'm').replace('JAM', 'h')})</span>
+            <span class="${chg24h >= 0 ? 'text-bb-green' : 'text-bb-red'}">${chg24h > 0 ? '+' : ''}${Utils.safeFixed(chg24h, 2)}% (24h)</span>
         </div>
         
         <div class="border-t border-bb-border pt-2 grid grid-cols-2 gap-y-1 text-[10px] text-bb-muted">
@@ -421,8 +419,8 @@ function updatePriceAction(priceData, pa, timeframe) {
              <div class="absolute top-0 right-0 bottom-0 bg-bb-red opacity-50" style="width: ${Math.min(100, Math.max(0, Math.abs(fromTop) * 10))}%"></div>
         </div>
         <div class="flex justify-between text-[9px]">
-            <span class="text-bb-green">Bot +${fromBot.toFixed(2)}%</span>
-            <span class="text-bb-red">Top ${fromTop.toFixed(2)}%</span>
+            <span class="text-bb-green">Bot ${fromBot > 0 ? '+' : ''}${Utils.safeFixed(fromBot, 2)}%</span>
+            <span class="text-bb-red">Top ${fromTop > 0 ? '+' : ''}${Utils.safeFixed(fromTop, 2)}%</span>
         </div>
     `;
 }
@@ -465,7 +463,7 @@ function updateMasterPanel(sig, allSignals, profile, data) {
                  <div class="flex items-center gap-3">
                       <div class="bg-bb-dark border border-bb-border px-3 py-2 rounded text-center min-w-[80px]">
                            <div class="text-[9px] text-bb-muted">SCORE</div>
-                           <div class="text-xl font-bold text-white">${(sig.score || sig.normalizedScore || 0).toFixed(0)}</div>
+                           <div class="text-xl font-bold text-white">${(sig.score || sig.normalizedScore || Utils.safeFixed(0), 0)}</div>
                       </div>
                       <div class="flex flex-col">
                            <div class="flex items-center gap-2">
@@ -533,10 +531,10 @@ function updateVolumeFreq(vol, freq, custom, timeframe) {
 
         elVol.innerHTML = `
             <div class="col-span-2">
-                 <div class="flex justify-between text-[10px] mb-1">
-                      <span class="text-bb-green font-bold">${buyPct.toFixed(0)}% BUY</span>
-                      <span class="text-bb-red font-bold">${(100 - buyPct).toFixed(0)}% SELL</span>
-                 </div>
+                  <div class="flex justify-between text-[10px] mb-1">
+                      <span class="text-bb-green font-bold">${Utils.safeFixed(buyPct, 0)}% BUY</span>
+                      <span class="text-bb-red font-bold">${Utils.safeFixed(100 - buyPct, 0)}% SELL</span>
+                  </div>
                  <div class="w-full h-1.5 bg-bb-sidebar rounded overflow-hidden flex">
                       <div class="h-full bg-bb-green" style="width: ${buyPct}%"></div>
                       <div class="h-full bg-bb-red" style="width: ${100 - buyPct}%"></div>
@@ -572,10 +570,10 @@ function updateVolumeFreq(vol, freq, custom, timeframe) {
                  <div class="text-[9px] text-bb-muted">SELL FREQ</div>
                  <div class="text-bb-red font-bold text-xs text-mono">${fSell}</div>
             </div>
-            <div class="bg-bb-dark p-1 border border-bb-border text-center">
-                 <div class="text-[9px] text-bb-muted">RATIO</div>
-                 <div class="text-white font-bold text-xs">${ratio.toFixed(1)}x</div>
-            </div>
+              <div class="bg-bb-dark p-1 border border-bb-border text-center">
+                  <div class="text-[9px] text-bb-muted">RATIO</div>
+                  <div class="text-white font-bold text-xs">${Utils.safeFixed(ratio, 1)}x</div>
+              </div>
          `;
     }
 }

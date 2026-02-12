@@ -394,7 +394,7 @@ function renderRulesList() {
                 <!-- 🔧 NEW: Runtime stats -->
                 <div class="flex items-center gap-3 text-[7px] text-bb-muted/50">
                     <span>Today: ${rule.dailyTradeCount || 0}/${rule.maxDailyTrades || 10} trades</span>
-                    <span>PnL: <span class="${(rule.dailyPnL || 0) >= 0 ? 'text-bb-green' : 'text-bb-red'}">${(rule.dailyPnL || 0) >= 0 ? '+' : ''}${(rule.dailyPnL || 0).toFixed(2)}%</span></span>
+                    <span>PnL: <span class="${(rule.dailyPnL || 0) >= 0 ? 'text-bb-green' : 'text-bb-red'}">${(rule.dailyPnL || 0) >= 0 ? '+' : ''}${Utils.safeFixed(rule.dailyPnL || 0, 2)}%</span></span>
                     <span>Streak: ${rule.lossStreak || 0}</span>
                 </div>
             </div>
@@ -723,12 +723,12 @@ function checkSignal(strategy, data, rule = {}) {
             const hasMomentum = momQuality > 0.4;
             
             const factors = [];
-            if (hasScore) factors.push(`Score:${score.toFixed(0)}`);
-            if (hasFlow) factors.push(`Flow:${(netFlow/1000).toFixed(1)}K`);
+            if (hasScore) factors.push(`Score:${Utils.safeFixed(score, 0)}`);
+            if (hasFlow) factors.push(`Flow:${Utils.safeFixed(netFlow/1000, 1)}K`);
             if (hasConfirmations) factors.push(`Confirms:${confirmations}`);
             if (hasMTF) factors.push('MTF');
-            if (hasInstitutional) factors.push(`Inst:${(instFootprint*100).toFixed(0)}%`);
-            if (hasMomentum) factors.push(`MQ:${(momQuality*100).toFixed(0)}%`);
+            if (hasInstitutional) factors.push(`Inst:${Utils.safeFixed(instFootprint*100, 0)}%`);
+            if (hasMomentum) factors.push(`MQ:${Utils.safeFixed(momQuality*100, 0)}%`);
             
             // Need at least 3 factors for composite
             if (factors.length >= 3 && validation.valid) {
@@ -759,7 +759,7 @@ function checkSignal(strategy, data, rule = {}) {
                 const bias = cvd > 0 ? 'LONG' : cvd < 0 ? 'SHORT' : master.action;
                 return { 
                     bias, 
-                    factors: [`VPIN:${(vpin*100).toFixed(0)}%`, `CVD:${(cvd*100).toFixed(0)}%`, `Book:${(bookRes*100).toFixed(0)}%`], 
+                    factors: [`VPIN:${Utils.safeFixed(vpin*100, 0)}%`, `CVD:${Utils.safeFixed(cvd*100, 0)}%`, `Book:${Utils.safeFixed(bookRes*100, 0)}%`], 
                     confidence: Math.min(95, 70 + (vpin * 20) + (pressureAccel * 10)),
                     timeframe: usedTimeframe,
                     quality: signalQuality
@@ -781,7 +781,7 @@ function checkSignal(strategy, data, rule = {}) {
             if (isInstitutional && hasVelocity && hasLiquidity && master?.action) {
                 return { 
                     bias: master.action, 
-                    factors: [`Inst:${(instFootprint*100).toFixed(0)}%`, `Vel:${(vel/1000).toFixed(1)}K`, 'LowIlliq'], 
+                    factors: [`Inst:${Utils.safeFixed(instFootprint*100, 0)}%`, `Vel:${Utils.safeFixed(vel/1000, 1)}K`, 'LowIlliq'], 
                     confidence: 85 + (instFootprint * 10),
                     timeframe: usedTimeframe,
                     quality: signalQuality
@@ -804,7 +804,7 @@ function checkSignal(strategy, data, rule = {}) {
             if (hasEfficiency && hasVelocity && hasQuality && hasAccel && master?.action) {
                 return {
                     bias: master.action,
-                    factors: [`Eff:${eff.toFixed(1)}`, `MQ:${(momQuality*100).toFixed(0)}%`, `Accel:${(pressureAccel*100).toFixed(0)}%`],
+                    factors: [`Eff:${Utils.safeFixed(eff, 1)}`, `MQ:${Utils.safeFixed(momQuality*100, 0)}%`, `Accel:${Utils.safeFixed(pressureAccel*100, 0)}%`],
                     confidence: 80 + (momQuality * 15),
                     timeframe: usedTimeframe,
                     quality: signalQuality
@@ -831,7 +831,7 @@ function checkSignal(strategy, data, rule = {}) {
             
             return { 
                 bias: allLong ? 'LONG' : 'SHORT', 
-                factors: ['MTF Aligned', `AvgMQ:${(avgMomQuality*100).toFixed(0)}%`], 
+                factors: ['MTF Aligned', `AvgMQ:${Utils.safeFixed(avgMomQuality*100, 0)}%`], 
                 confidence: 90 + (avgMomQuality * 8),
                 timeframe: '15MENIT',
                 quality: signalQuality
@@ -854,7 +854,7 @@ function checkSignal(strategy, data, rule = {}) {
             if (isPerfect && master?.action) {
                 return { 
                     bias: master.action, 
-                    factors: ['Perfect Storm', `Inst:${(instFootprint*100).toFixed(0)}%`, `MQ:${(momQuality*100).toFixed(0)}%`], 
+                    factors: ['Perfect Storm', `Inst:${Utils.safeFixed(instFootprint*100, 0)}%`, `MQ:${Utils.safeFixed(momQuality*100, 0)}%`], 
                     confidence: 98,
                     timeframe: usedTimeframe,
                     quality: signalQuality
@@ -876,7 +876,7 @@ function checkSignal(strategy, data, rule = {}) {
                 const bias = cvd > 0 ? 'LONG' : 'SHORT';
                 return { 
                     bias, 
-                    factors: [`Surge:${surge.toFixed(1)}x`, `Move:${priceChange.toFixed(2)}%`, `CVD:${(cvd*100).toFixed(0)}%`], 
+                    factors: [`Surge:${Utils.safeFixed(surge, 1)}x`, `Move:${Utils.safeFixed(priceChange, 2)}%`, `CVD:${Utils.safeFixed(cvd*100, 0)}%`],
                     confidence: Math.min(90, 65 + (surge * 5) + (pressureAccel * 10)),
                     timeframe: '1MENIT',
                     quality: signalQuality
@@ -901,7 +901,7 @@ function checkSignal(strategy, data, rule = {}) {
             if (isBlitz && master?.action) {
                 return {
                     bias: master.action,
-                    factors: ['Blitz', `Flow:${(netFlow/1000).toFixed(1)}K`, 'CVD Confirmed'],
+                    factors: ['Blitz', `Flow:${Utils.safeFixed(netFlow/1000, 1)}K`, 'CVD Confirmed'],
                     confidence: 95,
                     timeframe: usedTimeframe,
                     quality: signalQuality
@@ -920,7 +920,7 @@ function checkSignal(strategy, data, rule = {}) {
                 const bias = netFlow > 0 ? 'LONG' : 'SHORT';
                 return {
                     bias,
-                    factors: [`Flow:${(netFlow/1000).toFixed(1)}K`, flowChar, 'CVD Confirmed'],
+                    factors: [`Flow:${Utils.safeFixed(netFlow/1000, 1)}K`, flowChar, 'CVD Confirmed'],
                     confidence: 80,
                     timeframe: '15MENIT',
                     quality: signalQuality
@@ -940,7 +940,7 @@ function checkSignal(strategy, data, rule = {}) {
                 const bias = priceChange > 0 ? 'LONG' : 'SHORT';
                 return {
                     bias,
-                    factors: [`VolRatio:${volRatio.toFixed(1)}x`, `Break:${priceChange.toFixed(1)}%`, `Book:${(bookRes*100).toFixed(0)}%`],
+                    factors: [`VolRatio:${Utils.safeFixed(volRatio, 1)}x`, `Break:${Utils.safeFixed(priceChange, 1)}%`, `Book:${Utils.safeFixed(bookRes*100, 0)}%`],
                     confidence: 85 + (bookRes * 10),
                     timeframe: '15MENIT',
                     quality: signalQuality
@@ -962,7 +962,7 @@ function checkSignal(strategy, data, rule = {}) {
                 const bias = cvd > 0 ? 'LONG' : cvd < 0 ? 'SHORT' : (ofi > 50 ? 'LONG' : 'SHORT');
                 return { 
                     bias, 
-                    factors: ['Tape:INSTO', `OFI:${ofi.toFixed(0)}`, `CVD:${(cvd*100).toFixed(0)}%`], 
+                    factors: ['Tape:INSTO', `OFI:${Utils.safeFixed(ofi, 0)}`, `CVD:${Utils.safeFixed(cvd*100, 0)}%`], 
                     confidence: 85,
                     timeframe: '5MENIT',
                     quality: signalQuality
@@ -983,7 +983,7 @@ function checkSignal(strategy, data, rule = {}) {
                 
                 return { 
                     bias: isDivergence ? (priceDown ? 'LONG' : 'SHORT') : (oiDir === 'BULLISH' ? 'LONG' : 'SHORT'), 
-                    factors: [`OI:${oiChange.toFixed(1)}%`, isDivergence ? 'DIVERGENCE' : oiDir], 
+                    factors: [`OI:${Utils.safeFixed(oiChange, 1)}%`, isDivergence ? 'DIVERGENCE' : oiDir], 
                     confidence: 75 + (oiChange * 2),
                     timeframe: '1JAM',
                     quality: signalQuality
@@ -1000,7 +1000,7 @@ function checkSignal(strategy, data, rule = {}) {
                 const bias = (lsrZ > 0 || fundingZ > 0) ? 'SHORT' : 'LONG';
                 return { 
                     bias, 
-                    factors: [`LSR-Z:${lsrZ.toFixed(1)}`, `FADE`], 
+                    factors: [`LSR-Z:${Utils.safeFixed(lsrZ, 1)}%`, 'FADE'], 
                     confidence: 80 + Math.min(10, Math.abs(lsrZ) * 3),
                     timeframe: '15MENIT',
                     quality: signalQuality
@@ -1020,7 +1020,7 @@ function checkSignal(strategy, data, rule = {}) {
                 
                 return { 
                     bias, 
-                    factors: [`Vol:$${(vol/1e6).toFixed(2)}M`, `Range:${pxChange.toFixed(2)}%`], 
+                    factors: [`Vol:$${Utils.safeFixed(vol/1e6, 2)}M`, `Range:${Utils.safeFixed(pxChange, 2)}%`], 
                     confidence: 70,
                     timeframe: '1JAM',
                     quality: signalQuality
@@ -1038,7 +1038,7 @@ function checkSignal(strategy, data, rule = {}) {
                 const bias = dominantSide === 'LONG' ? 'LONG' : 'SHORT';
                 return {
                     bias,
-                    factors: [`LiqRate:${liqRate.toFixed(1)}`, `Sweep:${dominantSide}`],
+                    factors: [`LiqRate:${Utils.safeFixed(liqRate, 1)}%`, `Sweep:${dominantSide}`],
                     confidence: 82,
                     timeframe: '15MENIT',
                     quality: signalQuality
@@ -1122,7 +1122,7 @@ async function executeWebhook(rule, coin, signal, data) {
             rawPrice: rawPrice,
             slippage: slippage,
             executionPrice: executionPrice,
-            slippagePct: rawPrice > 0 ? ((slippage / rawPrice) * 100).toFixed(4) : 0
+            slippagePct: rawPrice > 0 ? Utils.safeFixed((slippage / rawPrice) * 100, 4) : 0
         },
         riskParams: {
             amount: rule.simAmount,
@@ -1140,7 +1140,7 @@ async function executeWebhook(rule, coin, signal, data) {
         }
     };
 
-    log('EXECUTE', `[${profile}] ${signal.bias} ${coin} @ $${executionPrice.toFixed(4)} (slip: ${slippage >= 0 ? '+' : ''}${slippage.toFixed(4)})`, 'green');
+    log('EXECUTE', `[${profile}] ${signal.bias} ${coin} @ $${Utils.safeFixed(executionPrice, 4)} (slip: ${slippage >= 0 ? '+' : ''}${Utils.safeFixed(slippage, 4)})`, 'green');
 
     try {
         const response = await fetch(rule.url, {
@@ -1174,7 +1174,7 @@ async function executeWebhook(rule, coin, signal, data) {
                     quality: signal.quality,
                     silent: true
                 });
-                log('BRIDGE', `Position filled @ $${executionPrice.toFixed(4)} (${execDelay.toFixed(0)}ms latency)`, 'gold');
+                log('BRIDGE', `Position filled @ $${Utils.safeFixed(executionPrice, 4)} (${Utils.safeFixed(execDelay, 0)}ms latency)`, 'gold');
             }, execDelay);
         }
 
@@ -1199,7 +1199,7 @@ async function executeWebhook(rule, coin, signal, data) {
                 entryPrice: executionPrice,
                 silent: true
             });
-            log('BRIDGE', `Webhook failed but sim position opened @ $${executionPrice.toFixed(4)}`, 'gold');
+            log('BRIDGE', `Webhook failed but sim position opened @ $${Utils.safeFixed(executionPrice, 4)}`, 'gold');
         }
         log('ERROR', `Network: ${err.message}`, 'red');
     }
