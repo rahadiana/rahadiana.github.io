@@ -463,7 +463,7 @@ function updateMasterPanel(sig, allSignals, profile, data) {
                  <div class="flex items-center gap-3">
                       <div class="bg-bb-dark border border-bb-border px-3 py-2 rounded text-center min-w-[80px]">
                            <div class="text-[9px] text-bb-muted">SCORE</div>
-                           <div class="text-xl font-bold text-white">${(sig.score || sig.normalizedScore || Utils.safeFixed(0), 0)}</div>
+                           <div class="text-xl font-bold text-white">${Utils.safeFixed(sig.score || sig.normalizedScore || 0, 0)}</div>
                       </div>
                       <div class="flex flex-col">
                            <div class="flex items-center gap-2">

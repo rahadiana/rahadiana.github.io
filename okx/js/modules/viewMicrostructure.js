@@ -134,7 +134,7 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
     const vpinVal = document.getElementById('vpin-val');
     const vpinLabel = document.getElementById('vpin-label');
 
-    if (vpinVal) vpinVal.innerText = (vpin.rawValue || Utils.safeFixed(0), 2);
+    if (vpinVal) vpinVal.innerText = Utils.safeFixed(vpin.rawValue || 0, 2);
     if (vpinArc) vpinArc.style.strokeDasharray = `${(vpin.rawValue || 0) * 100}, 100`;
     if (vpinLabel) {
         vpinLabel.innerText = vpin.metadata?.informedTrading || 'LOW';
@@ -145,14 +145,14 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
     const kl = micro.kyleLambda || { rawValue: 0, metadata: {} };
     const elKlVal = document.getElementById('lambda-val');
     const elKlBar = document.getElementById('lambda-bar');
-    if (elKlVal) elKlVal.innerText = (kl.rawValue || Utils.safeFixed(0), 4);
+    if (elKlVal) elKlVal.innerText = Utils.safeFixed(kl.rawValue || 0, 4);
     if (elKlBar) elKlBar.style.width = `${Math.min(100, (kl.rawValue || 0) * 20)}%`;
 
     // 3. Whale Divergence
     const whale = micro.volumeFreqDivergence || { rawValue: 0, metadata: {} };
     const elWhaleVal = document.getElementById('whale-val');
     const elWhaleBar = document.getElementById('whale-bar');
-    if (elWhaleVal) elWhaleVal.innerText = (whale.rawValue || Utils.safeFixed(0), 2);
+    if (elWhaleVal) elWhaleVal.innerText = Utils.safeFixed(whale.rawValue || 0, 2);
     if (elWhaleBar) elWhaleBar.style.width = `${Math.min(100, (whale.rawValue || 0) * 100)}%`;
 
     // 3. Flow Imbalance & Skew (VWOI + Sizing)
@@ -205,8 +205,8 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
     const elSmiActivity = document.getElementById('smi-activity');
 
     if (elSmiVal) {
-        elSmiVal.innerText = (smi.normalizedScore || Utils.safeFixed(50), 1);
-        const score = smi.normalizedScore || 50;
+        const score = (typeof smi.normalizedScore === 'number') ? smi.normalizedScore : 50;
+        elSmiVal.innerText = Utils.safeFixed(score, 1);
         elSmiVal.className = `text-3xl font-black italic ${score > 60 ? 'text-bb-green' : score < 40 ? 'text-bb-red' : 'text-white'}`;
     }
 
