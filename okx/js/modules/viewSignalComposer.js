@@ -7,7 +7,11 @@
 
 import * as ViewSimulation from './viewSimulation.js';
 import * as Utils from '../utils.js';
+import OkxClient from '../okx_client.js';
+import { showToast } from './toast.js';
 import { computeData } from '../data_helpers.js';
+import TradeSafety from './tradeSafety.js';
+import { StrategyAllocator } from './strategyAllocator.js';
 
 const STORAGE_KEY = 'bb_signal_composer';
 
@@ -141,6 +145,17 @@ export const SIGNAL_COMPONENTS = {
     ENH_PRESSURE: { category: 'ENH', name: 'Pressure Accel', icon: '🚀', path: 'signals.enhanced.pressureAcceleration.rawValue', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.3, description: 'Pressure acceleration' },
     ENH_AMIHUD: { category: 'ENH', name: 'Amihud Illiq', icon: '🧊', path: 'signals.enhanced.amihudIlliquidity.rawValue', operators: ['>', '<'], defaultThreshold: 0.5, description: 'Illiquidity measure' },
 
+    // ═══════════════════ ORDER BOOK ═══════════════════
+    OB_IMBALANCE: { category: 'OB', name: 'OB Imbalance', icon: '⚖️', path: 'raw.ORDERBOOK.imbalance', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.2, description: 'Bid/Ask imbalance (-1 to 1)' },
+    OB_DEPTH_RATIO: { category: 'OB', name: 'Depth Ratio', icon: '📊', path: 'raw.ORDERBOOK.depthRatio', operators: ['>', '<'], defaultThreshold: 1.0, description: 'Bid/Ask depth ratio' },
+    OB_WALL: { category: 'OB', name: 'Wall Detected', icon: '🧱', path: 'raw.ORDERBOOK.wallDetected', operators: ['=='], defaultThreshold: true, valueType: 'boolean', description: 'Large order wall' },
+    OB_SPREAD: { category: 'OB', name: 'Spread Bps', icon: '↔️', path: 'raw.ORDERBOOK.spreadBps', operators: ['>', '<'], defaultThreshold: 5, description: 'Spread in basis points' },
+
+    // ═══════════════════ BTC CORRELATION ═══════════════════
+    BTC_BETA: { category: 'BTC', name: 'BTC Beta', icon: '🔗', path: '_computed.btcBeta', operators: ['>', '<'], defaultThreshold: 1.0, computed: true, description: 'Volatility vs BTC' },
+    BTC_DIVERGENCE: { category: 'BTC', name: 'BTC Divergence', icon: '🔀', path: '_computed.btcDiverges', operators: ['=='], defaultThreshold: true, valueType: 'boolean', computed: true, description: 'Moving opposite to BTC' },
+    BTC_OUTPERFORM: { category: 'BTC', name: 'Outperforming', icon: '🚀', path: '_computed.btcOutperform', operators: ['=='], defaultThreshold: true, valueType: 'boolean', computed: true, description: 'Stronger move than BTC' },
+
     // ═══════════════════ SYNTHESIS ═══════════════════
     SYN_FLOW_5M: { category: 'SYN', name: 'Net Flow 5m', icon: '🌊', path: 'synthesis.flow.net_flow_5MENIT', operators: ['>', '<', 'ABS>'], defaultThreshold: 5000, description: 'Net capital flow 5m' },
     SYN_FLOW_15M: { category: 'SYN', name: 'Net Flow 15m', icon: '🌊', path: 'synthesis.flow.net_flow_15MENIT', operators: ['>', '<', 'ABS>'], defaultThreshold: 15000, description: 'Net capital flow 15m' },
@@ -211,12 +226,12 @@ export const CATEGORIES = {
 // Preset Templates
 const PRESET_TEMPLATES = {
     // ═══════════════════ SCALPING ═══════════════════
-    SCALP_AGGRESSIVE: { name: '⚡ Scalp Aggressive', description: 'Fast scalping with vol + VPIN', conditions: [{ component: 'VOL_SPIKE_1M', operator: '>', value: 2.0, weight: 2 }, { component: 'MICRO_VPIN', operator: '>', value: 0.5, weight: 2 }, { component: 'PRICE_CHANGE_1M', operator: 'ABS>', value: 0.2, weight: 1 }], logic: 'WEIGHTED', minScore: 60, cooldown: 60 },
-    SCALP_MOMENTUM: { name: '🏎️ Momentum Scalp', description: 'Ride short-term momentum', conditions: [{ component: 'SYN_VEL_5M', operator: 'ABS>', value: 5000, weight: 2 }, { component: 'VOL_BUY_RATIO_1M', operator: '>', value: 1.3, weight: 1.5 }, { component: 'FREQ_NET_RATIO', operator: 'ABS>', value: 0.2, weight: 1 }], logic: 'WEIGHTED', minScore: 60, cooldown: 45 },
-    SCALP_EFFICIENCY: { name: '📏 Efficient Move', description: 'Low friction price moves', conditions: [{ component: 'SYN_EFF_5M', operator: '>', value: 2.0, weight: 2 }, { component: 'SYN_CHAR', operator: 'CONTAINS', value: 'EFFORTLESS', weight: 2 }, { component: 'VOL_SPIKE_5M', operator: '>', value: 1.3, weight: 1 }], logic: 'AND', cooldown: 90 },
+    SCALP_AGGRESSIVE: { name: '⚡ Scalp Aggressive', description: 'Fast scalping with vol + OB Imbalance', conditions: [{ component: 'VOL_SPIKE_1M', operator: '>', value: 2.0, weight: 2 }, { component: 'OB_IMBALANCE', operator: 'ABS>', value: 0.3, weight: 1.5 }, { component: 'MICRO_VPIN', operator: '>', value: 0.5, weight: 1 }], logic: 'WEIGHTED', minScore: 65, cooldown: 60 },
+    SCALP_MOMENTUM: { name: '🏎️ Momentum Scalp', description: 'Momentum + BTC Outperform', conditions: [{ component: 'SYN_VEL_5M', operator: 'ABS>', value: 5000, weight: 2 }, { component: 'BTC_OUTPERFORM', operator: '==', value: true, weight: 2 }, { component: 'VOL_BUY_RATIO_1M', operator: '>', value: 1.3, weight: 1 }], logic: 'AND', cooldown: 45 },
+    SCALP_EFFICIENCY: { name: '📏 Efficient Move', description: 'Low friction price moves', conditions: [{ component: 'SYN_EFF_5M', operator: '>', value: 2.0, weight: 2 }, { component: 'SYN_CHAR', operator: 'CONTAINS', value: 'EFFORTLESS', weight: 2 }, { component: 'OB_SPREAD', operator: '<', value: 5, weight: 1 }], logic: 'AND', cooldown: 90 },
 
     // ═══════════════════ INSTITUTIONAL / WHALE ═══════════════════
-    WHALE_TRACKER: { name: '🐋 Whale Tracker', description: 'Follow institutional flow', conditions: [{ component: 'ENH_INST', operator: '>', value: 0.6, weight: 2 }, { component: 'SYN_AGGR', operator: '==', value: 'WHALE', weight: 2 }, { component: 'OI_CHANGE_15M', operator: 'ABS>', value: 1.5, weight: 1 }], logic: 'AND', cooldown: 300 },
+    WHALE_TRACKER: { name: '🐋 Whale Tracker', description: 'Follow institutional flow + Walls', conditions: [{ component: 'ENH_INST', operator: '>', value: 0.6, weight: 2 }, { component: 'OB_WALL', operator: '==', value: true, weight: 2 }, { component: 'SYN_AGGR', operator: '==', value: 'WHALE', weight: 1.5 }], logic: 'AND', cooldown: 300 },
     SMART_MONEY: { name: '🧠 Smart Money', description: 'Institutional accumulation', conditions: [{ component: 'SYN_BIAS', operator: '==', value: 'ACCUMULATION', weight: 2 }, { component: 'ENH_INST', operator: '>', value: 0.5, weight: 1.5 }, { component: 'MICRO_VPIN', operator: '>', value: 0.4, weight: 1 }, { component: 'VOL_SPIKE_15M', operator: '>', value: 1.2, weight: 1 }], logic: 'WEIGHTED', minScore: 65, cooldown: 300 },
     DISTRIBUTION: { name: '📤 Distribution', description: 'Smart money selling', conditions: [{ component: 'SYN_BIAS', operator: '==', value: 'DISTRIBUTION', weight: 2 }, { component: 'ENH_INST', operator: '>', value: 0.5, weight: 1.5 }, { component: 'PRICE_CHANGE_1H', operator: '<', value: -0.5, weight: 1 }], logic: 'AND', cooldown: 300, biasLogic: 'SHORT' },
 
@@ -227,12 +242,12 @@ const PRESET_TEMPLATES = {
     LSR_EXTREME: { name: '📐 LSR Extreme', description: 'Crowded positioning', conditions: [{ component: 'LSR_ZSCORE', operator: 'ABS>', value: 2.0, weight: 2 }, { component: 'LSR_PERCENTILE', operator: '>', value: 90, weight: 1.5 }], logic: 'AND', cooldown: 600, biasLogic: 'CONTRARIAN' },
 
     // ═══════════════════ BREAKOUT / MOMENTUM ═══════════════════
-    BREAKOUT: { name: '🚀 Breakout', description: 'Volume + OI expansion', conditions: [{ component: 'VOL_SPIKE_5M', operator: '>', value: 1.8, weight: 2 }, { component: 'OI_CHANGE_15M', operator: '>', value: 2.0, weight: 2 }, { component: 'PRICE_CHANGE_5M', operator: 'ABS>', value: 1.0, weight: 1.5 }], logic: 'WEIGHTED', minScore: 65, cooldown: 180 },
-    SQUEEZE_BREAK: { name: '💥 Squeeze Break', description: 'Volatility expansion', conditions: [{ component: 'REGIME_VOL', operator: '==', value: 'LOW_VOL', weight: 1 }, { component: 'VOL_SPIKE_5M', operator: '>', value: 2.5, weight: 2 }, { component: 'PRICE_CHANGE_5M', operator: 'ABS>', value: 0.8, weight: 1.5 }], logic: 'AND', cooldown: 180 },
-    TREND_CONTINUATION: { name: '📈 Trend Cont', description: 'Ride existing trend', conditions: [{ component: 'REGIME_CURRENT', operator: 'CONTAINS', value: 'TRENDING', weight: 2 }, { component: 'MASTER_MTF', operator: '==', value: true, weight: 2 }, { component: 'SYN_EFF_15M', operator: '>', value: 1.3, weight: 1 }], logic: 'AND', cooldown: 300 },
+    BREAKOUT: { name: '🚀 Breakout', description: 'Volume + OI + OB imbalance', conditions: [{ component: 'VOL_SPIKE_5M', operator: '>', value: 1.8, weight: 2 }, { component: 'OB_IMBALANCE', operator: 'ABS>', value: 0.4, weight: 2 }, { component: 'PRICE_CHANGE_5M', operator: 'ABS>', value: 1.0, weight: 1.5 }], logic: 'WEIGHTED', minScore: 70, cooldown: 180 },
+    SQUEEZE_BREAK: { name: '💥 Squeeze Break', description: 'Vol expansion from consolidation', conditions: [{ component: 'REGIME_VOL', operator: '==', value: 'LOW_VOL', weight: 1 }, { component: 'VOL_SPIKE_5M', operator: '>', value: 2.5, weight: 2 }, { component: 'BTC_BETA', operator: '>', value: 1.2, weight: 1 }], logic: 'AND', cooldown: 180 },
+    TREND_CONTINUATION: { name: '📈 Trend Cont', description: 'Ride trend with BTC strength', conditions: [{ component: 'REGIME_CURRENT', operator: 'CONTAINS', value: 'TRENDING', weight: 2 }, { component: 'BTC_OUTPERFORM', operator: '==', value: true, weight: 2 }, { component: 'SYN_EFF_15M', operator: '>', value: 1.3, weight: 1 }], logic: 'AND', cooldown: 300 },
 
     // ═══════════════════ REVERSAL / MEAN REVERSION ═══════════════════
-    REVERSAL: { name: '🔄 Reversal', description: 'Contrarian at extremes', conditions: [{ component: 'LSR_ZSCORE', operator: 'ABS>', value: 2.0, weight: 2 }, { component: 'FUNDING_ZSCORE', operator: 'ABS>', value: 1.8, weight: 1.5 }, { component: 'ENH_CVD_DIV', operator: '==', value: true, weight: 2 }], logic: 'OR', cooldown: 600, biasLogic: 'CONTRARIAN' },
+    REVERSAL: { name: '🔄 Reversal', description: 'Contrarian divergence', conditions: [{ component: 'LSR_ZSCORE', operator: 'ABS>', value: 2.0, weight: 2 }, { component: 'BTC_DIVERGENCE', operator: '==', value: true, weight: 2 }, { component: 'ENH_CVD_DIV', operator: '==', value: true, weight: 2 }], logic: 'OR', cooldown: 600, biasLogic: 'CONTRARIAN' },
     OVERSOLD_BOUNCE: { name: '📉 Oversold Bounce', description: 'Mean reversion long', conditions: [{ component: 'PRICE_FROM_HIGH', operator: '<', value: -8, weight: 2 }, { component: 'LSR_RATIO', operator: '<', value: 0.8, weight: 1.5 }, { component: 'VOL_SPIKE_15M', operator: '>', value: 1.5, weight: 1 }], logic: 'AND', cooldown: 300, biasLogic: 'LONG' },
     OVERBOUGHT_FADE: { name: '📈 Overbought Fade', description: 'Mean reversion short', conditions: [{ component: 'PRICE_FROM_LOW', operator: '>', value: 8, weight: 2 }, { component: 'LSR_RATIO', operator: '>', value: 1.3, weight: 1.5 }, { component: 'FUNDING_RATE', operator: '>', value: 0.0003, weight: 1 }], logic: 'AND', cooldown: 300, biasLogic: 'SHORT' },
 
@@ -293,7 +308,7 @@ const PRESET_TEMPLATES = {
     STRAT_PATIENCE: { name: '⌛ Patience Sniper', description: 'Setup Perfect Storm. Semua enhanced signals alignment: MTF Pro, Net Flow, Inst Footprint, Mom Quality, Book Res. Lev: 2-5x, Hold: 12h-48h', conditions: [{ component: 'MASTER_SCORE', operator: '>', value: 72, weight: 2 }, { component: 'SYN_FLOW_15M', operator: 'ABS>', value: 45000, weight: 2 }, { component: 'ENH_INST', operator: '>', value: 0.7, weight: 2 }, { component: 'ENH_MOM_QUALITY', operator: '>', value: 0.6, weight: 1.5 }, { component: 'ENH_BOOK_RES', operator: '>', value: 0.6, weight: 1.5 }], logic: 'AND', cooldown: 900 },
     STRAT_IGNITION: { name: '📈 Momentum Ignition', description: 'Awal trend sehat: OI naik tajam + Net Capital Inflow + Pressure Acceleration + Momentum Quality. Lev: 3x, Hold: 3d-7d', conditions: [{ component: 'MASTER_SCORE', operator: '>', value: 52, weight: 1 }, { component: 'SYN_FLOW_15M', operator: '>', value: 12000, weight: 1.5 }, { component: 'ENH_MOM_QUALITY', operator: '>', value: 0.5, weight: 2 }], logic: 'AND', cooldown: 600 },
     STRAT_FUNDING: { name: '💸 Funding Rate Arb', description: 'Selisih ekstrim Funding Rate vs Premium Index. Long saat funding negatif, Short saat positif tinggi. Lev: 1-3x, Hold: 8h-24h', conditions: [{ component: 'FUNDING_RATE', operator: 'ABS>', value: 0.0008, weight: 2 }], logic: 'AND', cooldown: 1800, biasLogic: 'CONTRARIAN' },
-    STRAT_SAFETY: { name: '🛡️ Toxic Flow Filter', description: 'Sistem pelindung modal. Identifikasi koin dimanipulasi robot HFT. JANGAN TRADE. Risk Guard.', conditions: [{ component: 'MICRO_VPIN', operator: '>', value: 0.8, weight: 2 }], logic: 'AND', cooldown: 60, biasLogic: 'STAY_AWAY' }
+    STRAT_SAFETY: { name: '🛡️ Toxic Flow Filter', description: 'Sistem pelindung modal. Identifikasi koin dimanipulasi robot HFT. JANGAN TRADE. Risk Guard.', conditions: [{ component: 'MICRO_VPIN', operator: '>', value: 0.8, weight: 2 }], logic: 'AND', cooldown: 60, biasLogic: 'STAY_AWAY', maxPositions: 0 }
 };
 
 // State
@@ -308,6 +323,8 @@ let selectedCoin = null;
 let composerProfile = 'GLOBAL';   // GLOBAL, AGGRESSIVE, MODERATE, CONSERVATIVE, SCALPER
 let composerTimeframe = 'GLOBAL'; // GLOBAL, 1MENIT, 5MENIT, 15MENIT, 30MENIT, 1JAM
 let currentDetailTab = 'MAIN';
+let sigPosMapping = new Map(); // sigId -> array of coins
+const STORAGE_KEY_MAPPING = STORAGE_KEY + '_mapping';
 
 // ⚡ Helper: Get active profile/timeframe (resolve GLOBAL from main settings)
 function getActiveProfileTimeframe() {
@@ -1137,21 +1154,22 @@ function renderEditor() {
             <!-- OUTPUT -->
             <div class="p-2 bg-black/30 rounded border border-white/10 space-y-2">
                 <label class="text-[8px] font-black text-bb-muted uppercase">Output</label>
-                <div class="grid grid-cols-4 gap-1.5">
-                    ${['SIGNAL', 'SIMULATE', 'WEBHOOK', 'LOG'].map(a => `
+                <div class="grid grid-cols-5 gap-1.5">
+                    ${['SIGNAL', 'SIMULATE', 'WEBHOOK', 'OKX', 'LOG'].map(a => `
                         <label class="flex flex-col items-center gap-0.5 p-1.5 rounded border cursor-pointer transition-all ${c.outputAction === a ? 'border-bb-gold bg-bb-gold/10' : 'border-white/10 hover:bg-white/5'}">
                             <input type="radio" name="output" value="${a}" ${c.outputAction === a ? 'checked' : ''} class="sr-only">
-                            <span class="text-sm">${a === 'SIGNAL' ? '📡' : a === 'SIMULATE' ? '🎮' : a === 'WEBHOOK' ? '🔗' : '📝'}</span>
+                            <span class="text-sm">${a === 'SIGNAL' ? '📡' : a === 'SIMULATE' ? '🎮' : a === 'WEBHOOK' ? '🔗' : a === 'OKX' ? '💱' : '📝'}</span>
                             <span class="text-[7px] font-bold">${a}</span>
                         </label>
                     `).join('')}
                 </div>
                 ${c.outputAction === 'SIMULATE' ? renderSimConfig(c) : ''}
                 ${c.outputAction === 'WEBHOOK' ? renderWebhookConfig(c) : ''}
+                ${c.outputAction === 'OKX' ? renderOrderConfig(c) : ''}
             </div>
 
-            <!-- BIAS & COOLDOWN -->
-            <div class="grid grid-cols-2 gap-2">
+            <!-- BIAS, COOLDOWN & MAX POS -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
                 <div class="p-2 bg-black/30 rounded border border-white/10 space-y-1.5">
                     <label class="text-[8px] font-black text-bb-muted uppercase">Bias</label>
                     <div class="grid grid-cols-4 gap-1">
@@ -1164,16 +1182,32 @@ function renderEditor() {
                         `).join('')}
                     </div>
                 </div>
-                <div class="p-2 bg-black/30 rounded border border-white/10 flex items-center justify-between">
-                    <div>
-                        <label class="text-[8px] font-black text-bb-muted uppercase">Cooldown</label>
-                        <p class="text-[7px] text-bb-muted/60">Per coin</p>
-                    </div>
-                    <div class="flex items-center gap-1">
-                        <input id="edit-cooldown" type="number" value="${c.cooldown || 300}" min="0" step="30" class="w-14 bg-bb-black border border-white/20 text-[9px] text-white px-1.5 py-0.5 rounded text-right">
+                <div class="p-2 bg-black/30 rounded border border-white/10 flex flex-col justify-center">
+                    <label class="text-[8px] font-black text-bb-muted uppercase">Cooldown</label>
+                    <div class="flex items-center gap-1 mt-1">
+                        <input id="edit-cooldown" type="number" value="${c.cooldown || 300}" min="0" step="30" class="flex-1 bg-bb-black border border-white/20 text-[9px] text-white px-1.5 py-0.5 rounded text-right">
                         <span class="text-[7px] text-bb-muted">s</span>
                     </div>
                 </div>
+                <div class="p-2 bg-black/30 rounded border border-white/10 flex flex-col justify-center">
+                    <label class="text-[8px] font-black text-bb-muted uppercase">Max Pos</label>
+                    <div class="flex items-center gap-1 mt-1">
+                        <input id="edit-max-pos" type="number" value="${c.maxPositions ?? 1}" min="0" step="1" class="flex-1 bg-bb-black border border-white/20 text-[9px] text-white px-1.5 py-0.5 rounded text-right">
+                        <span class="text-[7px] text-bb-muted">qty</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- OPTIONS -->
+            <div class="p-2 bg-black/30 rounded border border-white/10 flex items-center justify-between">
+                <div>
+                    <label class="text-[8px] font-black text-white uppercase">Close on Flip</label>
+                    <p class="text-[7px] text-bb-muted/60">Auto-close existing position if signal direction changes</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input id="edit-close-flip" type="checkbox" ${c.closeOnFlip ? 'checked' : ''} class="sr-only peer">
+                    <div class="w-7 h-4 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-bb-gold"></div>
+                </label>
             </div>
 
             <!-- ACTIONS -->
@@ -1233,6 +1267,21 @@ function renderWebhookConfig(c) {
         <div class="mt-1.5 pt-1.5 border-t border-white/10 space-y-1">
             <input id="webhook-url" type="url" value="${c.webhookConfig?.url || ''}" placeholder="https://webhook.com/endpoint" class="w-full bg-bb-black border border-white/10 text-[8px] text-white px-1.5 py-0.5 rounded">
         </div>
+    `;
+}
+
+function renderOrderConfig(c) {
+    return `
+        <div class="mt-1.5 pt-1.5 border-t border-white/10 grid grid-cols-4 gap-1.5">
+            <div><label class="text-[6px] text-bb-muted">Instrument</label><input id="order-inst" type="text" value="${c.orderConfig?.instId || ''}" placeholder="BTC-USD-SWAP or leave blank" class="w-full bg-bb-black border border-white/10 text-[8px] text-white px-1 py-0.5 rounded"></div>
+            <div><label class="text-[6px] text-bb-muted">OrdType</label><select id="order-ordType" class="w-full bg-bb-black border border-white/10 text-[8px] text-white px-1 py-0.5 rounded"><option value="market" ${c.orderConfig?.ordType === 'market' ? 'selected' : ''}>MARKET</option><option value="limit" ${c.orderConfig?.ordType === 'limit' ? 'selected' : ''}>LIMIT</option></select></div>
+            <div><label class="text-[6px] text-bb-muted">Amount ($)</label><input id="order-usd" type="number" value="${c.orderConfig?.usd || ''}" placeholder="USD" class="w-full bg-bb-black border border-white/10 text-[8px] text-white px-1 py-0.5 rounded"></div>
+            <div class="flex gap-1">
+                <div class="flex-1"><label class="text-[6px] text-bb-muted">TP (%)</label><input id="order-tp" type="number" value="${c.orderConfig?.tpPct || ''}" placeholder="%" class="w-full bg-bb-black border border-white/10 text-[8px] text-bb-green px-1 py-0.5 rounded"></div>
+                <div class="flex-1"><label class="text-[6px] text-bb-muted">SL (%)</label><input id="order-sl" type="number" value="${c.orderConfig?.slPct || ''}" placeholder="%" class="w-full bg-bb-black border border-white/10 text-[8px] text-bb-red px-1 py-0.5 rounded"></div>
+            </div>
+        </div>
+        <div class="mt-1 text-[7px] text-bb-muted">Notes: USD / Price | TP/SL are exchange-side (Native).</div>
     `;
 }
 
@@ -1457,6 +1506,7 @@ function attachEditorEvents(container) {
     container.querySelector('#edit-logic')?.addEventListener('change', (e) => { activeComposition.logic = e.target.value; saveState(); render(container); });
     container.querySelector('#edit-min-score')?.addEventListener('change', (e) => { activeComposition.minScore = parseFloat(e.target.value); saveState(); });
     container.querySelector('#edit-cooldown')?.addEventListener('change', (e) => { activeComposition.cooldown = parseInt(e.target.value); saveState(); });
+    container.querySelector('#edit-max-pos')?.addEventListener('change', (e) => { activeComposition.maxPositions = parseInt(e.target.value); saveState(); });
 
     container.querySelectorAll('input[name="output"]').forEach(r => r.addEventListener('change', (e) => { activeComposition.outputAction = e.target.value; saveState(); render(container); }));
     container.querySelectorAll('input[name="bias"]').forEach(r => r.addEventListener('change', (e) => { activeComposition.biasMode = e.target.value; saveState(); render(container); }));
@@ -1479,6 +1529,19 @@ function attachEditorEvents(container) {
     });
 
     container.querySelector('#webhook-url')?.addEventListener('change', (e) => { if (!activeComposition.webhookConfig) activeComposition.webhookConfig = {}; activeComposition.webhookConfig.url = e.target.value; });
+
+    // OKX / Order config fields
+    container.querySelector('#order-inst')?.addEventListener('change', (e) => { if (!activeComposition.orderConfig) activeComposition.orderConfig = {}; activeComposition.orderConfig.instId = e.target.value.trim(); saveState(); });
+    container.querySelector('#order-ordType')?.addEventListener('change', (e) => { if (!activeComposition.orderConfig) activeComposition.orderConfig = {}; activeComposition.orderConfig.ordType = e.target.value; saveState(); });
+    container.querySelector('#order-usd')?.addEventListener('change', (e) => { if (!activeComposition.orderConfig) activeComposition.orderConfig = {}; activeComposition.orderConfig.usd = parseFloat(e.target.value); saveState(); });
+    container.querySelector('#order-tp')?.addEventListener('change', (e) => { if (!activeComposition.orderConfig) activeComposition.orderConfig = {}; activeComposition.orderConfig.tpPct = parseFloat(e.target.value); saveState(); });
+    container.querySelector('#order-sl')?.addEventListener('change', (e) => { if (!activeComposition.orderConfig) activeComposition.orderConfig = {}; activeComposition.orderConfig.slPct = parseFloat(e.target.value); saveState(); });
+
+    container.querySelector('#edit-close-flip')?.addEventListener('change', (e) => {
+        activeComposition.closeOnFlip = e.target.checked;
+        console.log('[COMPOSER] Toggle closeOnFlip:', activeComposition.closeOnFlip);
+        saveState();
+    });
 
     container.querySelectorAll('.cond-row').forEach(row => {
         const idx = parseInt(row.dataset.idx);
@@ -1509,10 +1572,13 @@ function createNewSignal() {
         conditions: [],
         outputAction: 'SIGNAL',
         biasMode: 'AUTO',
+        closeOnFlip: false,
         cooldown: 300,
         minScore: 70,
         simConfig: { amount: 1000, leverage: 10, tp: 10, sl: 5 },
-        webhookConfig: { url: '' }
+        webhookConfig: { url: '' },
+        orderConfig: { ordType: 'market', usd: '', instId: '', tpPct: '', slPct: '' },
+        maxPositions: 1
     };
     compositions.push(newSig);
     activeComposition = newSig;
@@ -1558,7 +1624,7 @@ function showPresetsModal(container) {
         el.addEventListener('click', () => {
             const preset = PRESET_TEMPLATES[el.dataset.key];
             if (preset) {
-                const newSig = { id: Date.now(), name: preset.name, description: preset.description, active: false, coinMode: 'ALL', coins: [], logic: preset.logic || 'AND', conditions: JSON.parse(JSON.stringify(preset.conditions)), outputAction: 'SIGNAL', biasMode: 'AUTO', biasLogic: preset.biasLogic, cooldown: preset.cooldown || 300, minScore: preset.minScore || 70, simConfig: { amount: 1000, leverage: 10, tp: 10, sl: 5 }, webhookConfig: { url: '' } };
+                const newSig = { id: Date.now(), name: preset.name, description: preset.description, active: false, coinMode: 'ALL', coins: [], logic: preset.logic || 'AND', conditions: JSON.parse(JSON.stringify(preset.conditions)), outputAction: 'SIGNAL', biasMode: 'AUTO', biasLogic: preset.biasLogic, cooldown: preset.cooldown || 300, minScore: preset.minScore || 70, simConfig: { amount: 1000, leverage: 10, tp: 10, sl: 5 }, webhookConfig: { url: '' }, orderConfig: { ordType: 'market', usd: '', instId: '', tpPct: '', slPct: '' } };
                 compositions.push(newSig);
                 activeComposition = newSig;
                 saveState();
@@ -1586,6 +1652,7 @@ function testSignal(container) {
 
 // === COMPUTED VALUES ===
 // Normalizes the data structure to match expected paths
+// (computeData imported from data_helpers.js)
 
 
 // === EVALUATION ENGINE ===
@@ -1664,7 +1731,65 @@ function getNestedValue(obj, path) {
 
 // === RUNTIME ENGINE ===
 const cooldowns = new Map();
+// track last triggered boolean per signal+coin to detect rising edges
+const lastTriggeredState = new Map();
+// simple in-memory open positions tracker: coin -> { side: 'LONG'|'SHORT', size, source, ts, id }
+const openPositions = new Map();
+
+export function getOpenPositions() { return Array.from(openPositions.entries()).map(([coin, v]) => ({ coin, ...v })); }
+export function clearOpenPositions() { openPositions.clear(); }
+export function getPosition(coin) { return openPositions.get(coin); }
+
+export function upsertPositionFromOkxFill(f) {
+    try {
+        const coin = f.instId || f.instrumentId || f.symbol;
+        if (!coin) return;
+        const side = (String(f.side || f.fillSide || '').toLowerCase() === 'buy') ? 'LONG' : 'SHORT';
+        const sz = Number(f.fillSz || f.sz || 0) || Number(f.sz) || 0;
+        const px = Number(f.fillPx || f.px) || null;
+        const existing = openPositions.get(coin);
+        if (existing) {
+            if (existing.side === side) {
+                // increase size, weighted avg entry
+                const eSize = Number(existing.size) || 0;
+                const eEntry = Number(existing.entryPrice) || 0;
+                const totNotional = eEntry * eSize + (px || 0) * sz;
+                const newSize = eSize + sz;
+                const newEntry = newSize > 0 ? (totNotional / newSize) : (px || eEntry);
+                openPositions.set(coin, { ...existing, size: newSize, entryPrice: newEntry });
+            } else {
+                // opposite side: reduce or close
+                const rem = (Number(existing.size) || 0) - sz;
+                if (rem > 0) {
+                    openPositions.set(coin, { ...existing, size: rem });
+                } else {
+                    openPositions.delete(coin);
+                }
+            }
+        } else {
+            // new position
+            openPositions.set(coin, { side, size: sz, source: 'OKX', ts: Date.now(), id: f.ordId || f.clOrdId || ('fill_' + Date.now()), entryPrice: px });
+        }
+    } catch (e) { console.error('upsertPositionFromOkxFill error', e); }
+}
+
+export function closePosition(coin) {
+    try {
+        if (openPositions.has(coin)) {
+            openPositions.delete(coin);
+            saveState();
+        }
+    } catch (e) {
+        console.warn('[COMPOSER] Failed to close position', coin, e);
+    }
+}
 let totalTriggersToday = 0;
+// Concurrency lock
+const pendingExecutions = new Set(); // Stores "sigId:coin" keys
+
+// Global Coin Lock to prevent "Order Storms" regardless of signal ID
+const coinCooldowns = new Map();
+const lastExecutions = new Map(); // coin -> { side, size, price, ts }
 
 export function runComposerEngine(marketState) {
     if (!marketState) return;
@@ -1682,16 +1807,59 @@ export function runComposerEngine(marketState) {
             const data = computeData(marketState[coin], profile, timeframe);
             const result = evaluateSignal(sig, coin, data);
 
-            if (result.triggered && result.bias !== 'WAIT') {
-                const key = `${sig.id}:${coin}`;
-                const lastTrigger = cooldowns.get(key) || 0;
+            const key = `${sig.id}:${coin}`;
+            const wasTriggered = !!lastTriggeredState.get(key);
 
-                if (now - lastTrigger > (sig.cooldown || 300) * 1000) {
-                    executeSignal(sig, coin, result, data);
-                    cooldowns.set(key, now);
-                    sig.lastTrigger = now;
-                    totalTriggersToday++;
-                    triggers.push({ sig: sig.name, coin, bias: result.bias });
+            if (result.triggered && result.bias !== 'WAIT') {
+                // only fire on rising edge (was not triggered before)
+                if (!wasTriggered) {
+                    const lastTrigger = cooldowns.get(key) || 0;
+
+                    // 1. Signal Cooldown (5m default to prevent signal flickering)
+                    if (now - lastTrigger > (sig.cooldown || 300) * 1000) {
+
+                        // 2. Coin-level Concurrency Lock (Serialize executions per coin)
+                        // Use 'coin' as key, so ONLY ONE signal can process for this coin at a time.
+
+                        // 2.1 CROSS-TAB LOCK via LocalStorage (Mutex)
+                        // Check if another tab or recent process locked this coin
+                        const lockKey = `os_lock_${coin}`;
+                        const lastLock = Number(localStorage.getItem(lockKey) || 0);
+                        if (Date.now() - lastLock < 15000) { // 15s hard lock shared across tabs
+                            // System is busy with this coin elsewhere
+                            return;
+                        }
+
+                        if (!pendingExecutions.has(coin)) {
+                            pendingExecutions.add(coin);
+
+                            // SET LOCK IMMEDIATELY (Sync)
+                            localStorage.setItem(lockKey, Date.now());
+
+                            executeSignal(sig, coin, result, data)
+                                .then(executed => {
+                                    if (executed) {
+                                        cooldowns.set(key, now);
+                                        sig.lastTrigger = now;
+                                        totalTriggersToday++;
+                                        triggers.push({ sig: sig.name, coin, bias: result.bias });
+                                    }
+                                })
+                                .catch(e => console.error(e))
+                                .finally(() => {
+                                    pendingExecutions.delete(coin);
+                                    saveState(); // Persist updated cooldowns or triggered states
+                                });
+                        }
+                    }
+                    lastTriggeredState.set(key, true);
+                    saveState(); // Persist the rising edge
+                }
+            } else {
+                // reset state when not triggered so next true is a rising edge
+                if (wasTriggered) {
+                    lastTriggeredState.set(key, false);
+                    saveState(); // Persist the change
                 }
             }
         });
@@ -1700,18 +1868,297 @@ export function runComposerEngine(marketState) {
     updateLiveMonitor(triggers);
 }
 
-function executeSignal(sig, coin, result, data) {
+async function executeSignal(sig, coin, result, data) {
     const price = data.raw?.PRICE?.last || 0;
     console.log(`[COMPOSER] 🎼 ${sig.name}: ${result.bias} ${coin} @ $${Utils.safeFixed(price ?? 0, 2)} ${Utils.safeFixed(result.score ?? 0, 0)}%`);
 
     if (sig.outputAction === 'SIGNAL') {
         if (Notification.permission === 'granted') new Notification(`🎼 ${sig.name}`, { body: `${result.bias} ${coin}` });
+        return true;
     } else if (sig.outputAction === 'SIMULATE') {
+        const existing = openPositions.get(coin);
+        if (existing) {
+            if (existing.side === result.bias) {
+                // don't re-enter if we already have an open position on same side for this coin
+                showToast(`Skip simulate: existing ${result.bias} position for ${coin}`, 'info');
+                return false;
+            } else if (sig.closeOnFlip) {
+                // Direction flip + closeOnFlip enabled
+                showToast(`Sim auto-close: ${coin} ${existing.side} -> ${result.bias}`, 'success');
+                ViewSimulation.closePosition(coin, price);
+                openPositions.delete(coin);
+                saveState();
+            } else {
+                console.log(`[COMPOSER] Sim signal opposite to existing position. Skipping.`);
+                return false;
+            }
+        }
+
         ViewSimulation.openPosition(result.bias, { coin, amount: sig.simConfig?.amount || 1000, leverage: sig.simConfig?.leverage || 10, tp: sig.simConfig?.tp || 10, sl: sig.simConfig?.sl || 5, entryPrice: price, source: 'COMPOSER', ruleName: sig.name, silent: true });
+        // record a simple open position (in-memory) with entry price
+        openPositions.set(coin, { side: result.bias, size: sig.simConfig?.amount || 1000, source: 'SIM', ts: Date.now(), id: 'sim_' + Date.now(), entryPrice: price });
+        saveState();
+        return true;
     } else if (sig.outputAction === 'WEBHOOK' && sig.webhookConfig?.url) {
         fetch(sig.webhookConfig.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event: 'composer_signal', timestamp: new Date().toISOString(), signal: sig.name, coin, bias: result.bias, score: result.score, price }) }).catch(console.error);
+        return true;
+    } else if (sig.outputAction === 'OKX') {
+        try {
+            // 🛡️ SAFETY GATE: Check if trading is allowed
+            const safetyCheck = TradeSafety.canTrade();
+            if (!safetyCheck.allowed) {
+                showToast(`🛡️ Safety: ${safetyCheck.reason}`, 'warning');
+                return false;
+            }
+
+            const okxMode = localStorage.getItem('os_mode') || 'SIM';
+            const okxCfg = (typeof OkxClient.getConfig === 'function') ? OkxClient.getConfig() : null;
+            if (okxMode !== 'REAL' && !(okxMode === 'SIM' && okxCfg?.simulated)) {
+                console.log(`[COMPOSER] OKX execution skipped. Mode=${okxMode}, Simulated=${okxCfg?.simulated}`);
+                return false;
+            }
+
+            // 1. Fetch Positions & Check Risk
+            const posRes = await OkxClient.fetchPositions();
+            const positions = posRes?.data || [];
+            const existing = positions.find(p => p.instId === coin);
+
+            // 1.1 Hierarchical Max Positions Check (Only for NEW entries)
+            const globalMaxPos = parseInt(localStorage.getItem('os_max_positions')) || 5;
+
+            // Per-Signal Count and Mapping Sync
+            let ownedCoins = sigPosMapping.get(sig.id) || [];
+            const activeInSig = positions.filter(p => ownedCoins.includes(p.instId));
+
+            // Sync mapping: remove coins that are no longer in the actual positions list
+            const currentOwned = activeInSig.map(p => p.instId);
+            if (currentOwned.length !== ownedCoins.length) {
+                sigPosMapping.set(sig.id, currentOwned);
+                saveMapping();
+                ownedCoins = currentOwned;
+            }
+
+            const sigLimit = (sig.maxPositions !== undefined) ? sig.maxPositions : 1;
+
+            if (!existing) {
+                // Check Global Limit
+                if (positions.length >= globalMaxPos) {
+                    console.log(`[COMPOSER] 🛑 Global Max Positions reached (${positions.length}/${globalMaxPos}). Blocking new entry for ${coin}.`);
+                    showToast(`🛡️ Global Max Pos reached: ${positions.length}/${globalMaxPos}`, 'warning');
+                    return false;
+                }
+                // Check Signal Limit
+                if (activeInSig.length >= sigLimit) {
+                    console.log(`[COMPOSER] 🛑 Signal Limit reached (${activeInSig.length}/${sigLimit}) for ${sig.name}. Blocking ${coin}.`);
+                    showToast(`🛡️ ${sig.name} Limit reached: ${activeInSig.length}/${sigLimit}`, 'warning');
+                    return false;
+                }
+            }
+
+            // 2. Calculate Size (Allocator)
+            const signalContext = {
+                metrics: {
+                    RiskScore: 100 - (result.score || 50),
+                    SignalConfidence: result.score || 50,
+                    Price: price,
+                    ...data.raw // Pass raw metrics for advanced sizing
+                },
+                instId: coin,
+                price: price
+            };
+
+            // Get sizing config from signal or global settings
+            const allocConfig = {
+                baseUsd: sig.allocConfig?.baseUsd || Number(localStorage.getItem('os_alloc_base')) || 10,
+                minUsd: sig.allocConfig?.minUsd || Number(localStorage.getItem('os_alloc_min')) || 2,
+                maxUsd: sig.allocConfig?.maxUsd || Number(localStorage.getItem('os_alloc_max')) || 200,
+                budgetUsd: Number(localStorage.getItem('os_alloc_budget')) || 0,
+                useATR: sig.allocConfig?.useATR || false
+            };
+
+            const usdSize = await StrategyAllocator.sizeFromSignal(signalContext, positions, allocConfig);
+            if (usdSize === 0) {
+                console.warn(`[COMPOSER] 🛑 Allocator returned $0 size for ${coin}. Likely budget exhausted or crowd penalty.`);
+                showToast(`🛡️ Sizing: $0 budget for ${coin} (Check Budget/Risk)`, 'warning');
+                return false;
+            }
+
+            // Simple approximation: Coins = USD / Price
+            let sz = (usdSize / price).toFixed(5);
+
+            // 3. EXECUTION LOGIC
+            const side = result.bias === 'LONG' ? 'buy' : 'sell';
+
+            // 🛡️ SMART DUPLICATE CHECK 🛡️
+            // "Jika nilai order sama, jangan order baru"
+            const lastExec = lastExecutions.get(coin);
+            if (lastExec) {
+                const isSameSide = lastExec.side === side;
+                const isSameSize = Math.abs(Number(lastExec.size) - Number(sz)) < (Number(sz) * 0.01); // 1% tolerance
+                const isRecent = (Date.now() - lastExec.ts) < 5 * 60_000; // 5 min memory
+
+                // If it's a NEW entry (not a DCA of existing position) and identical to last, BLOCK.
+                // We assume if 'existing' is present, we might be doing DCA, so we check that separately.
+                if (isSameSide && isSameSize && isRecent && !existing) {
+                    console.log(`[COMPOSER] 🛑 Duplicate blocked for ${coin}: Side(${side}) Size(${sz}) matches last exec.`);
+                    return false;
+                }
+            }
+
+            if (existing) {
+                // ─── SMART DCA ────────────────────────────────────────
+                const posSide = (existing.posSide === 'long' || Number(existing.pos) > 0) ? 'LONG' : 'SHORT';
+
+                // Only DCA if same direction
+                if (posSide === result.bias) {
+                    // Check Smart DCA vs Global Settings
+                    // ... (Restore original DCA logic)
+                    // Wait, original logic checked existingSide === result.bias
+
+                    const entryPx = Number(existing.avgPx || 0);
+                    if (entryPx > 0) {
+                        const pnlPct = posSide === 'LONG'
+                            ? (price - entryPx) / entryPx
+                            : (entryPx - price) / entryPx;
+
+                        const minDD = (sig.dcaConfig?.minDrawdownPct || -2) / 100; // e.g. -2%
+                        const maxCounts = sig.dcaConfig?.maxCounts || Number(localStorage.getItem('os_max_dca_counts')) || 2;
+
+                        const dcaKey = `dca_count_${coin}`;
+                        const dcaCount = Number(localStorage.getItem(dcaKey) || 0);
+
+                        if (pnlPct < minDD && dcaCount < maxCounts) {
+                            console.log(`[COMPOSER] Smart DCA Triggered for ${coin}: PnL ${pnlPct * 100}% < ${minDD * 100}%, Count ${dcaCount}/${maxCounts}`);
+
+                            // OPTIMISTIC UPDATE: Increment count BEFORE async call to prevent race
+                            localStorage.setItem(dcaKey, dcaCount + 1);
+
+                            try {
+                                const tdMode = localStorage.getItem('okx_margin_mode') || 'cross';
+                                const adj = await OkxClient.adjustSize(coin, String(sz));
+                                if (parseFloat(adj) === 0) {
+                                    showToast(`Order too small for ${coin} lot step (min required > $${usdSize.toFixed(2)})`, 'error');
+                                } else {
+                                    await OkxClient.placeOrder({ instId: coin, side: side, ordType: 'market', sz: String(adj), tdMode });
+                                    // Trigger TP/SL Sync after DCA
+                                    const tp = sig.orderConfig?.tpPct;
+                                    const sl = sig.orderConfig?.slPct;
+                                    if (tp || sl) {
+                                        setTimeout(() => OkxClient.syncTpSl(coin, tp, sl).catch(e => console.error('[COMPOSER] TP/SL Sync failed after DCA', e)), 2000);
+                                    }
+                                }
+                            } catch (e) {
+                                console.error('[COMPOSER] placeOrder adjusted failed', e);
+                                throw e;
+                            }
+
+                            showToast(`🧠 Smart DCA: ${coin} accumulated`, 'success');
+
+                            lastExecutions.set(coin, { side, size: sz, price, ts: Date.now() });
+                            return true;
+                        } else {
+                            console.log(`[COMPOSER] Smart DCA skipped: PnL ${pnlPct * 100}%, Count ${dcaCount}`);
+                            return false;
+                        }
+                    }
+                } else {
+                    // Opposite-side signal detected. Optionally auto-close the existing position
+                    if (sig.closeOnFlip) {
+                        try {
+                            // Determine existing size from common OKX position fields
+                            const rawSize = Math.abs(Number(existing.pos || existing.qty || existing.availPos || existing.position || 0) || 0);
+                            const closeSz = rawSize > 0 ? rawSize : 0;
+                            if (closeSz <= 0) {
+                                console.log(`[COMPOSER] closeOnFlip enabled but could not determine existing size for ${coin}. Skipping.`);
+                                return false;
+                            }
+
+                            const closeSide = posSide === 'LONG' ? 'sell' : 'buy';
+
+                            console.log(`[COMPOSER] closeOnFlip: closing ${coin} ${posSide} position size=${closeSz} by sending market ${closeSide}`);
+
+                            // Place a market order to close the existing position (use same tdMode)
+                            try {
+                                const tdMode = localStorage.getItem('okx_margin_mode') || 'cross';
+                                const adj = await OkxClient.adjustSize(coin, String(closeSz));
+                                if (parseFloat(adj) === 0) {
+                                    showToast('Adjusted close size is 0 — cannot close position', 'error');
+                                } else {
+                                    await OkxClient.placeOrder({ instId: coin, side: closeSide, ordType: 'market', sz: String(adj), tdMode });
+                                }
+                            } catch (e) {
+                                console.error('[COMPOSER] close placeOrder failed', e);
+                                throw e;
+                            }
+
+                            showToast(`Auto-close executed: ${coin} ${posSide} → closed`, 'success');
+                            // Cleanup any pending TP/SL algo orders
+                            setTimeout(() => OkxClient.syncTpSl(coin, 0, 0).catch(e => console.warn('[COMPOSER] TP/SL cleanup failed', e)), 1500);
+
+                            // Reset DCA counter on a full close
+                            localStorage.setItem(`dca_count_${coin}`, 0);
+                            lastExecutions.set(coin, { side: closeSide, size: String(closeSz), price, ts: Date.now() });
+                            return true;
+                        } catch (e) {
+                            console.error('[COMPOSER] closeOnFlip failed', e);
+                            showToast(`Auto-close failed: ${e.message || 'unknown'}`, 'error');
+                            return false;
+                        }
+                    }
+
+                    console.log(`[COMPOSER] Signal opposite to existing position. Skipping.`);
+                    return false;
+                }
+            } else {
+                // ─── NEW ENTRY ────────────────────────────────────────
+                console.log(`[COMPOSER] Opening NEW position for ${coin} size=${sz} ($${usdSize.toFixed(2)})`);
+
+                try {
+                    const tdMode = localStorage.getItem('okx_margin_mode') || 'cross';
+                    const adj = await OkxClient.adjustSize(coin, String(sz));
+                    if (parseFloat(adj) === 0) {
+                        showToast(`Order too small for ${coin} lot step (min required > $${usdSize.toFixed(2)})`, 'error');
+                    } else {
+                        await OkxClient.placeOrder({ instId: coin, side: side, ordType: 'market', sz: String(adj), tdMode });
+                        // Trigger TP/SL Sync
+                        const tp = sig.orderConfig?.tpPct;
+                        const sl = sig.orderConfig?.slPct;
+                        if (tp || sl) {
+                            setTimeout(() => OkxClient.syncTpSl(coin, tp, sl).catch(e => console.error('[COMPOSER] TP/SL Sync failed', e)), 2000);
+                        }
+                    }
+                } catch (e) {
+                    console.error('[COMPOSER] new entry placeOrder failed', e);
+                    throw e;
+                }
+
+                showToast(`🎼 Signal Executed: ${coin} ${side}`, 'success');
+                // Reset DCA count on new entry
+                localStorage.setItem(`dca_count_${coin}`, 0);
+
+                lastExecutions.set(coin, { side, size: sz, price, ts: Date.now() });
+
+                // Update signal mapping for REAL mode
+                const currentOwned = sigPosMapping.get(sig.id) || [];
+                if (!currentOwned.includes(coin)) {
+                    currentOwned.push(coin);
+                    sigPosMapping.set(sig.id, currentOwned);
+                    saveMapping();
+                }
+
+                return true;
+            }
+
+        } catch (e) {
+            console.error('[COMPOSER] Execution Failed:', e);
+            showToast(`❌ Exec Failed: ${e.message}`, 'error');
+            return false;
+        }
     }
+    return false;
 }
+
+
 
 function updateLiveMonitor(triggers) {
     const triggersEl = document.getElementById('live-triggers');
@@ -1725,9 +2172,36 @@ function updateLiveMonitor(triggers) {
     }
 }
 
+/**
+ * ⚡ Initialization Sequence (Non-UI)
+ * Called by main.js to ensure signal compositions and triggers are loaded on refresh
+ * priority: 3
+ */
+export function init() {
+    loadState();
+    console.log('[COMPOSER] Engine initialized (State Loaded)');
+}
+
 function saveState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(compositions));
+
+    // Also persist runtime state to prevent re-triggers on refresh
+    try {
+        const runtime = {
+            cooldowns: Array.from(cooldowns.entries()),
+            lastTriggeredState: Array.from(lastTriggeredState.entries())
+        };
+        localStorage.setItem(STORAGE_KEY + '_runtime', JSON.stringify(runtime));
+    } catch (e) {
+        console.warn('[COMPOSER] Failed to save runtime state', e);
+    }
+
     console.log('[COMPOSER] Saved', compositions.length, 'signals');
+}
+function saveMapping() {
+    try {
+        localStorage.setItem(STORAGE_KEY_MAPPING, JSON.stringify(Array.from(sigPosMapping.entries())));
+    } catch (e) { console.warn('[COMPOSER] Mapping save error', e); }
 }
 
 let stateLoaded = false;
@@ -1742,6 +2216,35 @@ function loadState() {
                 activeComposition = compositions.find(c => c.id === activeComposition.id) || null;
             }
         }
+
+        // Load runtime state
+        const rs = localStorage.getItem(STORAGE_KEY + '_runtime');
+        if (rs) {
+            try {
+                const runtime = JSON.parse(rs);
+                if (runtime.cooldowns) {
+                    cooldowns.clear();
+                    runtime.cooldowns.forEach(([k, v]) => cooldowns.set(k, v));
+                }
+                if (runtime.lastTriggeredState) {
+                    lastTriggeredState.clear();
+                    runtime.lastTriggeredState.forEach(([k, v]) => lastTriggeredState.set(k, v));
+                }
+                console.log('[COMPOSER] Restored runtime state');
+            } catch (re) {
+                console.warn('[COMPOSER] Failed to parse runtime state', re);
+            }
+        }
+
+        // Load Mapping
+        const ms = localStorage.getItem(STORAGE_KEY_MAPPING);
+        if (ms) {
+            try {
+                const mapData = JSON.parse(ms);
+                sigPosMapping = new Map(mapData);
+            } catch (e) { console.warn('[COMPOSER] Mapping parse error', e); }
+        }
+
         stateLoaded = true;
         console.log('[COMPOSER] Loaded', compositions.length, 'signals');
     } catch (e) {

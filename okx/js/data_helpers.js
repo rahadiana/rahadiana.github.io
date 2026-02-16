@@ -55,6 +55,11 @@ export function computeData(data, profile = 'AGGRESSIVE', timeframe = '15MENIT')
 
   // Raw data
   const price = raw.PRICE || sigRoot.PRICE || {};
+  // Normalize 24h change for consistency across modules
+  if (price.percent_change_24JAM === undefined && price.percent_change_24h !== undefined) {
+    price.percent_change_24JAM = price.percent_change_24h;
+  }
+
   const vol = raw.VOL || sigRoot.VOL || {};
   const freq = raw.FREQ || sigRoot.FREQ || {};
   const oiRaw = raw.OI || sigRoot.OI || {};
@@ -189,7 +194,7 @@ export function computeData(data, profile = 'AGGRESSIVE', timeframe = '15MENIT')
   // Build normalized data structure with correct paths
   const normalized = {
     raw: {
-      PRICE: (function() {
+      PRICE: (function () {
         const p = {
           last: price.last || 0,
           high: price.high || 0,

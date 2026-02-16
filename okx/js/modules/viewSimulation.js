@@ -64,6 +64,16 @@ function updateGuardStatus(coin) {
     }
 }
 
+/**
+ * ⚡ Initialization Sequence (Non-UI)
+ * Called by main.js to ensure simulation engine state is loaded on refresh
+ * priority: 2
+ */
+export function init() {
+    loadState();
+    console.log('[SIMULATION] Engine initialized (State Loaded)');
+}
+
 export function render(container) {
     loadState();
     syncLiveSubscriptions();
@@ -506,8 +516,8 @@ export function openPosition(side, metadata = {}) {
                 const waitMs = waitMin * 60 * 1000;
                 const timeSinceLastDca = Date.now() - lastDcaTime;
 
-                // ⚡ First DCA triggers immediately, subsequent ones respect cooldown
-                const cooldownPassed = isFirstDca || waitMs === 0 || timeSinceLastDca >= waitMs;
+                // Require configured wait before any DCA step (including first)
+                const cooldownPassed = (waitMs === 0) || (timeSinceLastDca >= waitMs);
 
                 if (!cooldownPassed) {
                     if (!metadata.silent) console.log(`[SIM] DCA Cooldown active for ${asset}. Wait: ${Utils.safeFixed((waitMs - timeSinceLastDca) / 1000, 0)}s`);
@@ -534,7 +544,7 @@ export function openPosition(side, metadata = {}) {
                 const currentAmount = existing.amount;
                 const newEntry = entryPrice; // Use validated entry price
 
-                    if (newEntry > 0 && currentEntry > 0) {
+                if (newEntry > 0 && currentEntry > 0) {
                     // Weighted Average Entry Price
                     // New Avg = ((Old Price * Old Amount) + (New Price * New Amount)) / (Total Amount)
                     const totalAmount = currentAmount + dcaSize;
@@ -1123,12 +1133,12 @@ export async function runSimulationEngine(marketState) {
                 const dcaEnabled = (p.config && p.config.dcaEnabled !== undefined) ? p.config.dcaEnabled : state.config.dcaEnabled;
                 const dcaMaxSteps = (p.config && p.config.dcaMaxSteps !== undefined) ? p.config.dcaMaxSteps : state.config.dcaMaxSteps;
 
-                    if (!dcaEnabled || p.dcaStep >= dcaMaxSteps) {
-                        console.log(`[SIM-TPSL] 🛑 ${p.coin} HIT SL! ROE: ${Utils.safeFixed(roe, 2)}% <= Target: -${targetSl}%`);
-                        setTimeout(() => closePosition(p.id, currentPrice, 'AUTO-SL'), 0);
-                    } else {
-                        console.log(`[SIM-TPSL] ${p.coin} SL triggered but DCA enabled (step ${p.dcaStep}/${dcaMaxSteps})`);
-                    }
+                if (!dcaEnabled || p.dcaStep >= dcaMaxSteps) {
+                    console.log(`[SIM-TPSL] 🛑 ${p.coin} HIT SL! ROE: ${Utils.safeFixed(roe, 2)}% <= Target: -${targetSl}%`);
+                    setTimeout(() => closePosition(p.id, currentPrice, 'AUTO-SL'), 0);
+                } else {
+                    console.log(`[SIM-TPSL] ${p.coin} SL triggered but DCA enabled (step ${p.dcaStep}/${dcaMaxSteps})`);
+                }
             }
 
             // SMART DCA TRIGGER (If ROE is negative) - uses Net ROE for consistency
@@ -1157,12 +1167,11 @@ export async function runSimulationEngine(marketState) {
                     const waitMs = dcaWaitMin * 60 * 1000;
                     const timeSinceLastDca = Date.now() - lastDcaTime;
 
-                    // ⚡ First DCA triggers immediately, subsequent ones respect cooldown
-                    const cooldownPassed = isFirstDca || waitMs === 0 || timeSinceLastDca >= waitMs;
+                    // Require configured wait before any DCA step (including first)
+                    const cooldownPassed = (waitMs === 0) || (timeSinceLastDca >= waitMs);
 
                     if (!cooldownPassed) {
-                        // Optionally log cooldown status (uncomment for debug)
-                        // console.log(`[SIM-DCA] ${p.coin} Cooldown: ${((waitMs - timeSinceLastDca) / Utils.safeFixed(1000), 0)}s remaining`);
+                        // Cooldown active; skip this DCA trigger
                     } else {
                         // Prevent double-trigger by marking position
                         if (!p._dcaPending) {
@@ -1281,7 +1290,7 @@ export async function runSimulationEngine(marketState) {
     posList.innerHTML = html;
 
     if (unrealizedEl) {
-    unrealizedEl.innerText = `${totalUnrealized >= 0 ? '+' : ''}$${Utils.safeFixed(totalUnrealized, 2)}`;
+        unrealizedEl.innerText = `${totalUnrealized >= 0 ? '+' : ''}$${Utils.safeFixed(totalUnrealized, 2)}`;
         unrealizedEl.className = `text-xl font-black ${totalUnrealized > 0 ? 'text-bb-green' : totalUnrealized < 0 ? 'text-bb-red' : 'text-bb-muted'}`;
     }
 
@@ -1343,7 +1352,9 @@ export function update() { }
 // Global exposure
 window.app = window.app || {};
 window.app.closeSimPosition = (id, currentPrice) => {
-    closePosition(id, currentPrice);
+    if (confirm('Close simulation position?')) {
+        closePosition(id, currentPrice);
+    }
 };
 
 window.app.editSimPositionSettings = (id) => {

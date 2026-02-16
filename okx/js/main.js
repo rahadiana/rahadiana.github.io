@@ -26,6 +26,9 @@ import * as ViewPortfolio from './modules/viewPortfolio.js';
 import './modules/domDelegates.js';
 import * as ViewRisk from './modules/viewRisk.js';
 import * as ViewOrderSim from './modules/viewOrderSim.js';
+import * as ViewOkxTrade from './modules/viewOkxTrade.js';
+import OkxClient from './okx_client.js';
+import GlobalSettings from './modules/globalSettings.js';
 import * as ViewSocial from './modules/viewSocial.js';
 import * as ViewInstitutional from './modules/viewInstitutional.js';
 import * as ViewComponents from './modules/viewComponents.js';
@@ -35,6 +38,21 @@ import { initAutoAttach } from './detectors/initHiddenLiquidity.js';
 // Configuration
 // const WS_URL = 'ws://localhost:8040';
 const WS_URL = 'wss://okx-ws.nusantaracode.com/';
+
+// Auto-apply saved OKX config at startup so stored keys/mode are used immediately
+try {
+    const cfgRaw = localStorage.getItem('okx_api_config_v1');
+    if (cfgRaw) {
+        const cfg = JSON.parse(cfgRaw);
+        if (cfg && cfg.key && cfg.secret && cfg.passphrase) {
+            try {
+                OkxClient.configure({ key: cfg.key, secret: cfg.secret, passphrase: cfg.passphrase, simulated: !!cfg.simulated });
+                // Do not mark as user-set; this is an automatic apply
+                window.dispatchEvent(new Event('okx-config-changed'));
+            } catch (e) { console.warn('Failed to auto-apply OKX config', e); }
+        }
+    }
+} catch (e) { }
 
 const VIEWS = {
     'GLOBAL': ViewGlobal,
@@ -58,6 +76,7 @@ const VIEWS = {
     'PORTFOLIO': ViewPortfolio,
     'RISK': ViewRisk,
     'ORDERS': ViewOrderSim,
+    'OKXTRADE': ViewOkxTrade,
     'INSTITUTIONAL': ViewInstitutional,
     'COMPONENTS': ViewComponents
 };
@@ -98,6 +117,9 @@ const viewContainer = document.getElementById('view-container');
 const tickerTape = document.getElementById('ticker-tape');
 const coinListContainer = document.getElementById('coin-list');
 const detailsSubnav = document.getElementById('details-subnav');
+const tradeModePill = document.getElementById('trade-mode-pill');
+const apiStatusLbl = document.getElementById('api-status');
+// settings button is shown per-view inside OKX Trade tab
 
 // ⭐ AGGRESSIVE MESH HEALTH MONITOR (3s reaction time)
 setInterval(() => {
@@ -175,6 +197,54 @@ setInterval(() => {
 // TAB MANAGER & UI LOGIC
 // ============================================
 
+// Trade indicator updater (SIM / REAL + API status + public ping latency)
+let _lastOkxPing = null;
+async function updateTradeIndicator(forcePing = false) {
+    try {
+        const mode = (localStorage.getItem('os_mode') || 'SIM');
+        const configured = OkxClient && typeof OkxClient.isConfigured === 'function' ? OkxClient.isConfigured() : false;
+        if (tradeModePill) {
+            tradeModePill.classList.remove('sim', 'real', 'ok', 'warn');
+            if (mode === 'REAL') {
+                tradeModePill.innerText = 'REAL';
+                tradeModePill.classList.add('real');
+                tradeModePill.classList.add(configured ? 'ok' : 'warn');
+            } else {
+                tradeModePill.innerText = 'SIM';
+                tradeModePill.classList.add('sim');
+            }
+        }
+
+        if (apiStatusLbl) {
+            apiStatusLbl.innerText = configured ? 'API: Connected' : 'API: Not Configured';
+        }
+
+        // occasional public-time ping for latency indicator
+        if (!_lastOkxPing || forcePing || (Date.now() - _lastOkxPing.time) > 5000) {
+            try {
+                const t0 = performance.now();
+                const r = await fetch('https://www.okx.com/api/v5/public/time');
+                await r.text();
+                const latency = Math.round(performance.now() - t0);
+                _lastOkxPing = { time: Date.now(), latency };
+                if (apiStatusLbl) apiStatusLbl.innerText = (OkxClient.isConfigured() ? 'API: Connected' : 'API: Not Configured') + ` · ping ${latency}ms`;
+            } catch (e) {
+                if (apiStatusLbl) apiStatusLbl.innerText = (OkxClient.isConfigured() ? 'API: Connected' : 'API: Not Configured') + ` · ping -`;
+            }
+        } else if (_lastOkxPing && apiStatusLbl) {
+            apiStatusLbl.innerText = (OkxClient.isConfigured() ? 'API: Connected' : 'API: Not Configured') + ` · ping ${_lastOkxPing.latency}ms`;
+        }
+    } catch (e) {
+        // swallow errors in UI updater
+    }
+}
+
+// start periodic update
+setInterval(() => updateTradeIndicator(false), 2500);
+updateTradeIndicator(true);
+// Listen for config changes to refresh indicator immediately
+window.addEventListener('okx-config-changed', () => updateTradeIndicator(true));
+
 function initTabs() {
     if (coinListContainer) {
         coinListContainer.addEventListener('click', (e) => {
@@ -231,11 +301,13 @@ function initTabs() {
         selectCoin(coin, true);
     });
 
-    switchTab('GLOBAL');
+    // Restore last active tab from localStorage, default to GLOBAL
+    const savedTab = localStorage.getItem('bb_active_tab') || 'GLOBAL';
+    switchTab(savedTab);
 }
 
 function switchTab(tabName) {
-    if (!['GLOBAL', 'STRATEGY', 'DETAILS', 'VISUAL', 'INFO', 'P2P', 'AUTOMATION', 'SIMULATION', 'COMPOSER', 'ALERTS', 'BACKTEST', 'PORTFOLIO', 'RISK', 'ORDERS'].includes(tabName)) return;
+    if (!['GLOBAL', 'STRATEGY', 'DETAILS', 'VISUAL', 'INFO', 'P2P', 'AUTOMATION', 'SIMULATION', 'COMPOSER', 'ALERTS', 'BACKTEST', 'PORTFOLIO', 'RISK', 'ORDERS', 'OKXTRADE'].includes(tabName)) return;
 
     // Lifecycle cleanup for outgoing tab/subtab
     if (currentTab === 'DETAILS' && tabName !== 'DETAILS') {
@@ -251,6 +323,8 @@ function switchTab(tabName) {
     }
 
     currentTab = tabName;
+    // Persist active tab to localStorage for auto-resume on refresh
+    try { localStorage.setItem('bb_active_tab', tabName); } catch (e) { }
 
     const tabNav = document.getElementById('tab-nav');
     if (tabNav) {
@@ -296,6 +370,10 @@ function switchTab(tabName) {
         detailsSubnav.classList.add('hidden');
         ViewOrderSim.render(viewContainer);
         if (typeof ViewOrderSim.init === 'function') ViewOrderSim.init();
+    } else if (tabName === 'OKXTRADE') {
+        detailsSubnav.classList.add('hidden');
+        ViewOkxTrade.render(viewContainer);
+        if (typeof ViewOkxTrade.init === 'function') ViewOkxTrade.init();
     } else if (tabName === 'AUTOMATION') {
         detailsSubnav.classList.add('hidden');
         ViewAutomation.render(viewContainer);
@@ -415,7 +493,11 @@ function updateCurrentView() {
     if (!selectedCoin || !marketState[selectedCoin]) return;
     const viewKey = currentTab === 'DETAILS' ? currentSubTab : currentTab;
     if (VIEWS[viewKey]) {
-        VIEWS[viewKey].update(marketState[selectedCoin], selectedProfile, selectedTimeframe);
+        if (typeof VIEWS[viewKey].update === 'function') {
+            VIEWS[viewKey].update(marketState[selectedCoin], selectedProfile, selectedTimeframe);
+        } else {
+            console.debug(`[VIEW] ${viewKey} has no update() method; skipping periodic update.`);
+        }
     }
 }
 
@@ -905,9 +987,27 @@ setInterval(() => {
     }
 }, 2000);
 
-// Init
-initTabs();
-connect();
+// Orchestrate Prioritized Initialization
+(async () => {
+    console.log('[MAIN] Starting prioritized initialization...');
+    try {
+        // Priority 1: OKX Trade (Credentials & Positions)
+        if (ViewOrderSim.init) await ViewOrderSim.init();
+
+        // Priority 2: Simulation Engine
+        if (ViewSimulation.init) ViewSimulation.init();
+
+        // Priority 3: Signal Composer Engine
+        if (ViewSignalComposer.init) ViewSignalComposer.init();
+
+        console.log('[MAIN] Prioritized initialization complete');
+    } catch (e) {
+        console.error('[MAIN] Initialization error', e);
+    }
+
+    initTabs();
+    connect();
+})();
 try {
     // Auto-attach hidden-liquidity detector to top coins (safe, idempotent)
     initAutoAttach({ topN: 8 });
@@ -917,3 +1017,18 @@ try {
 window.app = window.app || {};
 window.app.selectCoin = (coin) => selectCoin(coin, true);
 window.dashboardNavigate = (coin) => selectCoin(coin, true);
+
+// Note: connect() is already called in the async init block above
+
+// ⭐ AUTO-RESUME: If OKX API credentials exist, auto-connect on load
+try {
+    if (OkxClient.isConfigured()) {
+        console.log('[AUTO-RESUME] OKX credentials found — auto-connecting...');
+        // Small delay to let the DOM + WS initialize first
+        setTimeout(() => {
+            window.dispatchEvent(new Event('okx-config-changed'));
+        }, 1500);
+    }
+} catch (e) {
+    console.warn('[AUTO-RESUME] OKX auto-connect failed', e);
+}
