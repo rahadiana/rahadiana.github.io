@@ -117,13 +117,7 @@ const OkxClient = {
 	},
 	getConfig() { return _readConfig(); },
 	isConfigured() { const c = _readConfig(); return !!(c && c.key && c.secret && c.passphrase); },
-	clearConfig() {
-		localStorage.removeItem(STORAGE_KEY);
-		localStorage.removeItem(STORAGE_KEY + '_demo');
-		localStorage.removeItem('okx_api_config_v1_demo'); // fallback variant seen in readConfig
-		_apiInstance = null;
-		window.dispatchEvent(new Event('okx-config-changed'));
-	},
+	clearConfig() { localStorage.removeItem(STORAGE_KEY); _apiInstance = null; window.dispatchEvent(new Event('okx-config-changed')); },
 
 	// REST delegations — always use privateAPI.js instance
 	async request(method, path, opts = {}) {
@@ -539,16 +533,18 @@ OkxClient.closePositionBy = async function ({ instId, tdMode, posSide = 'net', s
 	if (!instId) throw new Error('instId is required');
 	if (!tdMode) throw new Error('tdMode is required');
 
+	// ⚡ Helper to perform an attempt and throw a retryable error on business failure
 	const attempt = async (p) => {
 		const res = await this.post('/api/v5/trade/close-position', p);
 		if (res && res.code === '0') return res;
 		const msg = res.msg || res.message || `OKX Error ${res.code}`;
 		const err = new Error(msg);
 		err.code = res.code;
-		err.body = res;
+		err.body = res; // Attach response for retry detection
 		throw err;
 	};
 
+	// ⚡ 1. Initial Detection & Payload Prep
 	let detectedPosSide = undefined;
 	try {
 		const now = Date.now();
@@ -559,49 +555,74 @@ OkxClient.closePositionBy = async function ({ instId, tdMode, posSide = 'net', s
 			_posModeCache = posMode;
 			_posModeCacheTime = now;
 			console.debug('[OkxClient] detected posMode:', posMode);
-			if (acfg?.data?.[0]) console.debug('[OkxClient] raw config:', JSON.stringify(acfg.data[0]));
 		}
+
 		if (posMode === 'long_short') {
 			const s = String(posSide || '').toLowerCase();
 			detectedPosSide = (s === 'long' || s === 'buy' || s === 'b' || s.includes('long')) ? 'long' : 'short';
 		}
-	} catch (e) { console.warn('[OkxClient] posMode detection failed', e); }
+	} catch (e) {
+		console.warn('[OkxClient] posMode detection failed, proceeding with inference', e);
+	}
 
 	const payload = { instId, mgnMode: tdMode };
 	if (detectedPosSide) payload.posSide = detectedPosSide;
 	if (sz) payload.sz = String(sz);
 
 	try {
-		const res = await attempt(payload);
+		const res = await this.post('/api/v5/trade/close-position', payload);
 		this.clearCache();
+
+		if (res && res.code !== '0') {
+			// Check for posSide error even in success-envelope
+			if (res.code === '51000' || (res.msg || '').toLowerCase().includes('posside')) {
+				throw { body: res };
+			}
+			const msg = res.msg || res.message || `OKX Error ${res.code}`;
+			const err = new Error(msg);
+			err.code = res.code;
+			err.body = res; // ⚡ Attach body for retry logic
+			err.data = res.data;
+			throw err;
+		}
 		return res;
 	} catch (err) {
-		const data = err.body || {};
-		const code = String(data.code || '');
-		const msg = String(data.msg || '').toLowerCase();
+		// ⚡ ROBUST RETRY LOGIC for posSide parameter issue (51000)
+		try {
+			const data = err && err.body ? err.body : null;
+			const code = data ? String(data.code || (data.data && data.data[0] ? data.data[0].sCode : '')) : '';
+			const msg = data ? String(data.msg || (data.data && data.data[0] ? data.data[0].sMsg : '')) : '';
 
-		if (code !== '51000' && !msg.includes('posside')) throw err;
+			if (code === '51000' || msg.toLowerCase().includes('posside')) {
+				console.warn('[OkxClient] closePositionBy got posSide error, attempting fallbacks', msg);
+				_posModeCache = null; // Invalidate cache on posSide error
 
-		console.warn('[OkxClient] closePositionBy got posSide error, entering sequential fallback chain...', msg);
-		_posModeCache = null;
+				// Fallback 1: If posSide was missing, add it
+				if (!payload.posSide) {
+					const s = String(posSide || '').toLowerCase();
+					payload.posSide = (s === 'long' || s === 'buy' || s === 'b' || s.includes('long')) ? 'long' : 'short';
+					console.debug('[OkxClient] retrying close-position with added posSide:', payload.posSide);
+					const r2 = await this.post('/api/v5/trade/close-position', payload);
+					if (r2 && r2.code === '0') return r2;
 
-		// ⚡ Step A: Try WITHOUT posSide
-		if (payload.posSide) {
-			console.debug('[OkxClient] Fallback A: retrying WITHOUT posSide');
-			const pA = { instId, mgnMode: tdMode, sz: payload.sz };
-			try { return await attempt(pA); } catch (e) { }
-		}
+					// If it still failed, try the OTHER side just in case detection was inverted
+					const other = (payload.posSide === 'long') ? 'short' : 'long';
+					console.debug('[OkxClient] retry 1 failed, trying opposite posSide:', other);
+					payload.posSide = other;
+					const r3 = await this.post('/api/v5/trade/close-position', payload);
+					if (r3 && r3.code === '0') return r3;
+				}
+				// Fallback 2: If posSide was present, remove it
+				else {
+					const clone = Object.assign({}, payload);
+					delete clone.posSide;
+					console.debug('[OkxClient] retrying close-position without posSide');
+					const r4 = await this.post('/api/v5/trade/close-position', clone);
+					if (r4 && r4.code === '0') return r4;
+				}
+			}
+		} catch (e) { console.warn('[OkxClient] closePositionBy retry logic failed', e); }
 
-		// ⚡ Step B & C: Try both Hedge sides systematically
-		const sides = ['short', 'long'];
-		for (const s of sides) {
-			if (s === payload.posSide) continue;
-			console.debug(`[OkxClient] Fallback: retrying with posSide=${s}`);
-			const p = { instId, mgnMode: tdMode, sz: payload.sz, posSide: s };
-			try { return await attempt(p); } catch (e) { }
-		}
-
-		console.error('[OkxClient] All close-position fallbacks exhausted.');
 		throw err;
 	}
 };
@@ -882,3 +903,4 @@ try {
 		console.debug('[OkxClient] exposed on window.OkxClient for debugging');
 	}
 } catch (e) { }
+

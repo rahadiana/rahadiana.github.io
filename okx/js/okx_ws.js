@@ -1,7 +1,7 @@
 import OkxClient from './okx_client.js';
 
 const OKX_WS_PUBLIC = 'wss://wspri.okx.com:8443/ws/v5/ipublic';
-const OKX_WS_PRIVATE = 'wss://ws.okx.com:8443/ws/v5/private';
+const OKX_WS_PRIVATE = 'wss://wspri.okx.com:8443/ws/v5/private';
 const OKX_WS_PRIVATE_SIM = 'wss://wspap.okx.com:8443/ws/v5/private?brokerId=9999';
 
 let wsPublic = null;

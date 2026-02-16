@@ -489,6 +489,14 @@ function updateCurrentView() {
         if (typeof ViewAlerts.update === 'function') ViewAlerts.update(marketState, selectedProfile, selectedTimeframe);
         return;
     }
+    if (currentTab === 'ORDERS') {
+        ViewOrderSim.update(marketState[selectedCoin], selectedProfile, selectedTimeframe);
+        return;
+    }
+    if (currentTab === 'COMPOSER') {
+        ViewSignalComposer.update(marketState[selectedCoin], selectedProfile, selectedTimeframe);
+        return;
+    }
 
     if (!selectedCoin || !marketState[selectedCoin]) return;
     const viewKey = currentTab === 'DETAILS' ? currentSubTab : currentTab;

@@ -123,7 +123,10 @@ function renderComponentRow(comp, data) {
             valueClass = value ? 'text-bb-green font-bold' : 'text-bb-red font-bold';
         } else if (typeof value === 'string') {
             displayValue = value;
-            valueClass = 'text-white';
+            if (value.includes('SHORT')) valueClass = 'text-bb-red font-bold';
+            else if (value.includes('LONG')) valueClass = 'text-bb-green font-bold';
+            else if (value === 'BALANCED') valueClass = 'text-bb-muted font-bold';
+            else valueClass = 'text-white';
         } else if (typeof value === 'number') {
             if (unit === '%') {
                 displayValue = `${Utils.safeFixed(value, 2)}%`;

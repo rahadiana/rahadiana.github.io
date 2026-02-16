@@ -267,10 +267,28 @@ export function computeData(data, profile = 'AGGRESSIVE', timeframe = '15MENIT')
         })(),
         percentile: lsrRaw.summary?.percentile || lsrRaw.percentile || 50
       },
-      LIQ: {
-        liqRate: tfSignals.derivatives?.liquidationCascade?.normalizedScore || 0,
-        dominantSide: 'NONE'
-      },
+      LIQ: (() => {
+        const cascade = tfSignals.derivatives?.liquidationCascade;
+        let side = 'BALANCED';
+
+        // Map BUY(Shorts Liquidated) -> SHORT LIQ, SELL(Longs Liquidated) -> LONG LIQ
+        if (cascade && cascade.direction === 'BUY') side = 'SHORT LIQ';
+        else if (cascade && cascade.direction === 'SELL') side = 'LONG LIQ';
+
+        const rawLiq = data.raw?.LIQ || {};
+        // Fallback to raw data dominant side if signal side is still BALANCED
+        if (side === 'BALANCED' && rawLiq.dominantSide) {
+          const rawSide = rawLiq.dominantSide.toUpperCase();
+          if (rawSide !== 'NONE' && rawSide !== 'N/A' && rawSide !== 'BALANCED') {
+            side = rawSide.includes('LIQ') ? rawSide : `${rawSide} LIQ`;
+          }
+        }
+
+        return {
+          liqRate: cascade?.normalizedScore || rawLiq.liqRate || 0,
+          dominantSide: side
+        };
+      })(),
       ORDERBOOK: {
         imbalance: (() => {
           const bids = obRaw.bidDepth || 0;

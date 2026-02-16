@@ -114,7 +114,7 @@ export const SIGNAL_COMPONENTS = {
 
     // ═══════════════════ LIQUIDATIONS ═══════════════════
     LIQ_RATE: { category: 'LIQ', name: 'Liq Rate', icon: '💥', path: 'raw.LIQ.liqRate', operators: ['>', '<'], defaultThreshold: 2.0, description: 'Liquidation intensity' },
-    LIQ_DOMINANT: { category: 'LIQ', name: 'Liq Side', icon: '🎯', path: 'raw.LIQ.dominantSide', operators: ['==', '!='], defaultThreshold: 'LONG', valueType: 'select', options: ['LONG', 'SHORT', 'NONE'], description: 'Dominant liq side' },
+    LIQ_DOMINANT: { category: 'LIQ', name: 'Liq Side', icon: '🎯', path: 'raw.LIQ.dominantSide', operators: ['==', '!='], defaultThreshold: 'BALANCED', valueType: 'select', options: ['LONG LIQ', 'SHORT LIQ', 'BALANCED'], description: 'Dominant liq side' },
 
     // ═══════════════════ MASTER SIGNAL ═══════════════════
     MASTER_SCORE: { category: 'MASTER', name: 'Master Score', icon: '🎯', path: 'signals.masterSignal.normalizedScore', operators: ['>', '<', '>=', '<='], defaultThreshold: 65, description: 'Composite score 0-100' },
@@ -253,8 +253,8 @@ const PRESET_TEMPLATES = {
 
     // ═══════════════════ LIQUIDATION ═══════════════════
     LIQ_PLAY: { name: '💥 Liquidation', description: 'Trade liquidation cascade', conditions: [{ component: 'LIQ_RATE', operator: '>', value: 3.0, weight: 2 }, { component: 'VOL_SPIKE_1M', operator: '>', value: 3.0, weight: 1.5 }], logic: 'AND', cooldown: 120, biasLogic: 'CONTRARIAN' },
-    LIQ_LONG_SQUEEZE: { name: '🔻 Long Squeeze', description: 'Longs getting liquidated', conditions: [{ component: 'LIQ_DOMINANT', operator: '==', value: 'LONG', weight: 2 }, { component: 'LIQ_RATE', operator: '>', value: 2.0, weight: 1.5 }, { component: 'PRICE_CHANGE_5M', operator: '<', value: -1.0, weight: 1 }], logic: 'AND', cooldown: 120, biasLogic: 'CONTRARIAN' },
-    LIQ_SHORT_SQUEEZE: { name: '🔺 Short Squeeze', description: 'Shorts getting rekt', conditions: [{ component: 'LIQ_DOMINANT', operator: '==', value: 'SHORT', weight: 2 }, { component: 'LIQ_RATE', operator: '>', value: 2.0, weight: 1.5 }, { component: 'PRICE_CHANGE_5M', operator: '>', value: 1.0, weight: 1 }], logic: 'AND', cooldown: 120, biasLogic: 'LONG' },
+    LIQ_LONG_SQUEEZE: { name: '🔻 Long Squeeze', description: 'Longs getting liquidated', conditions: [{ component: 'LIQ_DOMINANT', operator: '==', value: 'LONG LIQ', weight: 2 }, { component: 'LIQ_RATE', operator: '>', value: 2.0, weight: 1.5 }, { component: 'PRICE_CHANGE_5M', operator: '<', value: -1.0, weight: 1 }], logic: 'AND', cooldown: 120, biasLogic: 'CONTRARIAN' },
+    LIQ_SHORT_SQUEEZE: { name: '🔺 Short Squeeze', description: 'Shorts getting rekt', conditions: [{ component: 'LIQ_DOMINANT', operator: '==', value: 'SHORT LIQ', weight: 2 }, { component: 'LIQ_RATE', operator: '>', value: 2.0, weight: 1.5 }, { component: 'PRICE_CHANGE_5M', operator: '>', value: 1.0, weight: 1 }], logic: 'AND', cooldown: 120, biasLogic: 'LONG' },
 
     // ═══════════════════ MICROSTRUCTURE ═══════════════════
     TOXIC_FLOW: { name: '☠️ Toxic Flow', description: 'Informed trading detected', conditions: [{ component: 'MICRO_VPIN', operator: '>', value: 0.7, weight: 2 }, { component: 'MICRO_TOXICITY', operator: '>', value: 0.6, weight: 1.5 }, { component: 'VOL_SPIKE_5M', operator: '>', value: 1.5, weight: 1 }], logic: 'AND', cooldown: 180 },
@@ -294,7 +294,7 @@ const PRESET_TEMPLATES = {
     STRAT_DIVERGE: { name: '📈 Price-Flow Divergence', description: 'Harga turun tapi Net Flow naik tajam (Hidden Accumulation) atau sebaliknya. Lev: 5-10x, Hold: 1h-2h', conditions: [{ component: 'PRICE_CHANGE_24H', operator: '<', value: -2, weight: 1 }, { component: 'SYN_FLOW_15M', operator: '>', value: 20000, weight: 2 }], logic: 'AND', cooldown: 300, biasLogic: 'LONG' },
     STRAT_ICEBERG: { name: '🧊 Iceberg Detection', description: 'Pesanan raksasa dipecah-pecah di order book (OFI dan Lambda). Lev: 10x, Hold: 30m-1h', conditions: [{ component: 'OB_IMBALANCE', operator: 'ABS>', value: 0.5, weight: 2 }, { component: 'MICRO_LAMBDA', operator: '>', value: 0.01, weight: 1.5 }, { component: 'ENH_INST', operator: '>', value: 0.3, weight: 1 }], logic: 'AND', cooldown: 300 },
     STRAT_ABSORB: { name: '🧲 Whale Absorption', description: 'Volume meledak tapi harga tidak bergerak (Paku) + Book Resilience tinggi. Paus menyerap ritel. Lev: 10x, Hold: 1h-3h', conditions: [{ component: 'SYN_CHAR', operator: 'CONTAINS', value: 'ABSORPTION', weight: 2 }, { component: 'SYN_FLOW_15M', operator: 'ABS>', value: 15000, weight: 1.5 }, { component: 'ENH_BOOK_RES', operator: '>', value: 0.5, weight: 1.5 }], logic: 'AND', cooldown: 300 },
-    STRAT_SWEEP: { name: '🧹 Liquidity Sweep', description: 'Pembersihan likuiditas (wick panjang) sebelum harga berbalik. Snipe di atas/bawah konsolidasi. Lev: 20x, Hold: 5m-15m', conditions: [{ component: 'LSR_ZSCORE', operator: 'ABS>', value: 2.5, weight: 2 }, { component: 'DASH_LIQ', operator: '>', value: 80, weight: 1.5 }], logic: 'AND', cooldown: 180 },
+    STRAT_SWEEP: { name: '🧹 Liquidity Sweep', description: 'Pembersihan likuiditas (wick panjang) sebelum harga berbalik. Snipe di atas/bawah konsolidasi. Lev: 20x, Hold: 5m-15m', conditions: [{ component: 'LSR_ZSCORE', operator: 'ABS>', value: 2.5, weight: 2 }, { component: 'LIQ_RATE', operator: '>', value: 2.0, weight: 1.5 }], logic: 'AND', cooldown: 180 },
     STRAT_TRAP: { name: '🚨 Liquidation Reversal', description: 'Titik jenuh likuidasi ritel (Absorption). Masuk saat Washout dengan CVD berlawanan. Lev: 10x, Hold: 1h-2h', conditions: [{ component: 'SYN_CHAR', operator: 'CONTAINS', value: 'ABSORPTION', weight: 2 }, { component: 'LSR_ZSCORE', operator: 'ABS>', value: 2.0, weight: 1.5 }], logic: 'OR', cooldown: 300, biasLogic: 'CONTRARIAN' },
     STRAT_VOL: { name: '🌩️ Volatility Breakout', description: 'Transisi konsolidasi sepi ke ledakan volatilitas + Volume Spike + Momentum Quality. Lev: 3-5x, Hold: 4h-8h', conditions: [{ component: 'ENH_MOM_QUALITY', operator: '>', value: 0.4, weight: 2 }, { component: 'VOL_SPIKE_15M', operator: '>', value: 1.5, weight: 1.5 }], logic: 'AND', cooldown: 600 },
     STRAT_EFFICIENCY: { name: '🧬 Efficiency-Momentum', description: 'Efficiency, momentum quality, dan pressure acceleration. Harga bergerak efisien dengan momentum bersih. Lev: 5-10x, Hold: 30m-2h', conditions: [{ component: 'SYN_EFF_15M', operator: '>', value: 0.8, weight: 2 }, { component: 'SYN_VEL_15M', operator: '>', value: 3000, weight: 1.5 }, { component: 'ENH_MOM_QUALITY', operator: '>', value: 0.5, weight: 1.5 }], logic: 'AND', cooldown: 300 },
@@ -323,6 +323,7 @@ let selectedCoin = null;
 let composerProfile = 'GLOBAL';   // GLOBAL, AGGRESSIVE, MODERATE, CONSERVATIVE, SCALPER
 let composerTimeframe = 'GLOBAL'; // GLOBAL, 1MENIT, 5MENIT, 15MENIT, 30MENIT, 1JAM
 let currentDetailTab = 'MAIN';
+let scannerSignalId = null;
 let sigPosMapping = new Map(); // sigId -> array of coins
 const STORAGE_KEY_MAPPING = STORAGE_KEY + '_mapping';
 
@@ -784,7 +785,9 @@ function renderCoinDetail(coin) {
             </div>
 
             <!-- DETAIL CONTENT -->
-            ${currentDetailTab === 'COMPOSER' ? renderComposerDetail(coin, data) : renderActiveSignalsForCoin(coin, data)}
+            ${currentDetailTab === 'COMPOSER' ? renderComposerDetail(coin, data) :
+            currentDetailTab === 'SIGNALS' ? renderSignalAnalysis(coin, data) :
+                renderActiveSignalsForCoin(coin, data)}
         </div>
     `;
 }
@@ -1024,6 +1027,69 @@ export function attachComposerPanelEvents(slotEl) {
         btn.classList.add('bg-bb-gold', 'text-black');
         renderComposerComponentsList(list, coin, cat || 'ALL');
     });
+}
+
+function renderSignalAnalysis(coin, data) {
+    if (!activeComposition) return `<div class="p-4 text-center text-bb-muted text-[9px]">Select a signal in Editor to analyze</div>`;
+
+    const res = evaluateSignal(activeComposition, coin, data);
+    const logicLabel = activeComposition.logic || 'AND';
+
+    return `
+        <div class="space-y-3">
+            <div class="p-2 rounded bg-black/40 border border-bb-gold/20 shadow-inner">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-[9px] font-black text-bb-gold uppercase">Current Signal Analysis</span>
+                    <span class="px-1.5 py-0.5 rounded text-[8px] font-bold ${res.triggered ? 'bg-bb-green/20 text-bb-green' : 'bg-bb-red/20 text-bb-red'}">
+                        ${res.triggered ? 'TRIGGERED' : 'FAILED'}
+                    </span>
+                </div>
+                
+                <div class="flex items-center justify-between p-2 bg-white/5 rounded border border-white/5 mb-2">
+                    <div class="text-[10px] text-white font-bold">${activeComposition.name}</div>
+                    <div class="text-right">
+                        <div class="text-[10px] text-bb-gold font-black">${Utils.safeFixed(res.score ?? 0, 1)}%</div>
+                        <div class="text-[7px] text-bb-muted uppercase">${logicLabel} LOGIC</div>
+                    </div>
+                </div>
+
+                <div class="space-y-1">
+                    ${(res.results || []).map((r, i) => {
+        const cond = activeComposition.conditions[i];
+        const comp = SIGNAL_COMPONENTS[cond.component];
+        const unit = detectUnitFromPath(comp?.path);
+        const formatVal = (v) => {
+            if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';
+            if (typeof v === 'number') return Utils.safeFixed(v, comp?.displayDigits || 2) + unit;
+            return v;
+        };
+
+        return `
+                            <div class="flex items-center gap-2 p-1.5 rounded bg-black/20 border ${r.passed ? 'border-bb-green/10' : 'border-bb-red/10'} text-[8px]">
+                                <span class="text-xs shrink-0">${comp?.icon || '❓'}</span>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex justify-between items-center mb-0.5">
+                                        <span class="font-bold text-white truncate">${comp?.name || 'Unknown'}</span>
+                                        <span class="font-black ${r.passed ? 'text-bb-green' : 'text-bb-red'}">${r.passed ? 'PASS' : 'FAIL'}</span>
+                                    </div>
+                                    <div class="flex items-center justify-between text-[7px] text-bb-muted">
+                                        <span>Target: ${cond.operator} ${formatVal(cond.value)}</span>
+                                        <span class="text-white">Actual: ${formatVal(r.actual)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+    }).join('')}
+                </div>
+                
+                ${activeComposition.logic === 'WEIGHTED' ? `
+                    <div class="mt-2 pt-2 border-t border-white/5 text-[7px] text-bb-muted">
+                        * Threshold for trigger: >= ${activeComposition.minScore || 70}% weighted score
+                    </div>
+                ` : ''}
+            </div>
+        </div>
+    `;
 }
 
 function renderActiveSignalsForCoin(coin, rawData) {
@@ -1318,19 +1384,45 @@ function renderPalette(search = '', category = 'ALL') {
 function renderScannerResults() {
     if (!scannerResults.length) return `<div class="text-center py-8 text-bb-muted/50 text-[9px]">Select a signal and click SCAN ALL</div>`;
 
+    const sig = compositions.find(c => c.id == scannerSignalId);
+    const conditions = sig?.conditions || [];
+
+    // Helper to format values consistently
+    const formatRowVal = (actual, comp) => {
+        if (actual === undefined || actual === null) return '-';
+        const unit = detectUnitFromPath(comp?.path);
+        if (typeof actual === 'number') return Utils.safeFixed(actual, comp?.displayDigits || 2) + unit;
+        return String(actual);
+    };
+
     return `
         <table class="w-full text-[9px]">
-            <thead class="sticky top-0 bg-bb-black"><tr class="text-bb-muted border-b border-white/10">
-                <th class="text-left p-1.5">Coin</th><th class="text-center p-1.5">Bias</th><th class="text-center p-1.5">Score</th><th class="text-right p-1.5">Price</th><th class="text-right p-1.5">1h%</th>
-            </tr></thead>
+            <thead class="sticky top-0 bg-bb-black">
+                <tr class="text-bb-muted border-b border-white/10 uppercase font-black text-[7px]">
+                    <th class="text-left p-1.5">Coin</th>
+                    <th class="text-center p-1.5">Bias</th>
+                    <th class="text-center p-1.5">Score</th>
+                    ${conditions.map(c => {
+        const comp = SIGNAL_COMPONENTS[c.component];
+        return `<th class="text-right p-1.5">${comp?.name || 'Metric'}</th>`;
+    }).join('')}
+                </tr>
+            </thead>
             <tbody>
                 ${scannerResults.map(r => `
-                    <tr class="border-b border-white/5 hover:bg-white/5 cursor-pointer" data-coin="${r.coin}">
+                    <tr class="scanner-row border-b border-white/5 hover:bg-white/5 cursor-pointer" data-coin="${r.coin}">
                         <td class="p-1.5 font-bold text-white">${r.coin.replace('-USDT', '')}</td>
-                        <td class="text-center p-1.5"><span class="px-1.5 py-0.5 rounded ${r.bias === 'LONG' ? 'bg-bb-green/20 text-bb-green' : 'bg-bb-red/20 text-bb-red'}">${r.bias}</span></td>
+                        <td class="text-center p-1.5">
+                            <span class="px-1.5 py-0.5 rounded ${r.bias === 'LONG' ? 'bg-bb-green/20 text-bb-green' : 'bg-bb-red/20 text-bb-red'}">
+                                ${r.bias}
+                            </span>
+                        </td>
                         <td class="text-center p-1.5 text-bb-gold font-bold">${Utils.safeFixed(r.score ?? 0, 0)}%</td>
-                        <td class="text-right p-1.5 text-white">$${Utils.safeFixed(r.price ?? 0, 2)}</td>
-                        <td class="text-right p-1.5 ${r.change1h >= 0 ? 'text-bb-green' : 'text-bb-red'}">${r.change1h >= 0 ? '+' : ''}${Utils.safeFixed(r.change1h ?? 0, 2)}%</td>
+                        ${conditions.map((c, idx) => {
+        const comp = SIGNAL_COMPONENTS[c.component];
+        const res = r.evaluation?.[idx];
+        return `<td class="text-right p-1.5 font-mono ${res?.passed ? 'text-white' : 'text-bb-muted/30'}">${formatRowVal(res?.actual, comp)}</td>`;
+    }).join('')}
                     </tr>
                 `).join('')}
             </tbody>
@@ -1414,8 +1506,14 @@ function attachEvents(container) {
     });
 
     // Coin row selection
-    container.querySelectorAll('.coin-row').forEach(row => {
-        row.addEventListener('click', () => { selectedCoin = row.dataset.coin; render(container); });
+    container.querySelectorAll('.coin-row, .scanner-row').forEach(row => {
+        row.addEventListener('click', () => {
+            selectedCoin = row.dataset.coin;
+            if (row.classList.contains('scanner-row')) {
+                currentDetailTab = 'SIGNALS';
+            }
+            render(container);
+        });
     });
 
     // Scanner
@@ -1427,6 +1525,8 @@ function attachEvents(container) {
 
         const mkt = window.marketState || {};
         scannerResults = [];
+        scannerSignalId = sig.id;
+
         Object.keys(mkt).forEach(coin => {
             // Use signal's own profile/timeframe settings
             const { profile, timeframe } = getSignalProfileTimeframe(sig);
@@ -1438,7 +1538,8 @@ function attachEvents(container) {
                     bias: res.bias,
                     score: res.score,
                     price: data.raw?.PRICE?.last || 0,
-                    change1h: data.raw?.PRICE?.percent_change_1JAM || 0
+                    change1h: data.raw?.PRICE?.percent_change_1JAM || 0,
+                    evaluation: res.results // Store condition results for dynamic columns
                 });
             }
         });

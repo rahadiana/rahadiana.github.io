@@ -11,6 +11,7 @@ import TradeSafety from './tradeSafety.js';
 
 let _realPollTimer = null;
 const _realCancelPending = new Set();
+const _pendingCloses = new Set();
 let _posPollTimer = null;
 let _lastOkxPositions = [];
 let _lastAccountBalance = 0;
@@ -317,6 +318,22 @@ export function render(container) {
   if (btnBuy) btnBuy.addEventListener('click', () => { hiddenSide.value = 'buy'; hiddenPlace.click(); });
   if (btnSell) btnSell.addEventListener('click', () => { hiddenSide.value = 'sell'; hiddenPlace.click(); });
 
+  // Mode Switching Logic
+  const modeSim = document.getElementById('os-mode-sim');
+  const modeReal = document.getElementById('os-mode-real');
+  const savedMode = localStorage.getItem('os_mode') || 'SIM';
+  if (modeSim && modeReal) {
+    if (savedMode === 'REAL') modeReal.checked = true; else modeSim.checked = true;
+    const modeHandler = (e) => {
+      localStorage.setItem('os_mode', e.target.value);
+      updateModeIndicator();
+      showToast(`Mode switched to ${e.target.value}`, 'info');
+      if (e.target.value === 'REAL' && !OkxClient.isConfigured()) showToast('Note: API not configured for REAL mode', 'warning');
+    };
+    modeSim.addEventListener('change', modeHandler);
+    modeReal.addEventListener('change', modeHandler);
+  }
+
   // Load state for show composer toggle
   try {
     const chk = document.getElementById('os-show-composer');
@@ -399,8 +416,35 @@ export function render(container) {
   // ensurePrivateSubscription();
 
   // update detected mode display on load
-  updateModeIndicator();
   _startPosPolling();
+}
+
+/**
+ * ⚡ View Update Handler
+ * Called by main.js heartbeat every 500ms
+ */
+export function update(snapshot, profile, timeframe) {
+  // Update coin list if it's empty or out of sync
+  const sel = document.getElementById('os-coin');
+  if (sel) {
+    const currentCount = sel.options.length;
+    const engineCoins = Object.keys(BacktestEngine.data || {});
+    const marketCoins = window.marketState ? Object.keys(window.marketState) : [];
+    const totalAvailable = new Set([...engineCoins, ...marketCoins]).size;
+
+    // Refresh if empty or if new coins found (basic sync check)
+    // We add 2 to account for '--- ALL ASSETS ---' and any placeholder
+    if (currentCount <= 1 || (totalAvailable > 0 && currentCount < totalAvailable)) {
+      populateCoins();
+    }
+  }
+
+  // Sync mode displays
+  updateModeIndicator();
+  updateApiButtons();
+
+  // Periodic positions/account refresh if needed (already has polling but good to be sure)
+  // loadRealPositions() and loadAccountInfo() have internal throttling
 }
 
 async function ensurePrivateSubscription() {
@@ -522,18 +566,20 @@ async function ensurePrivateSubscription() {
 
 function updateModeIndicator() {
   const display = document.getElementById('os-mode-display');
-  // const sel = document.getElementById('os-force-mode'); // Hidden now
-
   try {
+    const uiMode = localStorage.getItem('os_mode') || 'SIM';
     const cfg = OkxClient.getConfig() || {};
-    // Logic to detect mode
-    const isSimulated = (cfg && typeof cfg.simulated !== 'undefined') ? cfg.simulated : (localStorage.getItem('okx_demo_detected') === '1');
-    const detected = isSimulated ? 'Demo' : 'Live';
+    const apiMode = cfg.simulated ? 'Demo' : 'Live';
+    const connected = OkxClient.isConfigured();
 
-    // Update simple display badge
     if (display) {
-      if (detected === 'Live') { display.innerText = 'LIVE'; display.className = 'trade-pill real ok'; }
-      else { display.innerText = 'SIM'; display.className = 'trade-pill sim'; }
+      if (uiMode === 'REAL') {
+        display.innerText = connected ? `REAL (${apiMode})` : 'REAL (OFF)';
+        display.className = connected ? 'trade-pill real ok' : 'trade-pill real off';
+      } else {
+        display.innerText = 'SIMULATOR';
+        display.className = 'trade-pill sim';
+      }
     }
   } catch (e) {
     if (display) { display.innerText = '?'; display.className = 'trade-pill sim'; }
@@ -606,16 +652,32 @@ function applyForceMode(val) {
 }
 
 function populateCoins() {
-  const sel = document.getElementById('os-coin'); sel.innerHTML = '';
-  const coins = Object.keys(BacktestEngine.data || {});
-  if (coins.length === 0) { const o = document.createElement('option'); o.value = '__none'; o.innerText = '(no data)'; sel.appendChild(o); }
-  else {
+  const sel = document.getElementById('os-coin'); if (!sel) return;
+  const currentVal = sel.value;
+  sel.innerHTML = '';
+
+  // Merge coins from BacktestEngine and MarketState
+  const engineCoins = Object.keys(BacktestEngine.data || {});
+  const marketCoins = window.marketState ? Object.keys(window.marketState) : [];
+  const allCoinsSet = new Set([...engineCoins, ...marketCoins]);
+  const allCoins = Array.from(allCoinsSet).sort();
+
+  if (allCoins.length === 0) {
+    const o = document.createElement('option'); o.value = '__none'; o.innerText = '(no data)'; sel.appendChild(o);
+  } else {
     const allOpt = document.createElement('option');
     allOpt.value = 'ALL';
     allOpt.innerText = '--- ALL ASSETS ---';
     sel.appendChild(allOpt);
+
+    for (const c of allCoins) {
+      const o = document.createElement('option');
+      o.value = c;
+      o.innerText = c;
+      if (c === currentVal) o.selected = true;
+      sel.appendChild(o);
+    }
   }
-  for (const c of coins) { const o = document.createElement('option'); o.value = c; o.innerText = c; sel.appendChild(o); }
 }
 
 async function placeOrder() {
@@ -642,7 +704,6 @@ async function placeOrder() {
     // Enforce max real open positions if configured
     try {
       const maxReal = parseInt(localStorage.getItem('os_max_real_positions') || localStorage.getItem('os_alloc_max') || '5', 10) || 5;
-      const posRes = await OkxClient.fetchPositions();
       const okxList = (posRes && posRes.data) ? posRes.data : [];
       const openCount = okxList.reduce((cnt, p) => {
         const size = Math.abs(Number(p.pos || p.posSize || p.posQty || p.qty || 0));
@@ -1068,10 +1129,12 @@ function updatePositionsUI() {
         const pp = Number(r.pnlPct) || 0;
         const tsRes = TradeSafety.updateTrailingStop(r.coin, pp);
         if (tsRes && tsRes.triggered) {
+          if (_pendingCloses.has(r.coin)) return;
+          _pendingCloses.add(r.coin);
+
           console.log(`[TS] Triggered for ${r.coin}: ${tsRes.reason}`);
           showToast(`📉 Trailing Stop: Closing ${r.coin}...`, 'info');
 
-          // ⚡ Simplified Close (Let OkxClient handle posMode detection)
           const tdModeCur = localStorage.getItem('okx_margin_mode') || 'cross';
           OkxClient.closePositionBy({
             instId: r.coin,
@@ -1081,8 +1144,14 @@ function updatePositionsUI() {
           })
             .then(() => {
               showToast(`📉 Trailing Stop: ${r.coin} Closed`, 'success');
+              // Delay removal to avoid immediate re-trigger if WS hasn't updated yet
+              setTimeout(() => _pendingCloses.delete(r.coin), 5000);
             })
-            .catch(err => showToast(`❌ TS Close Failed: ${err.message || 'Unknown Error'}`, 'error'));
+            .catch(err => {
+              showToast(`❌ TS Close Failed: ${err.message || 'Unknown Error'}`, 'error');
+              // Cooldown on failure
+              setTimeout(() => _pendingCloses.delete(r.coin), 10000);
+            });
         }
       }
     } catch (e) { console.error('TS check error', e); }
@@ -1155,6 +1224,9 @@ function updatePositionsUI() {
           showToast('Composer position cleared', 'info');
           renderOrders(); loadRealPositions();
         } else {
+          if (_pendingCloses.has(r.coin)) { showToast('Close request already pending...', 'warning'); return; }
+          _pendingCloses.add(r.coin);
+
           // ⚡ Simplified Close (Let OkxClient handle posMode detection)
           const tdModeCur = localStorage.getItem('okx_margin_mode') || 'cross';
           await OkxClient.closePositionBy({
@@ -1163,6 +1235,8 @@ function updatePositionsUI() {
             posSide: r.side,
             sz: String(Math.abs(r.size || 1))
           });
+
+          _pendingCloses.delete(r.coin);
 
           if (ViewSignalComposer && typeof ViewSignalComposer.upsertPositionFromOkxFill === 'function') {
             if (ViewSignalComposer.getPosition && ViewSignalComposer.getPosition(r.coin)) ViewSignalComposer.closePosition(r.coin);
