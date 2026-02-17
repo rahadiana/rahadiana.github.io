@@ -1,7 +1,7 @@
 // Helper utilities for safe data access and volume calculations
 export function getMasterSignal(data, profile, timeframe) {
-  return data.signals?.profiles?.[profile]?.timeframes?.[timeframe]?.masterSignal ||
-    data.masterSignals?.[timeframe]?.[profile] || {};
+  const tf = data.signals?.profiles?.[profile]?.timeframes?.[timeframe];
+  return tf?.recommendation || tf?.masterSignal || data.masterSignals?.[timeframe]?.[profile] || {};
 }
 
 export function getMicrostructure(data, profile) {
@@ -50,7 +50,7 @@ export function computeData(data, profile = 'AGGRESSIVE', timeframe = '15MENIT')
   const profileObj = sigRoot.profiles?.[profile] || {};
   const tfObj = profileObj.timeframes?.[timeframe] || {};
   const tfSignals = tfObj.signals || {};
-  const tfMaster = tfObj.masterSignal || {};
+  const tfMaster = tfObj.recommendation || tfObj.masterSignal || {};
   const analytics = data.analytics || {};
 
   // Raw data
@@ -175,7 +175,7 @@ export function computeData(data, profile = 'AGGRESSIVE', timeframe = '15MENIT')
     // 24h price range %
     range24h: (() => { const h = price.high || 0; const l = price.low || 1; return l > 0 ? ((h - l) / l) * 100 : 0; })(),
     // Smart alerts
-    hasConvergence: (tfMaster.confirmations || 0) >= 4,
+    hasConvergence: (tfMaster.confirmations || 0) >= 4 || (tfMaster.tier <= 2),
     isWhaleActive: ['WHALE', 'INSTITUTIONAL'].includes(mom.aggression_level_15MENIT),
     isDiscount: (price.percent_change_from_top || 0) < -10,
     hasArbOpp: Math.abs(fundAn.currentRate || fundingRaw.funding_Rate || 0) > 0.0003,
@@ -223,12 +223,25 @@ export function computeData(data, profile = 'AGGRESSIVE', timeframe = '15MENIT')
       OI: {
         openInterest: oiRaw.oi || oiRaw.openInterest || 0,
         oiChange5m: oiRaw.oiChange5m || 0,
+        oiChange10m: oiRaw.oiChange10m || 0,
         oiChange15m: oiRaw.oiChange15m || 0,
         oiChange1h: oiRaw.oiChange1h || 0,
         oiChange4h: oiRaw.oiChange4h || 0,
         oiChange24h: oiRaw.oiChange24h || 0,
+        oiVolume5m: oiRaw.oiVolume5m || 0,
+        oiVolume10m: oiRaw.oiVolume10m || 0,
+        oiVolume15m: oiRaw.oiVolume15m || 0,
+        oiVolume1h: oiRaw.oiVolume1h || 0,
         tier: oiRaw.tier || 3,
-        marketDirection: oiRaw.oiChange1h > 1 ? 'BULLISH' : oiRaw.oiChange1h < -1 ? 'BEARISH' : 'NEUTRAL'
+        marketDirection: oiRaw.marketDirection || (oiRaw.oiChange1h > 1 ? 'BULLISH' : oiRaw.oiChange1h < -1 ? 'BEARISH' : 'NEUTRAL'),
+        bullScore: oiRaw.bullScore || 0,
+        bearScore: oiRaw.bearScore || 0,
+        netScore: oiRaw.netScore || 0,
+        volumeTrend5m: oiRaw.volumeTrend5m || 0,
+        volumeTrend15m: oiRaw.volumeTrend15m || 0,
+        reliabilityScore: oiRaw.reliabilityScore || 0,
+        signalConfidence: oiRaw.signalConfidence || 0,
+        volumeRatio: oiRaw.volumeRatio || 0
       },
       FUNDING: {
         fundingRate: fundAn.currentRate !== undefined ? fundAn.currentRate : (fundingRaw.funding_Rate || 0),
@@ -316,11 +329,9 @@ export function computeData(data, profile = 'AGGRESSIVE', timeframe = '15MENIT')
     _computed: computed,
     synthesis: syn,
     dashboard: {
-      bullishScore: dash.bullishScore || 0,
-      bearishScore: dash.bearishScore || 0,
-      totalScore: tfMaster.normalizedScore || 0,
+      totalScore: tfMaster.score || tfMaster.normalizedScore || 0,
       recommendation: (() => {
-        const score = tfMaster.normalizedScore || 50;
+        const score = tfMaster.score || tfMaster.normalizedScore || 50;
         const action = tfMaster.action || 'WAIT';
         if (action === 'LONG' && score >= 75) return 'STRONG_LONG';
         if (action === 'LONG') return 'LONG';
@@ -331,7 +342,7 @@ export function computeData(data, profile = 'AGGRESSIVE', timeframe = '15MENIT')
     },
     signals: {
       masterSignal: {
-        normalizedScore: tfMaster.normalizedScore || 0,
+        normalizedScore: tfMaster.score || tfMaster.normalizedScore || 0,
         action: tfMaster.action || 'WAIT',
         confidence: tfMaster.confidence || 0,
         confirmations: tfMaster.confirmations || 0,
@@ -339,7 +350,7 @@ export function computeData(data, profile = 'AGGRESSIVE', timeframe = '15MENIT')
       },
       micro: {
         vpin: {
-          rawValue: tfSignals.microstructure?.vpin?.rawValue || data.microstructure?.[profile]?.vpin?.rawValue || dash.intensity?.intensity || 0,
+          rawValue: tfSignals.microstructure?.vpin?.rawValue || data.microstructure?.[profile]?.vpin?.rawValue || 0,
           direction: tfSignals.microstructure?.vpin?.direction || data.microstructure?.[profile]?.vpin?.direction || 'NEUTRAL'
         },
         ofi: {

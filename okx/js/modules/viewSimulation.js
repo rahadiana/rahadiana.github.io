@@ -71,7 +71,8 @@ function updateGuardStatus(coin) {
  */
 export function init() {
     loadState();
-    console.log('[SIMULATION] Engine initialized (State Loaded)');
+    syncLiveSubscriptions(); // Start WebSocket feeds for active positions immediately on refresh
+    console.log('[SIMULATION] Engine initialized (State Loaded & WS Synced)');
 }
 
 export function render(container) {

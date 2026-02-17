@@ -228,7 +228,7 @@ function attachEvents(container) {
         addBtn.onclick = () => {
             const profile = container.querySelector('#rule-profile').value;
             const th = getThresholds(profile);
-            
+
             const rule = {
                 id: Date.now().toString(),
                 name: container.querySelector('#rule-name').value || 'Unnamed Rule',
@@ -333,8 +333,17 @@ function attachEvents(container) {
     }
 }
 
+export function init() {
+    loadRules();
+    console.log('[AUTOMATION] Engine initialized (Rules Loaded)');
+}
+
 function saveRules() {
     localStorage.setItem('bb_automation_rules', JSON.stringify(rules));
+    // Persist triggered signals to prevent repeat-fire on refresh
+    try {
+        localStorage.setItem('bb_automation_runtime', JSON.stringify(Array.from(triggeredSignals.entries())));
+    } catch (e) { }
 }
 
 function loadRules() {
@@ -346,6 +355,14 @@ function loadRules() {
         } catch (e) {
             rules = [];
         }
+    }
+    const runtime = localStorage.getItem('bb_automation_runtime');
+    if (runtime) {
+        try {
+            const data = JSON.parse(runtime);
+            data.forEach(([k, v]) => triggeredSignals.set(k, v));
+            console.log('[AUTOMATION] Restored', triggeredSignals.size, 'execution cooldowns');
+        } catch (e) { }
     }
 }
 
@@ -364,7 +381,7 @@ function renderRulesList() {
     list.innerHTML = rules.map(rule => {
         const profileColor = rule.profile === 'CONSERVATIVE' ? 'bb-blue' : rule.profile === 'AGGRESSIVE' ? 'bb-red' : 'bb-gold';
         const profileIcon = rule.profile === 'CONSERVATIVE' ? '🏛️' : rule.profile === 'AGGRESSIVE' ? '🎯' : '⚖️';
-        
+
         return `
         <div class="p-4 flex justify-between items-center group hover:bg-white/5 transition-all border-b border-white/[0.03]">
             <div class="flex flex-col gap-1.5">
@@ -496,12 +513,12 @@ function resetForm(container) {
 
 export async function runAutomationEngine(marketState) {
     if (!marketState || rules.length === 0) return;
-    
+
     const today = new Date().toISOString().split('T')[0];
 
     for (const rule of rules) {
         if (!rule.active) continue;
-        
+
         // Initialize runtime stats if not exists
         if (!rule.runtimeStats) {
             rule.runtimeStats = {
@@ -512,28 +529,28 @@ export async function runAutomationEngine(marketState) {
                 totalTrades: 0
             };
         }
-        
+
         // Reset daily stats if new day
         if (rule.runtimeStats.lastTradeDate !== today) {
             rule.runtimeStats.todayTrades = 0;
             rule.runtimeStats.todayPnL = 0;
             rule.runtimeStats.lastTradeDate = today;
         }
-        
+
         // 🛡️ CHECK DAILY TRADE LIMIT
         const maxDaily = rule.maxDailyTrades || 10;
         if (rule.runtimeStats.todayTrades >= maxDaily) {
             log('LIMIT', `${rule.name}: Daily trade limit reached (${maxDaily})`, 'yellow');
             continue;
         }
-        
+
         // 🛡️ CHECK DAILY LOSS LIMIT
         const dailyLossLimit = rule.dailyLossLimit || 5;
         if (rule.runtimeStats.todayPnL <= -dailyLossLimit) {
             log('LIMIT', `${rule.name}: Daily loss limit reached (${dailyLossLimit}%)`, 'red');
             continue;
         }
-        
+
         // 🛡️ CHECK CONSECUTIVE LOSS STREAK
         const maxStreak = rule.maxLossStreak || 3;
         if (rule.runtimeStats.lossStreak >= maxStreak) {
@@ -547,10 +564,10 @@ export async function runAutomationEngine(marketState) {
 
             const signalResult = checkSignal(rule.strategy, data, rule);
 
-            if (signalResult && 
+            if (signalResult &&
                 signalResult.confidence >= rule.confidence &&
                 (signalResult.quality || 1) >= (rule.minQuality || 0)) {
-                
+
                 // Check Cooldown
                 const key = `${rule.id}:${coin}:${signalResult.bias}`;
                 const lastTrigger = triggeredSignals.get(key) || 0;
@@ -559,10 +576,11 @@ export async function runAutomationEngine(marketState) {
                 if (now - lastTrigger > rule.cooldown * 1000) {
                     executeWebhook(rule, coin, signalResult, data);
                     triggeredSignals.set(key, now);
-                    
+
                     // Update runtime stats
                     rule.runtimeStats.todayTrades++;
                     rule.runtimeStats.totalTrades++;
+                    saveRules(); // Persist stats and cooldown immediately
                 }
             }
         }
@@ -581,21 +599,21 @@ const SLIPPAGE_CONFIG = {
 
 function calculateSlippage(price, side, data) {
     if (!price || price <= 0) return 0;
-    
+
     let slippagePct = SLIPPAGE_CONFIG.baseSlippagePct;
-    
+
     // Increase slippage in volatile conditions
     const volRegime = data?.signals?.marketRegime?.volRegime || 'NORMAL';
     if (volRegime === 'HIGH_VOL' || volRegime === 'EXTREME_VOL') {
         slippagePct *= SLIPPAGE_CONFIG.volatilityMultiplier;
     }
-    
+
     // Increase slippage for low liquidity (check OI tier)
     const oiTier = data?.raw?.OI?.tier || data?.raw?.OI?.oiTier || 2;
     if (oiTier >= 3) {
         slippagePct *= SLIPPAGE_CONFIG.lowLiquidityMultiplier;
     }
-    
+
     // Apply slippage: BUY = higher price, SELL = lower price
     const slippageAmount = price * (slippagePct / 100);
     return side === 'LONG' || side === 'BUY' ? slippageAmount : -slippageAmount;
@@ -603,8 +621,8 @@ function calculateSlippage(price, side, data) {
 
 function getExecutionPrice(data) {
     // Priority: last trade price > mark price > index price
-    const price = data?.raw?.PRICE?.last 
-        || data?.PRICE?.price 
+    const price = data?.raw?.PRICE?.last
+        || data?.PRICE?.price
         || data?.raw?.PRICE?.price
         || data?.masterSignals?.['15MENIT']?.MODERATE?.metadata?.lastPrice
         || 0;
@@ -618,27 +636,27 @@ function validateSignalQuality(master, data) {
     if (signalTime > 0 && (now - signalTime) > 30000) {
         return { valid: false, reason: 'STALE_SIGNAL' };
     }
-    
+
     // Reject NO_TRADE or NEUTRAL actions
     if (!master?.action || master.action === 'NO_TRADE' || master.action === 'NEUTRAL') {
         return { valid: false, reason: 'NO_ACTIONABLE_SIGNAL' };
     }
-    
+
     // Reject if confidence too low
     if ((master?.confidence || 0) < 40) {
         return { valid: false, reason: 'LOW_CONFIDENCE' };
     }
-    
+
     return { valid: true };
 }
 
 function checkSignal(strategy, data, rule = {}) {
     if (!data) return null;
-    
+
     const profile = rule.profile || 'MODERATE';
     const th = getThresholds(profile);
     const minQuality = rule.minQuality || 0.5;
-    
+
     // === DYNAMIC TIMEFRAME & PROFILE BASED ON STRATEGY ===
     const strategyConfig = {
         'COMPOSITE': { timeframes: ['15MENIT', '5MENIT'], useEnhanced: true },
@@ -657,19 +675,19 @@ function checkSignal(strategy, data, rule = {}) {
         'MTF_PRO': { timeframes: ['1MENIT', '5MENIT', '15MENIT', '1JAM'], useEnhanced: true },
         'PATIENCE': { timeframes: ['15MENIT', '1JAM'], useEnhanced: true }
     };
-    
+
     const config = strategyConfig[strategy] || { timeframes: ['15MENIT'], useEnhanced: true };
     const syn = data.synthesis || {};
     const signals = data.signals || {};
     const profiles = signals.profiles || {};
     const raw = data.raw || {};
-    
+
     // Get best available master signal from configured timeframes
     let master = null;
     let usedTimeframe = null;
     let enhanced = {};
     let micro = {};
-    
+
     for (const tf of config.timeframes) {
         const tfData = profiles[profile]?.timeframes?.[tf];
         if (tfData?.masterSignal?.action && tfData.masterSignal.action !== 'NO_TRADE' && tfData.masterSignal.action !== 'WAIT') {
@@ -680,7 +698,7 @@ function checkSignal(strategy, data, rule = {}) {
             break;
         }
     }
-    
+
     // Fallback to masterSignals shortcut
     if (!master) {
         for (const tf of config.timeframes) {
@@ -692,16 +710,16 @@ function checkSignal(strategy, data, rule = {}) {
             }
         }
     }
-    
+
     // 🔧 NEW: Calculate signal quality
     const signalQuality = calculateSignalQuality(master, enhanced, syn);
     if (signalQuality < minQuality) {
         return null; // Signal quality below threshold
     }
-    
+
     // Validate signal quality
     const validation = validateSignalQuality(master, data);
-    
+
     switch (strategy) {
         case 'COMPOSITE': {
             // Multi-factor confluence check with enhanced signals
@@ -709,32 +727,32 @@ function checkSignal(strategy, data, rule = {}) {
             const netFlow = syn.flow?.net_flow_15MENIT || syn.flow?.net_flow_5MENIT || 0;
             const score = master?.normalizedScore || 0;
             const confirmations = master?.confirmations || 0;
-            
+
             // 🔧 Enhanced signals
             const instFootprint = enhanced.institutionalFootprint?.rawValue || 0;
             const momQuality = enhanced.momentumQuality?.rawValue || 0;
             const cvd = enhanced.cvd?.rawValue || 0;
-            
+
             const hasFlow = Math.abs(netFlow) > th.minNetFlow * 0.5;
             const hasScore = score >= th.minScore || score <= (100 - th.minScore);
             const hasConfirmations = confirmations >= 2;
             const hasMTF = mtf.aligned || mtf.confluence >= 0.6;
             const hasInstitutional = instFootprint > 0.5;
             const hasMomentum = momQuality > 0.4;
-            
+
             const factors = [];
             if (hasScore) factors.push(`Score:${Utils.safeFixed(score, 0)}`);
-            if (hasFlow) factors.push(`Flow:${Utils.safeFixed(netFlow/1000, 1)}K`);
+            if (hasFlow) factors.push(`Flow:${Utils.safeFixed(netFlow / 1000, 1)}K`);
             if (hasConfirmations) factors.push(`Confirms:${confirmations}`);
             if (hasMTF) factors.push('MTF');
-            if (hasInstitutional) factors.push(`Inst:${Utils.safeFixed(instFootprint*100, 0)}%`);
-            if (hasMomentum) factors.push(`MQ:${Utils.safeFixed(momQuality*100, 0)}%`);
-            
+            if (hasInstitutional) factors.push(`Inst:${Utils.safeFixed(instFootprint * 100, 0)}%`);
+            if (hasMomentum) factors.push(`MQ:${Utils.safeFixed(momQuality * 100, 0)}%`);
+
             // Need at least 3 factors for composite
             if (factors.length >= 3 && validation.valid) {
-                return { 
-                    bias: master.action, 
-                    factors, 
+                return {
+                    bias: master.action,
+                    factors,
                     confidence: Math.min(98, score + (factors.length * 3) + (instFootprint * 10)),
                     timeframe: usedTimeframe,
                     quality: signalQuality
@@ -742,24 +760,24 @@ function checkSignal(strategy, data, rule = {}) {
             }
             return null;
         }
-        
+
         case 'SCALP': {
             const vpin = micro.vpin?.rawValue || micro.vpinBvc?.rawValue || 0;
             const efficiency = syn.efficiency?.character_15MENIT || syn.efficiency?.character_5MENIT || '';
             const cvd = enhanced.cvd?.rawValue || 0;
             const pressureAccel = enhanced.pressureAcceleration?.rawValue || 0;
             const bookRes = enhanced.bookResilience?.rawValue || 0;
-            
+
             const hasVpin = vpin > th.vpinThreshold;
             const hasEfficiency = efficiency.includes('EFFORTLESS') || efficiency.includes('STRONG');
             const hasCVD = Math.abs(cvd) > 0.3;
             const hasBookSupport = bookRes > 0.4;
-            
+
             if (hasVpin && (hasEfficiency || hasCVD) && hasBookSupport && master?.action) {
                 const bias = cvd > 0 ? 'LONG' : cvd < 0 ? 'SHORT' : master.action;
-                return { 
-                    bias, 
-                    factors: [`VPIN:${Utils.safeFixed(vpin*100, 0)}%`, `CVD:${Utils.safeFixed(cvd*100, 0)}%`, `Book:${Utils.safeFixed(bookRes*100, 0)}%`], 
+                return {
+                    bias,
+                    factors: [`VPIN:${Utils.safeFixed(vpin * 100, 0)}%`, `CVD:${Utils.safeFixed(cvd * 100, 0)}%`, `Book:${Utils.safeFixed(bookRes * 100, 0)}%`],
                     confidence: Math.min(95, 70 + (vpin * 20) + (pressureAccel * 10)),
                     timeframe: usedTimeframe,
                     quality: signalQuality
@@ -767,21 +785,21 @@ function checkSignal(strategy, data, rule = {}) {
             }
             return null;
         }
-        
+
         case 'WHALE': {
             const aggr = syn.momentum?.aggression_level_15MENIT || syn.momentum?.aggression_level_5MENIT || 'RETAIL';
             const vel = Math.abs(syn.momentum?.velocity_15MENIT || syn.momentum?.velocity_5MENIT || 0);
             const instFootprint = enhanced.institutionalFootprint?.rawValue || 0;
             const amihud = enhanced.amihudIlliquidity?.rawValue || 1;
-            
+
             const isInstitutional = aggr === 'INSTITUTIONAL' || aggr === 'WHALE' || instFootprint > 0.6;
             const hasVelocity = vel > th.velocityMin;
             const hasLiquidity = amihud < 0.5; // Low illiquidity = can execute large orders
-            
+
             if (isInstitutional && hasVelocity && hasLiquidity && master?.action) {
-                return { 
-                    bias: master.action, 
-                    factors: [`Inst:${Utils.safeFixed(instFootprint*100, 0)}%`, `Vel:${Utils.safeFixed(vel/1000, 1)}K`, 'LowIlliq'], 
+                return {
+                    bias: master.action,
+                    factors: [`Inst:${Utils.safeFixed(instFootprint * 100, 0)}%`, `Vel:${Utils.safeFixed(vel / 1000, 1)}K`, 'LowIlliq'],
                     confidence: 85 + (instFootprint * 10),
                     timeframe: usedTimeframe,
                     quality: signalQuality
@@ -789,22 +807,22 @@ function checkSignal(strategy, data, rule = {}) {
             }
             return null;
         }
-        
+
         case 'EFFICIENCY': {
             const eff = syn.efficiency?.efficiency_15MENIT || 0;
             const velocity = syn.momentum?.velocity_15MENIT || 0;
             const momQuality = enhanced.momentumQuality?.rawValue || 0;
             const pressureAccel = enhanced.pressureAcceleration?.rawValue || 0;
-            
+
             const hasEfficiency = eff > 1.0;
             const hasVelocity = velocity > th.velocityMin;
             const hasQuality = momQuality > 0.5;
             const hasAccel = pressureAccel > 0.3;
-            
+
             if (hasEfficiency && hasVelocity && hasQuality && hasAccel && master?.action) {
                 return {
                     bias: master.action,
-                    factors: [`Eff:${Utils.safeFixed(eff, 1)}`, `MQ:${Utils.safeFixed(momQuality*100, 0)}%`, `Accel:${Utils.safeFixed(pressureAccel*100, 0)}%`],
+                    factors: [`Eff:${Utils.safeFixed(eff, 1)}`, `MQ:${Utils.safeFixed(momQuality * 100, 0)}%`, `Accel:${Utils.safeFixed(pressureAccel * 100, 0)}%`],
                     confidence: 80 + (momQuality * 15),
                     timeframe: usedTimeframe,
                     quality: signalQuality
@@ -812,49 +830,49 @@ function checkSignal(strategy, data, rule = {}) {
             }
             return null;
         }
-        
+
         case 'MTF_PRO': {
             const p = profiles[profile]?.timeframes || {};
             const actions = ['1MENIT', '5MENIT', '15MENIT', '1JAM'].map(tf => p[tf]?.masterSignal?.action || 'WAIT');
             const allLong = actions.every(a => a === 'BUY' || a === 'LONG');
             const allShort = actions.every(a => a === 'SELL' || a === 'SHORT');
-            
+
             if (!allLong && !allShort) return null;
-            
+
             // Check momentum quality across TFs
-            const momQualities = ['5MENIT', '15MENIT', '1JAM'].map(tf => 
+            const momQualities = ['5MENIT', '15MENIT', '1JAM'].map(tf =>
                 p[tf]?.signals?.enhanced?.momentumQuality?.rawValue || 0
             );
             const avgMomQuality = momQualities.reduce((a, b) => a + b, 0) / momQualities.length;
-            
+
             if (avgMomQuality < 0.4) return null;
-            
-            return { 
-                bias: allLong ? 'LONG' : 'SHORT', 
-                factors: ['MTF Aligned', `AvgMQ:${Utils.safeFixed(avgMomQuality*100, 0)}%`], 
+
+            return {
+                bias: allLong ? 'LONG' : 'SHORT',
+                factors: ['MTF Aligned', `AvgMQ:${Utils.safeFixed(avgMomQuality * 100, 0)}%`],
                 confidence: 90 + (avgMomQuality * 8),
                 timeframe: '15MENIT',
                 quality: signalQuality
             };
         }
-        
+
         case 'PATIENCE': {
             const netFlow = syn.flow?.net_flow_15MENIT || 0;
             const instFootprint = enhanced.institutionalFootprint?.rawValue || 0;
             const momQuality = enhanced.momentumQuality?.rawValue || 0;
             const bookRes = enhanced.bookResilience?.rawValue || 0;
             const score = master?.normalizedScore || 50;
-            
-            const isPerfect = (score > th.minScore + 20 || score < (100 - th.minScore - 20)) && 
-                             Math.abs(netFlow) > th.minNetFlow * 2 &&
-                             instFootprint > 0.7 &&
-                             momQuality > 0.6 &&
-                             bookRes > 0.6;
-            
+
+            const isPerfect = (score > th.minScore + 20 || score < (100 - th.minScore - 20)) &&
+                Math.abs(netFlow) > th.minNetFlow * 2 &&
+                instFootprint > 0.7 &&
+                momQuality > 0.6 &&
+                bookRes > 0.6;
+
             if (isPerfect && master?.action) {
-                return { 
-                    bias: master.action, 
-                    factors: ['Perfect Storm', `Inst:${Utils.safeFixed(instFootprint*100, 0)}%`, `MQ:${Utils.safeFixed(momQuality*100, 0)}%`], 
+                return {
+                    bias: master.action,
+                    factors: ['Perfect Storm', `Inst:${Utils.safeFixed(instFootprint * 100, 0)}%`, `MQ:${Utils.safeFixed(momQuality * 100, 0)}%`],
                     confidence: 98,
                     timeframe: usedTimeframe,
                     quality: signalQuality
@@ -862,7 +880,7 @@ function checkSignal(strategy, data, rule = {}) {
             }
             return null;
         }
-        
+
         case 'FLASH': {
             const vol1m = raw?.VOL?.vol_total_1MENIT || 0;
             const vol5m = raw?.VOL?.vol_total_5MENIT || 1;
@@ -871,12 +889,12 @@ function checkSignal(strategy, data, rule = {}) {
             const priceChange = Math.abs(raw?.PRICE?.percent_change_1MENIT || 0);
             const cvd = enhanced.cvd?.rawValue || 0;
             const pressureAccel = enhanced.pressureAcceleration?.rawValue || 0;
-            
+
             if (surge > 1.8 && priceChange > 0.3 && Math.abs(cvd) > 0.2) {
                 const bias = cvd > 0 ? 'LONG' : 'SHORT';
-                return { 
-                    bias, 
-                    factors: [`Surge:${Utils.safeFixed(surge, 1)}x`, `Move:${Utils.safeFixed(priceChange, 2)}%`, `CVD:${Utils.safeFixed(cvd*100, 0)}%`],
+                return {
+                    bias,
+                    factors: [`Surge:${Utils.safeFixed(surge, 1)}x`, `Move:${Utils.safeFixed(priceChange, 2)}%`, `CVD:${Utils.safeFixed(cvd * 100, 0)}%`],
                     confidence: Math.min(90, 65 + (surge * 5) + (pressureAccel * 10)),
                     timeframe: '1MENIT',
                     quality: signalQuality
@@ -884,24 +902,24 @@ function checkSignal(strategy, data, rule = {}) {
             }
             return null;
         }
-        
+
         case 'BLITZ': {
             const netFlow = syn.flow?.net_flow_15MENIT || syn.flow?.net_flow_5MENIT || 0;
             const char = syn.efficiency?.character_15MENIT || '';
             const aggr = syn.momentum?.aggression_level_15MENIT || 'RETAIL';
             const cvd = enhanced.cvd?.rawValue || 0;
             const cvdDivergence = enhanced.cvd?.divergence || false;
-            
-            const isBlitz = Math.abs(netFlow) > th.minNetFlow && 
-                           char.includes('EFFORTLESS') && 
-                           (aggr === 'INSTITUTIONAL' || aggr === 'WHALE') &&
-                           Math.sign(cvd) === Math.sign(netFlow) &&
-                           !cvdDivergence;
-            
+
+            const isBlitz = Math.abs(netFlow) > th.minNetFlow &&
+                char.includes('EFFORTLESS') &&
+                (aggr === 'INSTITUTIONAL' || aggr === 'WHALE') &&
+                Math.sign(cvd) === Math.sign(netFlow) &&
+                !cvdDivergence;
+
             if (isBlitz && master?.action) {
                 return {
                     bias: master.action,
-                    factors: ['Blitz', `Flow:${Utils.safeFixed(netFlow/1000, 1)}K`, 'CVD Confirmed'],
+                    factors: ['Blitz', `Flow:${Utils.safeFixed(netFlow / 1000, 1)}K`, 'CVD Confirmed'],
                     confidence: 95,
                     timeframe: usedTimeframe,
                     quality: signalQuality
@@ -909,18 +927,18 @@ function checkSignal(strategy, data, rule = {}) {
             }
             return null;
         }
-        
+
         case 'FLOW': {
             const netFlow = syn.flow?.net_flow_15MENIT || syn.flow?.net_flow_1JAM || 0;
             const flowChar = syn.flow?.character_15MENIT || '';
             const cvd = enhanced.cvd?.rawValue || 0;
-            
+
             // Flow + CVD must agree
             if (Math.abs(netFlow) > th.minNetFlow * 0.8 && flowChar && Math.sign(cvd) === Math.sign(netFlow)) {
                 const bias = netFlow > 0 ? 'LONG' : 'SHORT';
                 return {
                     bias,
-                    factors: [`Flow:${Utils.safeFixed(netFlow/1000, 1)}K`, flowChar, 'CVD Confirmed'],
+                    factors: [`Flow:${Utils.safeFixed(netFlow / 1000, 1)}K`, flowChar, 'CVD Confirmed'],
                     confidence: 80,
                     timeframe: '15MENIT',
                     quality: signalQuality
@@ -928,19 +946,19 @@ function checkSignal(strategy, data, rule = {}) {
             }
             return null;
         }
-        
+
         case 'BREAKOUT': {
             const volRatio = raw?.OI?.volumeRatio || 1;
             const priceChange = raw?.PRICE?.percent_change_15MENIT || 0;
             const bookRes = enhanced.bookResilience?.rawValue || 0;
             const vpin = micro.vpin?.rawValue || 0;
-            
+
             // Confirmed breakout: Volume + Price + VPIN + Book support
             if (volRatio > 1.5 && Math.abs(priceChange) > 1.0 && vpin > th.vpinThreshold && bookRes > 0.4) {
                 const bias = priceChange > 0 ? 'LONG' : 'SHORT';
                 return {
                     bias,
-                    factors: [`VolRatio:${Utils.safeFixed(volRatio, 1)}x`, `Break:${Utils.safeFixed(priceChange, 1)}%`, `Book:${Utils.safeFixed(bookRes*100, 0)}%`],
+                    factors: [`VolRatio:${Utils.safeFixed(volRatio, 1)}x`, `Break:${Utils.safeFixed(priceChange, 1)}%`, `Book:${Utils.safeFixed(bookRes * 100, 0)}%`],
                     confidence: 85 + (bookRes * 10),
                     timeframe: '15MENIT',
                     quality: signalQuality
@@ -948,21 +966,21 @@ function checkSignal(strategy, data, rule = {}) {
             }
             return null;
         }
-        
+
         case 'TAPE': {
             const aggr1m = syn.momentum?.aggression_level_1MENIT || 'RETAIL';
             const aggr5m = syn.momentum?.aggression_level_5MENIT || 'RETAIL';
             const ofi = micro.ofi?.normalizedScore || 50;
             const cvd = enhanced.cvd?.rawValue || 0;
-            
+
             const isInstitutional = aggr1m === 'INSTITUTIONAL' || aggr5m === 'INSTITUTIONAL';
             const hasOFI = ofi > 65 || ofi < 35;
-            
+
             if (isInstitutional && hasOFI) {
                 const bias = cvd > 0 ? 'LONG' : cvd < 0 ? 'SHORT' : (ofi > 50 ? 'LONG' : 'SHORT');
-                return { 
-                    bias, 
-                    factors: ['Tape:INSTO', `OFI:${Utils.safeFixed(ofi, 0)}`, `CVD:${Utils.safeFixed(cvd*100, 0)}%`], 
+                return {
+                    bias,
+                    factors: ['Tape:INSTO', `OFI:${Utils.safeFixed(ofi, 0)}`, `CVD:${Utils.safeFixed(cvd * 100, 0)}%`],
                     confidence: 85,
                     timeframe: '5MENIT',
                     quality: signalQuality
@@ -970,20 +988,20 @@ function checkSignal(strategy, data, rule = {}) {
             }
             return null;
         }
-        
+
         case 'GAMMA': {
             const oiChange = Math.abs(raw?.OI?.oiChange1h || raw?.OI?.oiChange15m || 0);
             const oiDir = raw?.OI?.marketDirection || '';
             const priceDir = (raw?.PRICE?.percent_change_1JAM || 0) > 0 ? 'BULLISH' : 'BEARISH';
-            
+
             if (oiChange > th.oiZThreshold * 1.5) {
                 const oiUp = (raw?.OI?.oiChange1h || 0) > 0;
                 const priceDown = (raw?.PRICE?.percent_change_1JAM || 0) < 0;
                 const isDivergence = oiUp !== (priceDir === 'BULLISH');
-                
-                return { 
-                    bias: isDivergence ? (priceDown ? 'LONG' : 'SHORT') : (oiDir === 'BULLISH' ? 'LONG' : 'SHORT'), 
-                    factors: [`OI:${Utils.safeFixed(oiChange, 1)}%`, isDivergence ? 'DIVERGENCE' : oiDir], 
+
+                return {
+                    bias: isDivergence ? (priceDown ? 'LONG' : 'SHORT') : (oiDir === 'BULLISH' ? 'LONG' : 'SHORT'),
+                    factors: [`OI:${Utils.safeFixed(oiChange, 1)}%`, isDivergence ? 'DIVERGENCE' : oiDir],
                     confidence: 75 + (oiChange * 2),
                     timeframe: '1JAM',
                     quality: signalQuality
@@ -991,16 +1009,16 @@ function checkSignal(strategy, data, rule = {}) {
             }
             return null;
         }
-        
+
         case 'ANOMALY': {
             const lsrZ = raw?.LSR?.timeframes_15min?.z || raw?.LSR?.z || 0;
             const fundingZ = raw?.FUNDING?.zScore || 0;
-            
+
             if (Math.abs(lsrZ) > th.lsrZThreshold || Math.abs(fundingZ) > 2.0) {
                 const bias = (lsrZ > 0 || fundingZ > 0) ? 'SHORT' : 'LONG';
-                return { 
-                    bias, 
-                    factors: [`LSR-Z:${Utils.safeFixed(lsrZ, 1)}%`, 'FADE'], 
+                return {
+                    bias,
+                    factors: [`LSR-Z:${Utils.safeFixed(lsrZ, 1)}%`, 'FADE'],
                     confidence: 80 + Math.min(10, Math.abs(lsrZ) * 3),
                     timeframe: '15MENIT',
                     quality: signalQuality
@@ -1008,19 +1026,19 @@ function checkSignal(strategy, data, rule = {}) {
             }
             return null;
         }
-        
+
         case 'CLUSTER': {
             const vol = raw?.VOL?.vol_total_1JAM || 0;
             const pxChange = Math.abs(raw?.PRICE?.percent_change_1JAM || 0);
-            
+
             if (vol > 500000 && pxChange < 0.8) {
                 const buyVol = raw?.VOL?.vol_BUY_1JAM || 0;
                 const sellVol = raw?.VOL?.vol_SELL_1JAM || 0;
                 const bias = buyVol > sellVol ? 'LONG' : 'SHORT';
-                
-                return { 
-                    bias, 
-                    factors: [`Vol:$${Utils.safeFixed(vol/1e6, 2)}M`, `Range:${Utils.safeFixed(pxChange, 2)}%`], 
+
+                return {
+                    bias,
+                    factors: [`Vol:$${Utils.safeFixed(vol / 1e6, 2)}M`, `Range:${Utils.safeFixed(pxChange, 2)}%`],
                     confidence: 70,
                     timeframe: '1JAM',
                     quality: signalQuality
@@ -1028,12 +1046,12 @@ function checkSignal(strategy, data, rule = {}) {
             }
             return null;
         }
-        
+
         case 'SWEEP': {
             const liqData = raw?.LIQ || {};
             const liqRate = liqData.liqRate || 0;
             const dominantSide = liqData.dominantSide || 'NONE';
-            
+
             if (liqRate > 2.0 && dominantSide !== 'NONE') {
                 const bias = dominantSide === 'LONG' ? 'LONG' : 'SHORT';
                 return {
@@ -1046,14 +1064,14 @@ function checkSignal(strategy, data, rule = {}) {
             }
             return null;
         }
-        
+
         default: {
             if (validation.valid && master) {
                 const score = master.normalizedScore || 50;
                 if (score >= th.minScore || score <= (100 - th.minScore)) {
-                    return { 
-                        bias: master.action, 
-                        factors: ['Master Signal'], 
+                    return {
+                        bias: master.action,
+                        factors: ['Master Signal'],
                         confidence: master.confidence || score,
                         timeframe: usedTimeframe,
                         quality: signalQuality
@@ -1068,25 +1086,25 @@ function checkSignal(strategy, data, rule = {}) {
 // 🔧 NEW: Calculate signal quality score
 function calculateSignalQuality(master, enhanced, synthesis) {
     if (!master) return 0;
-    
+
     let quality = 0;
-    
+
     // Factor 1: Confidence (40%)
     quality += (master.confidence || 50) / 100 * 0.4;
-    
+
     // Factor 2: Confirmations (20%)
     const confirmations = master.confirmations || 0;
     quality += Math.min(confirmations / 4, 1) * 0.2;
-    
+
     // Factor 3: Enhanced signal alignment (25%)
     const instFootprint = enhanced?.institutionalFootprint?.rawValue || 0;
     const momQuality = enhanced?.momentumQuality?.rawValue || 0;
     quality += ((instFootprint + momQuality) / 2) * 0.25;
-    
+
     // Factor 4: Efficiency (15%)
     const efficiency = synthesis?.efficiency?.efficiency_15MENIT || 0;
     quality += Math.min(efficiency / 3, 1) * 0.15;
-    
+
     return Math.min(1, Math.max(0, quality));
 }
 
@@ -1095,17 +1113,17 @@ async function executeWebhook(rule, coin, signal, data) {
     const rawPrice = getExecutionPrice(data);
     const slippage = calculateSlippage(rawPrice, signal.bias, data);
     const executionPrice = rawPrice + slippage;
-    
+
     if (executionPrice <= 0) {
         log('ERROR', `No valid price for ${coin}. Skipping execution.`, 'red');
         return;
     }
-    
+
     // Get profile for leverage caps
     const profile = rule.profile || 'MODERATE';
     const profileConfig = PROFILE_THRESHOLDS[profile] || PROFILE_THRESHOLDS.MODERATE;
     const cappedLeverage = Math.min(rule.simLeverage || 10, profileConfig.maxLeverage);
-    
+
     const payload = {
         event: "signal_trigger",
         timestamp: new Date().toISOString(),
@@ -1153,7 +1171,7 @@ async function executeWebhook(rule, coin, signal, data) {
         if (rule.autoSimulate) {
             // Simulate execution delay (50-200ms like real exchange)
             const execDelay = 50 + Math.random() * 150;
-            
+
             setTimeout(() => {
                 ViewSimulation.openPosition(signal.bias, {
                     coin: coin,

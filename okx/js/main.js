@@ -1007,6 +1007,9 @@ setInterval(() => {
         // Priority 3: Signal Composer Engine
         if (ViewSignalComposer.init) ViewSignalComposer.init();
 
+        // Priority 4: Automation Layer
+        if (ViewAutomation.init) ViewAutomation.init();
+
         console.log('[MAIN] Prioritized initialization complete');
     } catch (e) {
         console.error('[MAIN] Initialization error', e);

@@ -43,7 +43,7 @@ export async function init() {
       await Promise.all([
         loadAccountInfo(),
         loadRealFills(),
-        loadRealPositions()
+        // loadRealPositions() // Disabled as requested
       ]);
       console.log('[OKX-TRADE] Initialized (Configured) - _lastOkxPositions:', _lastOkxPositions.length);
     } catch (e) {
@@ -399,7 +399,7 @@ export function render(container) {
     try { showToast('Using demo fallback (transient) — showing demo data for this session', 'info'); updateModeIndicator(); } catch (e) { }
   });
   // when connected, fetch account info periodically
-  window.addEventListener('okx-config-changed', () => { if (OkxClient.isConfigured()) { loadAccountInfo(); loadRealFills(); loadRealPositions(); } });
+  window.addEventListener('okx-config-changed', () => { if (OkxClient.isConfigured()) { ensurePrivateSubscription(); loadAccountInfo(); loadRealFills(); loadRealPositions(); } });
   window.addEventListener('okx-config-changed', () => { loadRealPositions(); });
   // Keep margin mode UI in sync when settings change
   window.addEventListener('okx-config-changed', () => {
@@ -484,7 +484,13 @@ async function ensurePrivateSubscription() {
 
           } catch (e) { console.error('positions ws cb error', e); }
         };
-        try { subscribePrivate({ channel: 'positions', instType: 'SWAP' }, _privatePosCb); } catch (e) { console.warn('subscribePrivate failed', e); }
+        try {
+          subscribePrivate({
+            channel: 'positions',
+            instType: 'ANY',
+            extraParams: { updateInterval: 0 }
+          }, _privatePosCb);
+        } catch (e) { console.warn('subscribePrivate failed', e); }
       }
 
       // 2. ACCOUNT (Balance/Equity)
@@ -571,7 +577,16 @@ async function ensurePrivateSubscription() {
 
     } else {
       // Unsubscribe if config removed
-      if (_privatePosCb) { try { unsubscribePrivate({ channel: 'positions', instType: 'SWAP' }, _privatePosCb); } catch (e) { } _privatePosCb = null; }
+      if (_privatePosCb) {
+        try {
+          unsubscribePrivate({
+            channel: 'positions',
+            instType: 'ANY',
+            extraParams: { updateInterval: 0 }
+          }, _privatePosCb);
+        } catch (e) { }
+        _privatePosCb = null;
+      }
       if (_privateAccountCb) { try { unsubscribePrivate({ channel: 'account' }, _privateAccountCb); } catch (e) { } _privateAccountCb = null; }
       if (_privateOrderCb) { try { unsubscribePrivate({ channel: 'orders', instType: 'ANY' }, _privateOrderCb); } catch (e) { } _privateOrderCb = null; _wsOrdersActive = false; }
       if (_privateAlgoOrderCb) { try { unsubscribePrivate({ channel: 'algo-orders', instType: 'ANY' }, _privateAlgoOrderCb); } catch (e) { } _privateAlgoOrderCb = null; }
@@ -1018,16 +1033,19 @@ async function loadAccountInfo() {
 
 async function loadRealPositions() {
   const el = document.getElementById('os-positions'); if (!el) { console.warn('[loadRealPositions] os-positions element not found'); return; }
-  el.innerHTML = '<div class="muted">Loading positions...</div>';
+  // el.innerHTML = '<div class="muted">Loading positions...</div>'; // Disabled to prevent overwrite
   const now = Date.now();
   if (now - _lastPosFetch < FETCH_THROTTLE_MS) { console.debug('[loadRealPositions] throttled, skipping'); return; }
   _lastPosFetch = now;
   try {
     console.log('[loadRealPositions] Fetching positions from OKX API...');
     const posRes = OkxClient.fetchPositions ? await OkxClient.fetchPositions() : null;
-    console.log('[loadRealPositions] API response:', posRes ? { code: posRes.code, dataLen: posRes.data?.length, msg: posRes.msg } : 'null');
     const okxList = (posRes && posRes.data) ? posRes.data : [];
-    _lastOkxPositions = okxList;
+
+    // Only update global list if we got actual data (prevents mock/empty response from wiping WS data)
+    if (okxList.length > 0) {
+      _lastOkxPositions = okxList;
+    }
     // try to include Composer in-memory positions if available
     let composerPositions = [];
     try { if (ViewSignalComposer && typeof ViewSignalComposer.getOpenPositions === 'function') composerPositions = ViewSignalComposer.getOpenPositions(); } catch (e) { composerPositions = []; }
@@ -1056,7 +1074,7 @@ async function loadRealPositions() {
       }
     } catch (e) { console.warn('[loadRealPositions] balance fetch error', e); }
 
-    if (composerPositions.length === 0 && okxList.length === 0) { el.innerHTML = '<div class="muted">No positions</div>'; return; }
+    // if (composerPositions.length === 0 && okxList.length === 0) { el.innerHTML = '<div class="muted">No positions</div>'; return; }
 
     // show composer positions first (only if user enabled)
     const showComposer = (localStorage.getItem('os_show_composer_positions') === '1');

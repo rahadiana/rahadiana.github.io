@@ -155,23 +155,22 @@ const OkxClient = {
 		}
 	},
 	async getBalance(ccy) { const api = await _ensureApi(); return api.get('/api/v5/account/balance', ccy ? { ccy } : null); },
+	// internal position cache to bridge WS data to background engines
+	_posCache: [],
+	updatePositionCache(data) {
+		if (Array.isArray(data)) {
+			this._posCache = data;
+			// console.debug('[OkxClient] Position cache updated from WS:', this._posCache.length);
+		}
+	},
 	async getPositions(instId) {
-		const api = await _ensureApi();
-		// If instId is provided, bypass cache for specific precision
-		if (instId) return api.get('/api/v5/account/positions', { instId });
-
-		// Check global cache
-		const now = Date.now();
-		if (_posCache && (now - _posCacheTime < POS_CACHE_TTL)) {
-			return _posCache;
+		// If a specific instId is requested, we could filter but for common background engine logic,
+		// we return the global list the user is tracking.
+		if (this._posCache && this._posCache.length > 0) {
+			return { code: '0', data: this._posCache };
 		}
-
-		const res = await api.get('/api/v5/account/positions');
-		if (res && (res.code === '0' || res.code === 0)) {
-			_posCache = res;
-			_posCacheTime = now;
-		}
-		return res;
+		// Fallback for when no data is received yet
+		return { code: '0', data: [], msg: 'Positions API disabled (streaming via WS)' };
 	},
 	async getPositionsHistory(instId) { const api = await _ensureApi(); return api.get('/api/v5/account/positions-history', instId ? { instId } : null); },
 	// Backwards-compatible aliases expected by UI

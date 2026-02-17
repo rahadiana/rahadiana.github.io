@@ -1,7 +1,7 @@
 import OkxClient from './okx_client.js';
 
 const OKX_WS_PUBLIC = 'wss://wspri.okx.com:8443/ws/v5/ipublic';
-const OKX_WS_PRIVATE = 'wss://wspri.okx.com:8443/ws/v5/private';
+const OKX_WS_PRIVATE = 'wss://ws.okx.com:8443/ws/v5/private';
 const OKX_WS_PRIVATE_SIM = 'wss://wspap.okx.com:8443/ws/v5/private?brokerId=9999';
 
 let wsPublic = null;
@@ -11,7 +11,8 @@ let reconnectTimerPrivate = null;
 
 let subscriptions = new Map(); // key -> { arg, callbacks: Set }
 let subscriptionsPrivate = new Map();
-
+let _privateAuthenticated = false;
+let _activeConfigSignature = null;
 function abToBase64(buf) {
     const bytes = new Uint8Array(buf);
     let binary = '';
@@ -97,8 +98,6 @@ export function unsubscribe(instId, callback, channel = 'tickers') {
     }
 }
 
-// Track the configuration used for the active connection to detect switches
-let _activeConfigSignature = null;
 
 /** Private (authenticated) websocket for realtime positions, orders, fills */
 export async function connectPrivate() {
@@ -139,6 +138,7 @@ export async function connectPrivate() {
                 const tTxt = await tRes.text();
                 const tJson = JSON.parse(tTxt);
                 if (tJson && tJson.data && Array.isArray(tJson.data) && tJson.data[0] && tJson.data[0].ts) {
+                    // OKX /public/time returns ISO 8601 string, e.g. "2024-02-18T..."
                     serverTs = tJson.data[0].ts;
                 }
             } catch (e) {
@@ -150,28 +150,37 @@ export async function connectPrivate() {
                     const prehash = ts + 'GET' + '/users/self/verify' + '';
                     const sign = await hmacSha256(c.secret, prehash);
                     const loginArg = { apiKey: c.key, passphrase: c.passphrase, timestamp: ts, sign };
-                    try { loginArg.simulated = (typeof c.simulated !== 'undefined' && c.simulated) ? 1 : 0; } catch (e) { }
-                    console.debug('[OKX-WS] Attempting login with timestamp', ts);
+                    if (c.simulated) loginArg.simulated = 1;
+                    console.log('[OKX-WS] Sending login op with ts:', ts, 'simulated:', !!c.simulated);
                     wsPrivate.send(JSON.stringify({ op: 'login', args: [loginArg] }));
                     return true;
                 } catch (e) { console.error('[OKX-WS] tryLoginWithTimestamp error', e); return false; }
             };
 
-            // Build candidate timestamp formats; prefer numeric-seconds like executor
+            // Build candidate timestamp formats; prefer numeric-seconds
             const candidates = [];
-            // If serverTs available (ISO), convert to numeric seconds string to match executor behavior
+
+            // 1. If serverTs available, convert to numeric seconds
             if (serverTs) {
                 try {
-                    const ms = new Date(serverTs).getTime();
-                    if (!isNaN(ms)) candidates.push(String(ms / 1000));
+                    const serverMs = new Date(serverTs).getTime();
+                    if (!isNaN(serverMs)) {
+                        // Ensure it's in seconds (10 digits)
+                        const s = String(Math.floor(serverMs / 1000));
+                        candidates.push(s);
+                    }
                 } catch (e) { }
             }
-            // local numeric seconds with fractional part (executor uses (Date.now()/1000).toString())
-            candidates.push(String(Date.now() / 1000));
-            // fallback ISO strings (some accounts may accept ISO)
+
+            // 2. Local numeric seconds
+            candidates.push(String(Math.floor(Date.now() / 1000)));
+
+            // 3. Fallback ISO strings
             const localIso = new Date().toISOString();
             candidates.push(localIso);
             candidates.push(localIso.replace(/\.\d{3}Z$/, 'Z'));
+
+            console.log('[OKX-WS] Auth candidates (seconds):', candidates.filter(c => !c.includes('T')));
 
             // try each candidate until one is sent
             for (const t of candidates) {
@@ -249,58 +258,64 @@ export async function connectPrivate() {
                 }
             }
 
-            // Only treat login/loginOk as connection auth events. Do NOT treat server 'subscribe' ACKs
+            // Handle logical login success
             if (res.event === 'login' || res.event === 'loginOk') {
-                if (res.event === 'login') {
-                    if (res.code && res.code !== '0') {
-                        // handle APIKey/environment mismatch (50101) by retrying with inverted simulated flag
-                        if (res.code === '50101' || res.code === 50101) {
-                            console.warn('[OKX-WS] Login rejected (50101). Trying alternate simulated flag...');
-                            try {
-                                const altSim = (typeof c.simulated === 'undefined' || !c.simulated) ? 1 : 0;
-                                let ts = String(Date.now() / 1000);
-                                try {
-                                    const tRes = await fetch('https://www.okx.com/api/v5/public/time');
-                                    const tTxt = await tRes.text();
-                                    const tJson = JSON.parse(tTxt);
-                                    if (tJson && tJson.data && Array.isArray(tJson.data) && tJson.data[0] && tJson.data[0].ts) {
-                                        const ms = new Date(tJson.data[0].ts).getTime();
-                                        if (!isNaN(ms)) ts = String(ms / 1000);
-                                    }
-                                } catch (e) { /* ignore */ }
-                                const prehash = ts + 'GET' + '/users/self/verify' + '';
-                                const sign = await hmacSha256(c.secret, prehash);
-                                const loginArg = { apiKey: c.key, passphrase: c.passphrase, timestamp: ts, sign };
-                                try { loginArg.simulated = altSim ? 1 : 0; } catch (e) { }
-                                wsPrivate.send(JSON.stringify({ op: 'login', args: [loginArg] }));
+                if (res.event === 'login' && res.code && res.code !== '0') {
+                    _privateAuthenticated = false;
 
-                                try {
-                                    const cfgRaw = localStorage.getItem('okx_api_config_v1');
-                                    const cfg = cfgRaw ? JSON.parse(cfgRaw) : (OkxClient.getConfig() || {});
-                                    cfg.simulated = !!altSim;
-                                    localStorage.setItem('okx_api_config_v1', JSON.stringify(cfg));
-                                    localStorage.setItem('okx_demo_detected', altSim ? '1' : '0');
-                                } catch (e) { }
-                            } catch (e) { console.error('[OKX-WS] Retry with alternate simulated flag failed', e); }
-                        } else {
-                            console.warn('[OKX-WS] Login failed:', res);
-                        }
-                        return;
+                    // 50101: APIKey does not match current environment (Sim vs Real)
+                    if (res.code === '50101' || res.code === 50101) {
+                        console.warn('[OKX-WS] Login code 50101. Retrying with alternate simulated flag...');
+                        try {
+                            const altSim = (typeof c.simulated === 'undefined' || !c.simulated) ? 1 : 0;
+                            let ts = String(Date.now() / 1000);
+                            const prehash = ts + 'GET' + '/users/self/verify' + '';
+                            const sign = await hmacSha256(c.secret, prehash);
+                            const loginArg = { apiKey: c.key, passphrase: c.passphrase, timestamp: ts, sign };
+                            if (altSim) loginArg.simulated = 1;
+                            wsPrivate.send(JSON.stringify({ op: 'login', args: [loginArg] }));
+
+                            // update local state if this was an auto-detected discrepancy
+                            localStorage.setItem('okx_demo_detected', altSim ? '1' : '0');
+                        } catch (e) { console.error('[OKX-WS] Auth retry failed', e); }
+                    } else {
+                        console.warn('[OKX-WS] Login failed with code:', res.code, res.msg);
                     }
-                }
-                // when login finished, subscribe to any pending private channels
-                if (subscriptionsPrivate.size > 0 && wsPrivate.readyState === 1) {
-                    const args = Array.from(subscriptionsPrivate.values()).map(s => s.arg);
-                    wsPrivate.send(JSON.stringify({ op: 'subscribe', args }));
+                } else {
+                    console.log('[OKX-WS] Private login SUCCESS (event:' + res.event + ')');
+                    _privateAuthenticated = true;
+                    // when login finished, subscribe to any pending private channels
+                    if (subscriptionsPrivate.size > 0 && wsPrivate.readyState === 1) {
+                        const args = Array.from(subscriptionsPrivate.values()).map(s => s.arg);
+                        console.log('[OKX-WS] Sending pending private subscriptions:', args);
+                        wsPrivate.send(JSON.stringify({ op: 'subscribe', args }));
+                    }
                 }
                 return;
             }
 
             if (res.data && res.arg) {
                 const channel = res.arg?.channel || '';
-                const key = `${res.arg?.instId || ''}:${channel}`;
-                const sub = subscriptionsPrivate.get(key);
-                if (sub) sub.callbacks.forEach(cb => cb(res));
+                const instId = res.arg?.instId || '';
+                const key = `${instId}:${channel}`;
+                let sub = subscriptionsPrivate.get(key);
+
+                // Fallback for ANY subscriptions (where instId might be specific in push but empty in sub)
+                if (!sub && instId) {
+                    sub = subscriptionsPrivate.get(`:${channel}`);
+                }
+
+                if (sub) {
+                    sub.callbacks.forEach(cb => cb(res));
+                } else {
+                    console.debug(`[OKX-WS] No private sub found for key: ${key}`);
+                }
+            }
+            if (res.event === 'error') {
+                console.error('[OKX-WS] Private WebSocket ERROR:', res);
+            }
+            if (res.event === 'subscribe') {
+                console.log('[OKX-WS] Private Subscription SUCCESS:', res.arg);
             }
         } catch (e) { console.error('[OKX-WS] Private Parse Error', e); }
     };
@@ -308,6 +323,7 @@ export async function connectPrivate() {
     wsPrivate.onclose = () => {
         console.warn('[OKX-WS] Private link closed. Reconnecting...');
         wsPrivate = null;
+        _privateAuthenticated = false;
         if (subscriptionsPrivate.size > 0) reconnectTimerPrivate = setTimeout(connectPrivate, 3000);
     };
     wsPrivate.onerror = (err) => console.error('[OKX-WS] Private Error', err);
@@ -322,10 +338,21 @@ export async function subscribePrivate(arg, callback) {
     if (!sub) {
         const a = Object.assign({}, arg);
         if (a.instId) a.instId = formatInstId(a.instId);
+        // Ensure extraParams is a JSON string if provided as object
+        if (a.extraParams && typeof a.extraParams === 'object') {
+            a.extraParams = JSON.stringify(a.extraParams);
+        }
         sub = { arg: a, callbacks: new Set() };
         subscriptionsPrivate.set(key, sub);
-        if (wsPrivate && wsPrivate.readyState === 1) wsPrivate.send(JSON.stringify({ op: 'subscribe', args: [a] }));
-        else await connectPrivate();
+        if (wsPrivate && wsPrivate.readyState === 1 && _privateAuthenticated) {
+            console.log('[OKX-WS] Subscribing private:', a);
+            wsPrivate.send(JSON.stringify({ op: 'subscribe', args: [a] }));
+        } else {
+            console.log('[OKX-WS] Private sub queued (not connected or not authenticated):', a);
+            if (!wsPrivate || wsPrivate.readyState !== 1) {
+                await connectPrivate();
+            }
+        }
     }
     sub.callbacks.add(callback);
 }
@@ -338,7 +365,8 @@ export function unsubscribePrivate(arg, callback) {
     if (!sub) return;
     if (callback) sub.callbacks.delete(callback); else sub.callbacks.clear();
     if (sub.callbacks.size === 0) {
-        if (wsPrivate && wsPrivate.readyState === 1) wsPrivate.send(JSON.stringify({ op: 'unsubscribe', args: [sub.arg] }));
+        const a = sub.arg;
+        if (wsPrivate && wsPrivate.readyState === 1) wsPrivate.send(JSON.stringify({ op: 'unsubscribe', args: [a] }));
         subscriptionsPrivate.delete(key);
     }
 }

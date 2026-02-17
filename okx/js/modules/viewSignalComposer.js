@@ -93,11 +93,21 @@ export const SIGNAL_COMPONENTS = {
 
     // ═══════════════════ OPEN INTEREST ═══════════════════
     OI_VALUE: { category: 'OI', name: 'OI Value ($)', icon: '🔄', path: 'raw.OI.openInterest', operators: ['>', '<'], defaultThreshold: 10000000, description: 'Total open interest' },
+    OI_CHANGE_5M: { category: 'OI', name: 'OI Δ 5m %', icon: '📊', path: 'raw.OI.oiChange5m', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.5, description: 'OI change 5 min' },
+    OI_CHANGE_10M: { category: 'OI', name: 'OI Δ 10m %', icon: '📊', path: 'raw.OI.oiChange10m', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.8, description: 'OI change 10 min' },
     OI_CHANGE_15M: { category: 'OI', name: 'OI Δ 15m %', icon: '📊', path: 'raw.OI.oiChange15m', operators: ['>', '<', 'ABS>'], defaultThreshold: 1.0, description: 'OI change 15 min' },
     OI_CHANGE_1H: { category: 'OI', name: 'OI Δ 1h %', icon: '📊', path: 'raw.OI.oiChange1h', operators: ['>', '<', 'ABS>'], defaultThreshold: 2.0, description: 'OI change 1 hour' },
     OI_CHANGE_4H: { category: 'OI', name: 'OI Δ 4h %', icon: '📊', path: 'raw.OI.oiChange4h', operators: ['>', '<', 'ABS>'], defaultThreshold: 5.0, description: 'OI change 4 hours' },
+    OI_CHANGE_24H: { category: 'OI', name: 'OI Δ 24h %', icon: '📊', path: 'raw.OI.oiChange24h', operators: ['>', '<', 'ABS>'], defaultThreshold: 10.0, description: 'OI change 24 hours' },
+    OI_VOLUME_5M: { category: 'OI', name: 'OI Vol 5m', icon: '📈', path: 'raw.OI.oiVolume5m', operators: ['>', '<'], defaultThreshold: 1000, description: 'OI volume 5 min' },
+    OI_VOLUME_10M: { category: 'OI', name: 'OI Vol 10m', icon: '📈', path: 'raw.OI.oiVolume10m', operators: ['>', '<'], defaultThreshold: 2000, description: 'OI volume 10 min' },
+    OI_VOLUME_15M: { category: 'OI', name: 'OI Vol 15m', icon: '📈', path: 'raw.OI.oiVolume15m', operators: ['>', '<'], defaultThreshold: 3000, description: 'OI volume 15 min' },
+    OI_VOLUME_1H: { category: 'OI', name: 'OI Vol 1h', icon: '📈', path: 'raw.OI.oiVolume1h', operators: ['>', '<'], defaultThreshold: 5000, description: 'OI volume 1 hour' },
+    OI_VOL_TREND_5M: { category: 'OI', name: 'OI Vol Trend 5m', icon: '📈', path: 'raw.OI.volumeTrend5m', operators: ['>', '<'], defaultThreshold: 10, description: 'OI volume trend 5 min' },
+    OI_VOL_TREND_15M: { category: 'OI', name: 'OI Vol Trend 15m', icon: '📈', path: 'raw.OI.volumeTrend15m', operators: ['>', '<'], defaultThreshold: 20, description: 'OI volume trend 15 min' },
+    OI_NET_SCORE: { category: 'OI', name: 'OI Net Score', icon: '🎯', path: 'raw.OI.netScore', operators: ['>', '<', 'ABS>'], defaultThreshold: 10, description: 'OI sentiment score' },
     OI_TIER: { category: 'OI', name: 'OI Tier', icon: '🏆', path: 'raw.OI.tier', operators: ['==', '<=', '>='], defaultThreshold: 1, description: 'OI tier (1=Large Cap)' },
-    OI_DIRECTION: { category: 'OI', name: 'OI Direction', icon: '🧭', path: 'raw.OI.marketDirection', operators: ['==', '!='], defaultThreshold: 'BULLISH', valueType: 'select', options: ['BULLISH', 'BEARISH', 'NEUTRAL'], description: 'OI-based direction' },
+    OI_DIRECTION: { category: 'OI', name: 'OI Direction', icon: '🧭', path: 'raw.OI.marketDirection', operators: ['==', '!='], defaultThreshold: 'BULLISH', valueType: 'select', options: ['BULLISH', 'BEARISH', 'NEUTRAL', 'SIDEWAYS'], description: 'OI-based direction' },
 
     // ═══════════════════ FUNDING RATE ═══════════════════
     FUNDING_RATE: { category: 'FUNDING', name: 'Funding Rate', icon: '💰', path: 'raw.FUNDING.fundingRate', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.0001, description: 'Current funding rate' },
@@ -111,6 +121,8 @@ export const SIGNAL_COMPONENTS = {
     LSR_SHORT_PCT: { category: 'LSR', name: 'Short %', icon: '📉', path: 'raw.LSR.shortAccountRatio', operators: ['>', '<'], defaultThreshold: 45, description: '% accounts short' },
     LSR_ZSCORE: { category: 'LSR', name: 'LSR Z-Score', icon: '📊', path: 'raw.LSR.z', operators: ['>', '<', 'ABS>'], defaultThreshold: 2.0, description: 'LSR deviation' },
     LSR_PERCENTILE: { category: 'LSR', name: 'LSR Percentile', icon: '📏', path: 'raw.LSR.percentile', operators: ['>', '<'], defaultThreshold: 80, description: 'Historical percentile' },
+    OI_BULL: { category: 'OI', name: 'Bull Score', icon: '🟢', path: 'raw.OI.bullScore', operators: ['>', '<', '>='], defaultThreshold: 15, description: 'OI Bullish intensity' },
+    OI_BEAR: { category: 'OI', name: 'Bear Score', icon: '🔴', path: 'raw.OI.bearScore', operators: ['>', '<', '>='], defaultThreshold: 15, description: 'OI Bearish intensity' },
 
     // ═══════════════════ LIQUIDATIONS ═══════════════════
     LIQ_RATE: { category: 'LIQ', name: 'Liq Rate', icon: '💥', path: 'raw.LIQ.liqRate', operators: ['>', '<'], defaultThreshold: 2.0, description: 'Liquidation intensity' },
@@ -124,8 +136,7 @@ export const SIGNAL_COMPONENTS = {
     MASTER_MTF: { category: 'MASTER', name: 'MTF Aligned', icon: '🔗', path: 'signals.masterSignal.mtfAligned', operators: ['=='], defaultThreshold: true, valueType: 'boolean', description: 'Multi-timeframe aligned' },
 
     // ═══════════════════ DASHBOARD ═══════════════════
-    DASH_BULL: { category: 'DASH', name: 'Bull Score', icon: '🟢', path: 'dashboard.bullishScore', operators: ['>', '<', '>='], defaultThreshold: 70, description: 'Bullish sentiment' },
-    DASH_BEAR: { category: 'DASH', name: 'Bear Score', icon: '🔴', path: 'dashboard.bearishScore', operators: ['>', '<', '>='], defaultThreshold: 70, description: 'Bearish sentiment' },
+
     DASH_TOTAL: { category: 'DASH', name: 'Dashboard Score', icon: '📊', path: 'dashboard.totalScore', operators: ['>', '<', '>=', '<='], defaultThreshold: 60, description: 'Combined score' },
     DASH_REC: { category: 'DASH', name: 'Recommendation', icon: '💡', path: 'dashboard.recommendation', operators: ['==', '!='], defaultThreshold: 'STRONG_BUY', valueType: 'select', options: ['STRONG_BUY', 'BUY', 'HOLD', 'SELL', 'STRONG_SELL'], description: 'Dashboard rec' },
 
@@ -678,6 +689,8 @@ function getMatrixColumns(view) {
         LIQUIDITY: [
             { name: 'OI ($)', path: 'raw.OI.openInterest', format: v => fmtUsd(v / 1000) },
             { name: 'Tier', path: 'raw.OI.tier', format: v => v ?? '-' },
+            { name: 'Bull S', path: 'raw.OI.bullScore', format: v => fmtNum(v, 0), color: v => v > 0 ? 'text-bb-green' : 'text-bb-muted' },
+            { name: 'Bear S', path: 'raw.OI.bearScore', format: v => fmtNum(v, 0), color: v => v > 0 ? 'text-bb-red' : 'text-bb-muted' },
             { name: 'Book Imb', path: 'raw.ORDERBOOK.imbalance', format: v => fmtNum(v, 2), color: pctCol }
         ],
         DERIVATIVES: [
@@ -693,8 +706,7 @@ function getMatrixColumns(view) {
             { name: 'Trend Str', path: 'signals.marketRegime.trendStrength', format: v => fmtNum(v, 2) }
         ],
         SENTIMENT: [
-            { name: 'Bull', path: 'dashboard.bullishScore', format: v => fmtNum(v, 0) },
-            { name: 'Bear', path: 'dashboard.bearishScore', format: v => fmtNum(v, 0) },
+
             { name: 'Fund Bias', path: 'raw.FUNDING.marketBias', format: v => v || '-' },
             { name: 'OI Dir', path: 'raw.OI.marketDirection', format: v => v || '-' }
         ]
@@ -1749,13 +1761,17 @@ function showPresetsModal(container) {
 }
 
 function exportAllSignals() {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(compositions, null, 2));
+    // Clone and set active=false for safety
+    const safeExport = compositions.map(c => ({ ...c, active: false }));
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(safeExport, null, 2));
     downloadFile(dataStr, "signal_all.json");
 }
 
 function exportSingleSignal() {
     if (!activeComposition) { alert('No active signal to export'); return; }
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify([activeComposition], null, 2));
+    // Clone and set active=false for safety
+    const safeExport = [{ ...activeComposition, active: false }];
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(safeExport, null, 2));
     const nameSafe = (activeComposition.name || 'signal').replace(/[^a-z0-9]/gi, '_').toLowerCase();
     downloadFile(dataStr, `signal_${nameSafe}.json`);
 }
@@ -1805,6 +1821,9 @@ function processImports(importedSignals, container) {
     // but standard confirm() is synchronous, so loop is fine.
 
     for (const importedSig of importedSignals) {
+        // SAFETY: Force active = false upon import
+        importedSig.active = false;
+
         // Check duplication by Name (User requirement: "jika ada config dengan nama yang sama")
         // Note: We also have check by ID, but user specifically mentioned Name. 
         // Let's check both or prioritize Name for the user interaction.
