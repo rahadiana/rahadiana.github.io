@@ -6,6 +6,11 @@ export function render(container) {
   container.innerHTML = '';
   const root = document.createElement('div');
   root.className = 'panel';
+  // Ensure the wrapper allows content to grow and doesn't clip
+  root.style.height = 'auto';
+  root.style.overflow = 'visible';
+  root.style.marginBottom = '20px'; // Add breathing room at bottom
+
   root.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center">
       <h2>OKX Trade (Derivatives)</h2>
@@ -21,11 +26,30 @@ export function render(container) {
 
   // Ensure default safety: do not enable REAL mode automatically
   if (localStorage.getItem('os_mode') === 'REAL' && !localStorage.getItem('okx_real_ack')) {
-    localStorage.setItem('os_mode','SIM');
+    localStorage.setItem('os_mode', 'SIM');
+  }
+
+  // Immediately trigger data loading after UI is built
+  // This ensures positions/orders/account display even if init() hasn't run yet
+  if (OkxClient.isConfigured()) {
+    console.log('[OkxTrade] render: API configured, triggering initial data load...');
+    ViewOrderSim.init().catch(e => console.warn('[OkxTrade] post-render init error', e));
   }
 }
 
-export function init() {}
-export function stop() {}
+export async function init() {
+  // Delegate to ViewOrderSim so positions, orders, fills & WS subscriptions load
+  console.log('[OkxTrade] init() called, delegating to ViewOrderSim.init()');
+  await ViewOrderSim.init();
+}
 
-export default { render, init, stop };
+export function update(snapshot, profile, timeframe) {
+  // Delegate periodic heartbeat updates so positions/orders stay in sync
+  ViewOrderSim.update(snapshot, profile, timeframe);
+}
+
+export function stop() {
+  if (typeof ViewOrderSim.stop === 'function') ViewOrderSim.stop();
+}
+
+export default { render, init, update, stop };

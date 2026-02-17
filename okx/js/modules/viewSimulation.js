@@ -47,8 +47,8 @@ function updateGuardStatus(coin) {
 
     const mkt = window.marketState || {};
     const data = mkt[coin] || mkt[coin + '-USDT'];
-    const guard = data?.signals?.institutional_guard || data?.institutional_guard || {};
-    const status = guard.meta_guard_status || 'SCANNING';
+    const guard = data?.signals?.institutional_guard || data?.institutional_guard || null;
+    const status = guard?.meta_guard_status ?? '--';
 
     el.innerText = status;
 
@@ -56,7 +56,7 @@ function updateGuardStatus(coin) {
         el.className = 'text-lg font-black text-bb-green';
     } else if (status === 'BLOCK') {
         el.className = 'text-lg font-black text-bb-red animate-pulse';
-        el.title = guard.block_reason || 'BLOCKED';
+        el.title = guard?.block_reason ?? '';
     } else if (status === 'DOWNGRADE') {
         el.className = 'text-lg font-black text-bb-gold';
     } else {
@@ -100,7 +100,7 @@ export function render(container) {
                     <span id="sim-closed-pnl" class="text-2xl font-black ${(state.metrics?.totalPnL || 0) >= 0 ? 'text-bb-green' : 'text-bb-red'}">$${Utils.safeFixed(state.metrics?.totalPnL || 0, 2)}</span>
                 </div>
                 <div class="flex flex-col" title="Meta-Guard status for selected asset">
-                    <span class="text-[8px] text-bb-muted uppercase font-black tracking-widest mb-1">🛡️ Meta-Guard</span>
+                    <span class="text-[8px] text-bb-muted uppercase font-black tracking-widest mb-1">🛡️ META-GUARD</span>
                     <span id="sim-guard-status" class="text-lg font-black text-bb-muted">SCANNING</span>
                 </div>
                 <div class="ml-auto flex items-center gap-3">
@@ -1461,7 +1461,7 @@ window.app.showTradeDetails = (id) => {
     const modal = document.createElement('div');
     modal.className = 'fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4';
 
-    // Build Meta-Guard summary (safe-read from marketState)
+    // Build META-GUARD summary (safe-read from marketState)
     const guardSource = window.marketState?.[h.coin] || {};
     const guardData = guardSource.signals?.institutional_guard || guardSource.institutional_guard || null;
     let guardHtml = '';
@@ -1475,7 +1475,7 @@ window.app.showTradeDetails = (id) => {
             <div class="p-3 bg-bb-panel border border-bb-border rounded mb-3">
                 <div class="flex justify-between items-center">
                     <div>
-                        <div class="text-[9px] text-bb-muted">Meta-Guard</div>
+                        <div class="text-[9px] text-bb-muted">META-GUARD</div>
                         <div class="text-lg font-black">${gStatus}</div>
                     </div>
                     <div class="text-right">

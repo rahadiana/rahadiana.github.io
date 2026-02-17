@@ -1,13 +1,13 @@
 /**
- * View Institutional - Meta-Guard Layer Display
+ * View Institutional - META-GUARD Layer Display
  * 
  * Displays the AI interpretation layers:
  * - SignalInterpreter output
  * - AnalyticsValidator output  
  * - GovernanceValidator output
- * - InstitutionalGuard (Meta-Guard) output
+ * - InstitutionalGuard (META-GUARD) output
  * 
- * PRINCIPLE: "Meta-Guard tidak membuat uang. Meta-Guard mencegah kehilangan uang."
+ * PRINCIPLE: "META-GUARD tidak membuat uang. META-GUARD mencegah kehilangan uang."
  */
 
 import * as Utils from '../utils.js';
@@ -144,7 +144,7 @@ export function render(container) {
             <div class="mt-auto p-3 bg-bb-panel/30 border border-bb-gold/20 rounded">
                 <div class="flex justify-between items-center">
                     <div class="flex items-center gap-2">
-                        <span class="text-[10px] text-bb-gold italic">"Meta-Guard tidak membuat uang. Meta-Guard mencegah kehilangan uang."</span>
+                        <span class="text-[10px] text-bb-gold italic">"META-GUARD tidak membuat uang. META-GUARD mencegah kehilangan uang."</span>
                     </div>
                     <div class="flex items-center gap-3">
                         <span class="text-[8px] text-bb-muted" id="mg-timestamp">--</span>
@@ -227,23 +227,38 @@ function updateMetaGuardStatus(mg) {
 
     // Confidence adjustment
     if (elConfAdj) {
-        const adj = mg.confidence_adjustment || 0;
-        elConfAdj.innerText = adj > 0 ? `+${adj}` : adj;
-        elConfAdj.className = `text-xl font-mono font-black ${adj < 0 ? 'text-bb-red' : adj > 0 ? 'text-bb-green' : 'text-white'}`;
+        const adj = mg && typeof mg.confidence_adjustment !== 'undefined' ? mg.confidence_adjustment : null;
+        if (adj === null) {
+            elConfAdj.innerText = '--';
+            elConfAdj.className = 'text-xl font-mono font-black text-bb-muted';
+        } else {
+            elConfAdj.innerText = adj > 0 ? `+${adj}` : adj;
+            elConfAdj.className = `text-xl font-mono font-black ${adj < 0 ? 'text-bb-red' : adj > 0 ? 'text-bb-green' : 'text-white'}`;
+        }
     }
 
     // Noise level
     if (elNoise) {
-        const noise = mg.noise_level || 'CLEAN';
-        elNoise.innerText = noise;
-        elNoise.className = `text-lg font-mono font-bold ${noise === 'NOISY' ? 'text-bb-red' : noise === 'MODERATE' ? 'text-bb-gold' : 'text-bb-green'}`;
+        const noise = mg && typeof mg.noise_level !== 'undefined' ? mg.noise_level : null;
+        if (noise === null) {
+            elNoise.innerText = '--';
+            elNoise.className = 'text-lg font-mono font-bold text-bb-muted';
+        } else {
+            elNoise.innerText = noise;
+            elNoise.className = `text-lg font-mono font-bold ${noise === 'NOISY' ? 'text-bb-red' : noise === 'MODERATE' ? 'text-bb-gold' : 'text-bb-green'}`;
+        }
     }
 
     // Execution badge
     if (elExecBadge) {
-        const allowed = mg.execution_allowed;
-        elExecBadge.innerText = allowed ? 'EXECUTION ALLOWED' : 'EXECUTION BLOCKED';
-        elExecBadge.className = `text-[9px] px-2 py-1 rounded font-bold ${allowed ? 'bg-bb-green/20 text-bb-green' : 'bg-bb-red/20 text-bb-red'}`;
+        const allowed = mg && typeof mg.execution_allowed !== 'undefined' ? mg.execution_allowed : null;
+        if (allowed === null) {
+            elExecBadge.innerText = 'UNKNOWN';
+            elExecBadge.className = 'text-[9px] px-2 py-1 rounded font-bold bg-bb-muted/10 text-bb-muted';
+        } else {
+            elExecBadge.innerText = allowed ? 'EXECUTION ALLOWED' : 'EXECUTION BLOCKED';
+            elExecBadge.className = `text-[9px] px-2 py-1 rounded font-bold ${allowed ? 'bg-bb-green/20 text-bb-green' : 'bg-bb-red/20 text-bb-red'}`;
+        }
     }
 }
 

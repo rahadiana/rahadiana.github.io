@@ -34,7 +34,7 @@ export function render(container) {
                     </div>
                     <div class="w-px h-10 bg-bb-border opacity-50"></div>
                     <div class="flex flex-col items-center">
-                        <span class="text-[9px] text-bb-muted uppercase font-bold">Meta-Guard</span>
+                        <span class="text-[9px] text-bb-muted uppercase font-bold">META-GUARD</span>
                         <span class="text-lg font-mono font-black" id="dec-guard-status">--</span>
                     </div>
                 </div>

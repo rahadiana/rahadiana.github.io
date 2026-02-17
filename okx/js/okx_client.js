@@ -40,6 +40,7 @@ function _writeConfig(cfg) { try { localStorage.setItem(STORAGE_KEY, JSON.string
 
 let _apiInstance = null;
 let _posCache = null;
+let _posCacheTime = 0;
 const POS_CACHE_TTL = 5000; // 5s throttle for global position fetches
 let _posModeCache = null;
 let _posModeCacheTime = 0;

@@ -35,16 +35,17 @@ let _privateAlgoOrderCb = null;
  * priority: 1
  */
 export async function init() {
-  console.log('[OKX-TRADE] Initializing...');
+  console.log('[OKX-TRADE] Initializing... isConfigured:', OkxClient.isConfigured());
   if (OkxClient.isConfigured()) {
     try {
       await ensurePrivateSubscription();
+      console.log('[OKX-TRADE] Private WS subscription ensured, loading data...');
       await Promise.all([
         loadAccountInfo(),
         loadRealFills(),
         loadRealPositions()
       ]);
-      console.log('[OKX-TRADE] Initialized (Configured)');
+      console.log('[OKX-TRADE] Initialized (Configured) - _lastOkxPositions:', _lastOkxPositions.length);
     } catch (e) {
       console.error('[OKX-TRADE] Initialization error', e);
     }
@@ -185,7 +186,7 @@ export function render(container) {
        </div>
 
        <!-- Recent Fills (Compact) -->
-       <div class="glass-list" style="height:160px">
+       <div class="glass-list" style="height:160px;flex-shrink:0">
           <div class="list-header">
              <span>Recent Fills</span>
              <button id="os-export" class="text-[9px] text-bb-blue">CSV</button>
@@ -457,16 +458,30 @@ async function ensurePrivateSubscription() {
         _privatePosCb = (msg) => {
           try {
             const data = msg && msg.data ? (Array.isArray(msg.data) ? msg.data : [msg.data]) : [];
-            const positions = [];
+            if (data.length === 0) return;
+
+            // MERGE Logic: create map from existing, update with new, remove if closed
+            const map = new Map();
+            (_lastOkxPositions || []).forEach(p => {
+              // use posId if available, else composite key
+              const key = p.posId || `${p.instId}_${p.mgnMode}_${p.posSide}`;
+              map.set(key, p);
+            });
+
             for (const d of data) {
-              if (Array.isArray(d)) positions.push(...d);
-              else if (d) positions.push(d);
+              const key = d.posId || `${d.instId}_${d.mgnMode}_${d.posSide}`;
+              // If pos is '0', it means closed
+              if (d.pos && parseFloat(d.pos) === 0) {
+                map.delete(key);
+              } else {
+                map.set(key, d);
+              }
             }
-            if (positions.length > 0) {
-              _lastOkxPositions = positions;
-              try { window._okx_ws_last_pos_update = Date.now(); } catch (e) { }
-              updatePositionsUI();
-            }
+
+            _lastOkxPositions = Array.from(map.values());
+            try { window._okx_ws_last_pos_update = Date.now(); } catch (e) { }
+            updatePositionsUI();
+
           } catch (e) { console.error('positions ws cb error', e); }
         };
         try { subscribePrivate({ channel: 'positions', instType: 'SWAP' }, _privatePosCb); } catch (e) { console.warn('subscribePrivate failed', e); }
@@ -1002,13 +1017,15 @@ async function loadAccountInfo() {
 }
 
 async function loadRealPositions() {
-  const el = document.getElementById('os-positions'); if (!el) return;
+  const el = document.getElementById('os-positions'); if (!el) { console.warn('[loadRealPositions] os-positions element not found'); return; }
   el.innerHTML = '<div class="muted">Loading positions...</div>';
   const now = Date.now();
-  if (now - _lastPosFetch < FETCH_THROTTLE_MS) return;
+  if (now - _lastPosFetch < FETCH_THROTTLE_MS) { console.debug('[loadRealPositions] throttled, skipping'); return; }
   _lastPosFetch = now;
   try {
+    console.log('[loadRealPositions] Fetching positions from OKX API...');
     const posRes = OkxClient.fetchPositions ? await OkxClient.fetchPositions() : null;
+    console.log('[loadRealPositions] API response:', posRes ? { code: posRes.code, dataLen: posRes.data?.length, msg: posRes.msg } : 'null');
     const okxList = (posRes && posRes.data) ? posRes.data : [];
     _lastOkxPositions = okxList;
     // try to include Composer in-memory positions if available
@@ -1016,11 +1033,11 @@ async function loadRealPositions() {
     try { if (ViewSignalComposer && typeof ViewSignalComposer.getOpenPositions === 'function') composerPositions = ViewSignalComposer.getOpenPositions(); } catch (e) { composerPositions = []; }
 
     el.innerHTML = '';
-    if (composerPositions.length === 0 && okxList.length === 0) { el.innerHTML = '<div class="muted">No positions</div>'; return; }
 
-    // refresh account balance display (best-effort)
+    // refresh account balance display (best-effort) — always attempt, not only when positions exist
     try {
       const balRes = await OkxClient.getBalance();
+      console.log('[loadRealPositions] Balance response:', balRes ? { code: balRes.code, dataLen: balRes.data?.length } : 'null');
       if (balRes && balRes.data && Array.isArray(balRes.data) && balRes.data.length > 0) {
         // find USDT or first currency detail
         let found = null;
@@ -1033,9 +1050,13 @@ async function loadRealPositions() {
           const bal = parseFloat(found.eq || found.balance || found.total || found.avail || 0) || 0;
           _lastAccountBalance = bal;
           const balEl = document.getElementById('os-balance'); if (balEl) balEl.innerText = `$${_lastAccountBalance.toFixed(2)}`;
+          // Also update equity display
+          const eqEl = document.getElementById('os-equity'); if (eqEl) eqEl.innerText = `$${bal.toFixed(2)}`;
         }
       }
-    } catch (e) { /* ignore balance fetch errors */ }
+    } catch (e) { console.warn('[loadRealPositions] balance fetch error', e); }
+
+    if (composerPositions.length === 0 && okxList.length === 0) { el.innerHTML = '<div class="muted">No positions</div>'; return; }
 
     // show composer positions first (only if user enabled)
     const showComposer = (localStorage.getItem('os_show_composer_positions') === '1');
@@ -1050,6 +1071,7 @@ async function loadRealPositions() {
     // Update positions UI (handles OKX positions with PnL, leverage, etc.)
     updatePositionsUI();
   } catch (e) {
+    console.error('[loadRealPositions] Error loading positions:', e);
     el.innerHTML = '<div class="muted">Failed to load positions</div>';
   }
 }
@@ -1355,11 +1377,12 @@ async function loadRealFills() {
 
 
 function renderOrders() {
-  const el = document.getElementById('os-orders'); if (!el) return;
+  const el = document.getElementById('os-orders'); if (!el) { console.warn('[renderOrders] os-orders element not found'); return; }
   el.innerHTML = '';
   const mode = localStorage.getItem('os_mode') || 'SIM';
   const cfg = OkxClient.getConfig() || {};
   const shouldFetch = OkxClient.isConfigured() && (mode === 'REAL' || (mode === 'SIM' && cfg.simulated));
+  console.log('[renderOrders] mode:', mode, 'isConfigured:', OkxClient.isConfigured(), 'shouldFetch:', shouldFetch);
 
   // Helper to render a list item
   const renderItem = (o, isSim) => {
@@ -1380,16 +1403,19 @@ function renderOrders() {
         `;
 
     if (!isSim) {
-      const btn = d.querySelector(`#cancel-${id}`);
+      // Use class selector to avoid invalid ID syntax issues (e.g. colons in instId fallback)
+      const btn = d.querySelector('button.action-btn');
       if (btn) btn.addEventListener('click', () => {
         if (!confirm('Cancel order ' + id + '?')) return;
         btn.disabled = true; btn.innerText = '...';
         _realCancelPending.add(id);
         const p = o.algoId ? OkxClient.cancelAlgoOrders([{ instId: o.instId, algoId: o.algoId }]) : OkxClient.cancelOrder({ instId: o.instId, ordId: o.ordId || o.clOrdId });
         p.then(r => {
+          console.log('[CancelOrder] success', r);
           _realCancelPending.delete(id); renderOrders();
         }).catch(e => {
-          _realCancelPending.delete(id); alert('Failed'); renderOrders();
+          console.error('[CancelOrder] failed', e);
+          _realCancelPending.delete(id); alert('Failed: ' + (e.message || e)); renderOrders();
         });
       });
     }

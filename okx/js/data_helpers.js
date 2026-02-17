@@ -361,14 +361,7 @@ export function computeData(data, profile = 'AGGRESSIVE', timeframe = '15MENIT')
         volRegime: data.signals?.volatilityRegime?.regime || 'NORMAL',
         trendStrength: 0.5
       },
-      institutional_guard: {
-        meta_guard_status: 'ALLOW',
-        execution_allowed: true,
-        confidence_adjustment: 0,
-        noise_level: 'CLEAN',
-        ivs_score: 80,
-        block_reason: 'NONE'
-      }
+      institutional_guard: data.signals?.institutional_guard || data.institutional_guard || {}
     },
     profile: profileObj,
     timeframe: tfObj

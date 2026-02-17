@@ -15,7 +15,7 @@ import * as InfoView from './modules/viewInfo.js';
 import * as ViewVisual from './modules/viewVisual.js';
 import * as Sidebar from './modules/sidebar.js';
 import * as ViewStrategy from './modules/viewStrategy.js';
-import * as ViewP2P from './modules/viewP2P.js';
+
 import * as ViewSynthesis from './modules/viewSynthesis.js';
 import * as ViewAutomation from './modules/viewAutomation.js';
 import * as ViewSimulation from './modules/viewSimulation.js';
@@ -307,7 +307,7 @@ function initTabs() {
 }
 
 function switchTab(tabName) {
-    if (!['GLOBAL', 'STRATEGY', 'DETAILS', 'VISUAL', 'INFO', 'P2P', 'AUTOMATION', 'SIMULATION', 'COMPOSER', 'ALERTS', 'BACKTEST', 'PORTFOLIO', 'RISK', 'ORDERS', 'OKXTRADE'].includes(tabName)) return;
+    if (!['GLOBAL', 'STRATEGY', 'DETAILS', 'VISUAL', 'INFO', 'AUTOMATION', 'SIMULATION', 'COMPOSER', 'ALERTS', 'BACKTEST', 'PORTFOLIO', 'RISK', 'ORDERS', 'OKXTRADE'].includes(tabName)) return;
 
     // Lifecycle cleanup for outgoing tab/subtab
     if (currentTab === 'DETAILS' && tabName !== 'DETAILS') {
@@ -347,9 +347,7 @@ function switchTab(tabName) {
     } else if (tabName === 'INFO') {
         detailsSubnav.classList.add('hidden');
         InfoView.render(viewContainer);
-    } else if (tabName === 'P2P') {
-        detailsSubnav.classList.add('hidden');
-        ViewP2P.render(viewContainer);
+
     } else if (tabName === 'ALERTS') {
         detailsSubnav.classList.add('hidden');
         ViewAlerts.render(viewContainer);
@@ -469,10 +467,7 @@ function updateCurrentView() {
         if (p2p) InfoView.update(p2p.getStats());
         return;
     }
-    if (currentTab === 'P2P') {
-        if (p2p) ViewP2P.update(p2p.getStats());
-        return;
-    }
+
     if (currentTab === 'BACKTEST') {
         if (VIEWS['BACKTEST'] && typeof VIEWS['BACKTEST'].update === 'function') VIEWS['BACKTEST'].update(marketState, selectedProfile, selectedTimeframe);
         return;
@@ -495,6 +490,10 @@ function updateCurrentView() {
     }
     if (currentTab === 'COMPOSER') {
         ViewSignalComposer.update(marketState[selectedCoin], selectedProfile, selectedTimeframe);
+        return;
+    }
+    if (currentTab === 'OKXTRADE') {
+        ViewOkxTrade.update(marketState[selectedCoin], selectedProfile, selectedTimeframe);
         return;
     }
 

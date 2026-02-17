@@ -220,7 +220,7 @@ export const CATEGORIES = {
     OB: { name: 'Order Book', color: 'sky-400', icon: '📚' },
     BTC: { name: 'BTC Benchmark', color: 'yellow-500', icon: '₿' },
     ALERT: { name: 'Alerts', color: 'red-500', icon: '🚨' },
-    GUARD: { name: 'Meta-Guard', color: 'emerald-500', icon: '🛡️' }
+    GUARD: { name: 'META-GUARD', color: 'emerald-500', icon: '🛡️' }
 };
 
 // Preset Templates
@@ -383,6 +383,8 @@ export function render(container) {
 
                     <div class="flex gap-2">
                         <button id="btn-presets" class="px-2 py-1 bg-purple-500/10 border border-purple-500/30 text-purple-400 text-[9px] font-black hover:bg-purple-500/20 rounded">📋 PRESETS</button>
+                        <button id="btn-import" class="px-2 py-1 bg-blue-500/10 border border-blue-500/30 text-blue-400 text-[9px] font-black hover:bg-blue-500/20 rounded">📥 IMPORT</button>
+                        <button id="btn-export-all" class="px-2 py-1 bg-green-500/10 border border-green-500/30 text-green-400 text-[9px] font-black hover:bg-green-500/20 rounded">📤 EXPORT ALL</button>
                         <button id="btn-new" class="px-2 py-1 bg-bb-gold/10 border border-bb-gold/30 text-bb-gold text-[9px] font-black hover:bg-bb-gold/20 rounded">+ NEW</button>
                     </div>
                 </div>
@@ -1279,6 +1281,7 @@ function renderEditor() {
             <!-- ACTIONS -->
             <div class="flex gap-2">
                 <button id="btn-save" class="flex-1 px-3 py-1.5 bg-bb-gold text-black text-[9px] font-black hover:bg-bb-gold/80 transition-all rounded">💾 SAVE</button>
+                <button id="btn-export-single" class="px-3 py-1.5 bg-blue-500/20 border border-blue-500/30 text-blue-400 text-[9px] font-black hover:bg-blue-500/30 transition-all rounded">📤 EXPORT</button>
                 <button id="btn-test" class="px-3 py-1.5 bg-bb-green/20 border border-bb-green/30 text-bb-green text-[9px] font-black hover:bg-bb-green/30 transition-all rounded">🧪 TEST</button>
             </div>
         </div>
@@ -1475,6 +1478,8 @@ function attachEvents(container) {
 
     // Presets
     container.querySelector('#btn-presets')?.addEventListener('click', () => showPresetsModal(container));
+    container.querySelector('#btn-export-all')?.addEventListener('click', exportAllSignals);
+    container.querySelector('#btn-import')?.addEventListener('click', () => importConfig(container));
 
     // Signal list
     container.querySelectorAll('.signal-item').forEach(el => {
@@ -1592,6 +1597,12 @@ function attachEditorEvents(container) {
         saveState();
         alert('✅ Saved!');
     });
+    container.querySelector('#btn-save')?.addEventListener('click', () => {
+        if (!activeComposition) { alert('No signal selected!'); return; }
+        saveState();
+        alert('✅ Saved!');
+    });
+    container.querySelector('#btn-export-single')?.addEventListener('click', () => exportSingleSignal());
     container.querySelector('#btn-test')?.addEventListener('click', () => testSignal(container));
 
     // Only attach editor field events if there's an active composition
@@ -1735,6 +1746,126 @@ function showPresetsModal(container) {
             }
         });
     });
+}
+
+function exportAllSignals() {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(compositions, null, 2));
+    downloadFile(dataStr, "signal_all.json");
+}
+
+function exportSingleSignal() {
+    if (!activeComposition) { alert('No active signal to export'); return; }
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify([activeComposition], null, 2));
+    const nameSafe = (activeComposition.name || 'signal').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    downloadFile(dataStr, `signal_${nameSafe}.json`);
+}
+
+function downloadFile(dataStr, fileName) {
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("download", fileName);
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+}
+
+function importConfig(container) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.readAsText(file, 'UTF-8');
+        reader.onload = readerEvent => {
+            try {
+                const content = readerEvent.target.result;
+                const parsed = JSON.parse(content);
+                if (Array.isArray(parsed)) {
+                    processImports(parsed, container);
+                } else {
+                    alert('❌ Invalid config file format (Expected array)');
+                }
+            } catch (err) {
+                console.error(err);
+                alert('❌ Error parsing JSON file');
+            }
+        }
+    }
+    input.click();
+}
+
+function processImports(importedSignals, container) {
+    let added = 0;
+    let updated = 0;
+    let skipped = 0;
+
+    // Use a recursive function to handle async confirmations one by one if needed, 
+    // but standard confirm() is synchronous, so loop is fine.
+
+    for (const importedSig of importedSignals) {
+        // Check duplication by Name (User requirement: "jika ada config dengan nama yang sama")
+        // Note: We also have check by ID, but user specifically mentioned Name. 
+        // Let's check both or prioritize Name for the user interaction.
+
+        const existingByName = compositions.find(c => c.name === importedSig.name);
+        const existingById = compositions.find(c => c.id === importedSig.id && c !== existingByName); // ID match but different object/name?
+
+        // If exact ID match, it's likely the same signal.
+        // If Name match, it's a conflict.
+
+        let targetSignal = existingByName || existingById;
+
+        if (targetSignal) {
+            const choice = confirm(`Signal "${importedSig.name}" already exists.\n\nOK = Overwrite\nCancel = Create New (Copy)`);
+            if (choice) {
+                // OVERWRITE
+                // Preserve the ID of the EXISTING signal to keep references valid, but update content
+                // OR use imported ID? 
+                // Best practice: Update the existing object in place or replace it but keep array ref?
+                // We'll replace the content but force the ID to match valid existing one if strictly by name?
+                // Actually, if we overwrite, we usually want the imported data.
+
+                const idx = compositions.indexOf(targetSignal);
+
+                // If it was a Name match but ID differed, we might have ID collision issues if we don't handle it.
+                // Let's trust the imported content largely, but maybe keep the local ID if it was a name match?
+                // User said "Overwrite", implying the imported version becomes truth.
+
+                compositions[idx] = importedSig;
+                updated++;
+            } else {
+                // CREATE NEW / COPY
+                // Generate new ID and valid name
+                importedSig.id = Date.now() + Math.floor(Math.random() * 10000);
+
+                // Ensure name uniqueness
+                let newName = importedSig.name + ' (Copy)';
+                let counter = 1;
+                while (compositions.some(c => c.name === newName)) {
+                    newName = importedSig.name + ` (Copy ${counter})`;
+                    counter++;
+                }
+                importedSig.name = newName;
+
+                compositions.push(importedSig);
+                added++;
+            }
+        } else {
+            // No conflict
+            // Ensure ID is unique just in case (e.g. from another user's export with same timestamp)
+            if (compositions.some(c => c.id === importedSig.id)) {
+                importedSig.id = Date.now() + Math.floor(Math.random() * 10000);
+            }
+            compositions.push(importedSig);
+            added++;
+        }
+    }
+
+    saveState();
+    render(container);
+    alert(`✅ Import Complete!\nAdded: ${added}\nUpdated: ${updated}`);
 }
 
 function testSignal(container) {

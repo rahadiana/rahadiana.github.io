@@ -422,15 +422,15 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
             isTrap: (master.action === 'LONG' && eff.character_15MENIT === 'ABSORPTION') || (master.action === 'SHORT' && eff.character_15MENIT === 'ABSORPTION'),
             isAlpha: (master.action === 'LONG' && flow.capital_bias_15MENIT === 'ACCUMULATION') || (master.action === 'SHORT' && flow.capital_bias_15MENIT === 'DISTRIBUTION'),
 
-            // META-GUARD INTEGRATION
+            // META-GUARD INTEGRATION (use real source values; no artificial defaults)
             guard: (() => {
-                const mg = sigRoot.institutional_guard || data.institutional_guard || {};
+                const mg = sigRoot.institutional_guard || data.institutional_guard || null;
                 return {
-                    status: mg.meta_guard_status || 'SCANNING',
-                    blockReason: mg.block_reason || null,
-                    allowed: mg.execution_allowed !== false,
-                    noiseLevel: mg.noise_level || 'CLEAN',
-                    confAdj: mg.confidence_adjustment || 0
+                    status: mg?.meta_guard_status ?? null,
+                    blockReason: mg?.block_reason ?? null,
+                    allowed: typeof mg?.execution_allowed !== 'undefined' ? mg.execution_allowed : null,
+                    noiseLevel: mg?.noise_level ?? null,
+                    confAdj: typeof mg?.confidence_adjustment !== 'undefined' ? mg.confidence_adjustment : null
                 };
             })()
         };
@@ -780,7 +780,7 @@ function renderRows(data) {
                 rowHtml += wrap(sigText, 'text-center', `font-black ${sigColor}`);
 
                 // GUARD Cell
-                const gStatus = r.guard?.status || 'SCANNING';
+                const gStatus = r.guard?.status ?? '--';
                 const gColor = gStatus === 'ALLOW' ? 'text-bb-green bg-bb-green/10 border-bb-green/30' :
                     gStatus === 'BLOCK' ? 'text-bb-red bg-bb-red/10 border-bb-red/30 animate-pulse' :
                         gStatus === 'DOWNGRADE' ? 'text-bb-gold bg-bb-gold/10 border-bb-gold/30' :
@@ -915,7 +915,7 @@ function renderRows(data) {
                 rowHtml += wrap(`<span class="${sigColor} font-black">${action === 'LONG' ? 'LONG' : action === 'SHORT' ? 'SHORT' : 'WAIT'}</span>`, 'text-center');
 
                 // GUARD Cell for ALERTS
-                const gStatus = r.guard?.status || 'SCANNING';
+                const gStatus = r.guard?.status ?? '--';
                 const gColor = gStatus === 'ALLOW' ? 'text-bb-green bg-bb-green/10 border-bb-green/30' :
                     gStatus === 'BLOCK' ? 'text-bb-red bg-bb-red/10 border-bb-red/30 animate-pulse' :
                         gStatus === 'DOWNGRADE' ? 'text-bb-gold bg-bb-gold/10 border-bb-gold/30' :

@@ -10,16 +10,16 @@
     <meta name="description" content="p2p OKX Signal terminal App">
     <meta name="author" content="Rahadianaa">
 
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="//cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="css/style.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="//fonts.googleapis.com">
+    <link rel="preconnect" href="//fonts.gstatic.com" crossorigin>
 
-    <link rel="shortcut icon" href="https://www.okx.com/cdn/assets/imgs/226/EB771F0EE8994DD5.png" />
-    <link rel="apple-touch-icon" href="https://www.okx.com/cdn/assets/imgs/253/59830BB78B18A776.png" type="image/png" />
+    <link rel="shortcut icon" href="//www.okx.com/cdn/assets/imgs/226/EB771F0EE8994DD5.png" />
+    <link rel="apple-touch-icon" href="//www.okx.com/cdn/assets/imgs/253/59830BB78B18A776.png" type="image/png" />
 
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+    <link href="//fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script src="//cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -87,31 +87,32 @@
                     class="tab-btn min-w-[100px] px-6 h-full flex items-center justify-center text-bb-muted hover:text-white border-b-2 border-transparent transition-all hover:bg-white/5 cursor-pointer hidden text-xs font-bold">DETAILS</button>
                 <button data-tab="INFO"
                     class="tab-btn min-w-[100px] px-6 h-full flex items-center justify-center text-bb-muted hover:text-white border-b-2 border-transparent transition-all hover:bg-white/5 cursor-pointer text-xs font-bold">INFO</button>
-                <button data-tab="P2P"
-                    class="tab-btn min-w-[100px] px-6 h-full flex items-center justify-center text-bb-muted hover:text-white border-b-2 border-transparent transition-all hover:bg-white/5 cursor-pointer text-xs font-bold uppercase">P2P</button>
+
                 <button data-tab="SIMULATION"
                     class="tab-btn min-w-[100px] px-6 h-full flex items-center justify-center text-bb-muted hover:text-white border-b-2 border-transparent transition-all hover:bg-white/5 cursor-pointer text-xs font-bold uppercase">Simulation</button>
                 <button data-tab="COMPOSER"
                     class="tab-btn min-w-[100px] px-6 h-full flex items-center justify-center text-bb-muted hover:text-white border-b-2 border-transparent transition-all hover:bg-white/5 cursor-pointer text-xs font-bold uppercase">🎼
                     Composer</button>
                 <button data-tab="OKXTRADE"
-                    class="tab-btn min-w-[100px] px-6 h-full flex items-center justify-center text-bb-muted hover:text-white border-b-2 border-transparent transition-all hover:bg-white/5 cursor-pointer text-xs font-bold">OKX Trade</button>
+                    class="tab-btn min-w-[100px] px-6 h-full flex items-center justify-center text-bb-muted hover:text-white border-b-2 border-transparent transition-all hover:bg-white/5 cursor-pointer text-xs font-bold">OKX
+                    Trade</button>
             </nav>
-        </div>
-
+            <button data-subtab="INSTITUTIONAL"
+                class="subtab-btn px-4 h-full flex items-center text-[10px] font-bold text-bb-muted hover:text-white border-b-2 border-transparent transition-colors">🛡️
+                META-GUARD</button>
             <div class="flex items-center gap-4">
-            <div id="connection-status" class="flex items-center gap-2 text-[10px]">
-                <span class="w-1.5 h-1.5 rounded-full bg-bb-red animate-pulse" id="status-dot"></span>
-                <span id="status-text" class="text-bb-muted uppercase">Disconnected</span>
-                <span id="mps-text" class="text-bb-blue font-black ml-2 tabular-nums">0 MPS</span>
+                <div id="connection-status" class="flex items-center gap-2 text-[10px]">
+                    <span class="w-1.5 h-1.5 rounded-full bg-bb-red animate-pulse" id="status-dot"></span>
+                    <span id="status-text" class="text-bb-muted uppercase">Disconnected</span>
+                    <span id="mps-text" class="text-bb-blue font-black ml-2 tabular-nums">0 MPS</span>
+                </div>
+                <div id="trade-indicator" class="flex items-center gap-3">
+                    <div id="trade-mode-pill" class="trade-pill sim">SIM</div>
+                    <div id="api-status" class="text-[10px] text-bb-muted">API: Not Configured</div>
+                </div>
+                <!-- Settings moved into OKX Trade tab -->
+                <div class="text-bb-muted text-[10px]" id="clock">--:--:--</div>
             </div>
-            <div id="trade-indicator" class="flex items-center gap-3">
-                <div id="trade-mode-pill" class="trade-pill sim">SIM</div>
-                <div id="api-status" class="text-[10px] text-bb-muted">API: Not Configured</div>
-            </div>
-            <!-- Settings moved into OKX Trade tab -->
-            <div class="text-bb-muted text-[10px]" id="clock">--:--:--</div>
-        </div>
     </header>
 
     <!-- QUICK STATS BAR -->

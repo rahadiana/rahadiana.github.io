@@ -1,4 +1,6 @@
 let lastStats = null;
+let animationId = null;
+let bandwidthHistory = Array(60).fill(0);
 
 export function render(container) {
     container.innerHTML = `
@@ -14,7 +16,7 @@ export function render(container) {
                     <a href="#section-telemetry" class="text-[9px] font-black text-bb-muted hover:text-white transition-colors">MESH_TELEMETRY</a>
                     <a href="#section-glossary" class="text-[9px] font-black text-bb-muted hover:text-white transition-colors">DATA_GLOSSARY</a>
                     <a href="#section-composer-db" class="text-[9px] font-black text-bb-muted hover:text-white transition-colors">COMPOSER_DB</a>
-                    <a href="#section-meta-guard" class="text-[9px] font-black text-bb-muted hover:text-white transition-colors">META_GUARD</a>
+                    <a href="#section-meta-guard" class="text-[9px] font-black text-bb-muted hover:text-white transition-colors">META-GUARD</a>
                     <a href="#section-simulation" class="text-[9px] font-black text-bb-muted hover:text-white transition-colors">SIMULATION</a>
                     <a href="#section-risk" class="text-[9px] font-black text-bb-muted hover:text-white transition-colors">RISK</a>
                 </div>
@@ -95,62 +97,91 @@ export function render(container) {
                     </div>
                 </section>
 
-                <!-- SECTION: TELEMETRY -->
-                <section id="section-telemetry" class="max-w-5xl mx-auto">
+                <!-- SECTION: TELEMETRY & P2P MESH -->
+                <section id="section-telemetry" class="max-w-6xl mx-auto">
                     <div class="flex items-center gap-4 mb-6">
                         <h2 class="text-bb-green font-black text-sm uppercase tracking-[0.2em] bg-bb-green/10 px-3 py-1 border-l-2 border-bb-green">01. LIVE_MESH_TELEMETRY</h2>
                         <div class="h-px flex-1 bg-bb-border"></div>
                     </div>
 
-                    <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-4">
-                        <div class="p-4 bg-bb-panel border border-bb-border/50 rounded-lg flex flex-col items-center justify-center gap-1 text-center group">
-                            <span class="text-[8px] font-black text-bb-muted uppercase tracking-tighter">DATA STREAM MODE</span>
-                            <span id="tel-stream-mode" class="text-xs font-black text-white italic">FULL FEED</span>
-                            <div id="tel-mode-dot" class="w-1.5 h-1.5 rounded-full bg-bb-blue animate-pulse"></div>
-                        </div>
-                        <div class="p-4 bg-bb-panel border border-bb-border/50 rounded-lg flex flex-col items-center justify-center gap-1 text-center">
-                            <span class="text-[8px] font-black text-bb-muted uppercase tracking-tighter">NETWORK MPS</span>
-                            <span id="tel-mps" class="text-2xl font-black text-white font-mono">00</span>
-                            <span class="text-[7px] text-bb-muted uppercase italic">Real-time Ingress Speed</span>
-                        </div>
-                        <div class="p-4 bg-bb-panel border border-bb-border/50 rounded-lg flex flex-col items-center justify-center gap-1 text-center">
-                            <span class="text-[8px] font-black text-bb-muted uppercase tracking-tighter">MESH EFFICIENCY</span>
-                            <span id="tel-efficiency" class="text-xs font-black text-bb-green font-mono">0%</span>
-                            <span class="text-[7px] text-bb-muted uppercase italic">P2P Relay Ratio</span>
-                        </div>
-                        <div class="p-4 bg-bb-panel border border-bb-border/50 rounded-lg flex flex-col items-center justify-center gap-1 text-center">
-                            <span class="text-[8px] font-black text-bb-muted uppercase tracking-tighter">ACTIVE PEERS</span>
-                            <span id="tel-nodes" class="text-xs font-black text-bb-gold font-mono uppercase">0 NODES</span>
-                            <span id="tel-health-reason" class="text-[7px] text-bb-muted uppercase italic">Establishing Edge</span>
-                        </div>
-                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                        
+                        <!-- LEFT: P2P TOPOLOGY -->
+                        <div class="lg:col-span-2 flex flex-col gap-4">
+                            <!-- GRAPH CANVAS -->
+                            <div class="bg-bb-dark border border-bb-border rounded-lg relative overflow-hidden h-[400px]">
+                                <div class="absolute top-2 left-2 flex flex-col gap-1 z-10 pointer-events-none">
+                                    <h3 class="text-bb-gold font-black text-[10px] uppercase shadow-black drop-shadow-md">NETWORK TOPOLOGY</h3>
+                                    <div class="flex items-center gap-2 text-[8px] text-bb-muted">
+                                        <span class="w-2 h-2 rounded-full bg-bb-blue"></span> YOU
+                                        <span class="w-2 h-2 rounded-full bg-bb-gold"></span> SUPERPEER
+                                        <span class="w-2 h-2 rounded-full bg-bb-green"></span> PEER
+                                    </div>
+                                </div>
+                                <canvas id="p2p-topology-canvas" class="w-full h-full block"></canvas>
+                            </div>
 
-                    <div class="bg-bb-panel border border-bb-border rounded overflow-hidden">
-                        <div class="px-4 py-2 bg-black/40 border-b border-bb-border flex justify-between items-center">
-                            <span class="text-[8px] font-black text-white uppercase tracking-widest flex items-center gap-2">
-                                <span class="w-1.5 h-1.5 rounded-full bg-bb-green animate-ping"></span>
-                                NEURAL INTERFACE STATUS
-                            </span>
-                            <span id="tel-last-update" class="text-[7px] font-mono text-bb-muted">Last Update: ---</span>
+                             <!-- BANDWIDTH CHART -->
+                            <div class="bg-bb-dark border border-bb-border rounded-lg p-3 h-48 flex flex-col">
+                                <div class="flex justify-between items-center mb-2">
+                                    <h3 class="text-bb-green font-black text-[10px] uppercase">P2P BANDWIDTH ACTIVITY (Est. Packets/s)</h3>
+                                    <span id="p2p-current-activity" class="text-[9px] font-mono text-bb-green">0 p/s</span>
+                                </div>
+                                <div class="flex-1 relative overflow-hidden bg-black/20 rounded border border-white/5">
+                                    <canvas id="p2p-bandwidth-canvas" class="w-full h-full block"></canvas>
+                                </div>
+                            </div>
                         </div>
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-left text-[9px] font-mono">
-                                <thead class="bg-bb-dark text-bb-muted font-black uppercase">
-                                    <tr>
-                                        <th class="p-3">NODE_ID</th>
-                                        <th class="p-3 text-center">ROLE</th>
-                                        <th class="p-3 text-center">LOAD</th>
-                                        <th class="p-3 text-center">LATENCY</th>
-                                        <th class="p-3 text-center">THROUGHPUT</th>
-                                        <th class="p-3 text-right">INTEGRITY</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="tel-peer-table" class="divide-y divide-white/5 text-bb-text">
-                                    <tr>
-                                        <td colspan="6" class="p-10 text-center opacity-20 uppercase tracking-widest text-xs italic">Awaiting Telemetry Sync...</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+
+                        <!-- RIGHT: STATS & LOGS -->
+                        <div class="flex flex-col gap-4">
+                            <!-- STATS GRID -->
+                            <div class="grid grid-cols-2 gap-3">
+                                <div class="p-4 bg-bb-panel border border-bb-border/50 rounded-lg flex flex-col items-center justify-center gap-1 text-center group">
+                                    <span class="text-[8px] font-black text-bb-muted uppercase tracking-tighter">DATA STREAM MODE</span>
+                                    <span id="tel-stream-mode" class="text-xs font-black text-white italic">FULL FEED</span>
+                                    <div id="tel-mode-dot" class="w-1.5 h-1.5 rounded-full bg-bb-blue animate-pulse"></div>
+                                </div>
+                                <div class="p-4 bg-bb-panel border border-bb-border/50 rounded-lg flex flex-col items-center justify-center gap-1 text-center">
+                                    <span class="text-[8px] font-black text-bb-muted uppercase tracking-tighter">NETWORK MPS</span>
+                                    <span id="tel-mps" class="text-2xl font-black text-white font-mono">00</span>
+                                </div>
+                                <div class="p-4 bg-bb-panel border border-bb-border/50 rounded-lg flex flex-col items-center justify-center gap-1 text-center">
+                                    <span class="text-[8px] font-black text-bb-muted uppercase tracking-tighter">MESH EFFICIENCY</span>
+                                    <span id="tel-efficiency" class="text-xs font-black text-bb-green font-mono">0%</span>
+                                </div>
+                                <div class="p-4 bg-bb-panel border border-bb-border/50 rounded-lg flex flex-col items-center justify-center gap-1 text-center">
+                                    <span class="text-[8px] font-black text-bb-muted uppercase tracking-tighter">ACTIVE PEERS</span>
+                                    <span id="tel-nodes" class="text-xs font-black text-bb-gold font-mono uppercase">0 NODES</span>
+                                </div>
+                            </div>
+
+                             <!-- PEER TABLE -->
+                            <div class="bg-bb-panel border border-bb-border rounded overflow-hidden flex-1 flex flex-col min-h-[300px]">
+                                <div class="px-4 py-2 bg-black/40 border-b border-bb-border flex justify-between items-center shrink-0">
+                                    <span class="text-[8px] font-black text-white uppercase tracking-widest flex items-center gap-2">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-bb-green animate-ping"></span>
+                                        NEURAL INTERFACE STATUS
+                                    </span>
+                                </div>
+                                <div class="overflow-y-auto flex-1 h-0 scrollbar-thin">
+                                    <table class="w-full text-left text-[9px] font-mono">
+                                        <thead class="bg-bb-dark text-bb-muted font-black uppercase sticky top-0">
+                                            <tr>
+                                                <th class="p-3">NODE_ID</th>
+                                                <th class="p-3 text-center">ROLE</th>
+                                                <th class="p-3 text-center">LATENCY</th>
+                                                <th class="p-3 text-right">Activity</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="tel-peer-table" class="divide-y divide-white/5 text-bb-text">
+                                            <tr>
+                                                <td colspan="4" class="p-10 text-center opacity-20 uppercase tracking-widest text-xs italic">Awaiting Telemetry Sync...</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </section>
@@ -380,6 +411,14 @@ export function render(container) {
             </div>
         </div>
     `;
+
+    // Start animation loop when rendered
+    startAnimation();
+}
+
+export function stop() {
+    if (animationId) cancelAnimationFrame(animationId);
+    animationId = null;
 }
 
 export function update(stats) {
@@ -417,20 +456,16 @@ export function update(stats) {
     }
 
     const elNodes = document.getElementById('tel-nodes');
-    const elReason = document.getElementById('tel-health-reason');
+    // const elReason = document.getElementById('tel-health-reason'); // Removed in new layout
     if (elNodes) {
         elNodes.innerText = `${stats.peerCount || 0} PEERS`;
-        if (elReason) elReason.innerText = stats.isValidated ? 'Neural Mesh Validated' : 'Probing Signal Path';
     }
-
-    const elTime = document.getElementById('tel-last-update');
-    if (elTime) elTime.innerText = `Last Telemetry: ${new Date().toLocaleTimeString()}`;
 
     // 3. Peer Table
     const elTable = document.getElementById('tel-peer-table');
     if (elTable && stats.peers) {
         if (stats.peers.length === 0) {
-            elTable.innerHTML = `<tr><td colspan="6" class="p-10 text-center opacity-20 uppercase tracking-widest text-xs italic">Searching for Mesh Neighbors...</td></tr>`;
+            elTable.innerHTML = `<tr><td colspan="4" class="p-10 text-center opacity-20 uppercase tracking-widest text-xs italic">Searching for Mesh Neighbors...</td></tr>`;
         } else {
             elTable.innerHTML = stats.peers.map(p => {
                 const isSuper = p.isSuper;
@@ -438,31 +473,200 @@ export function update(stats) {
                 const rx = p.received || 0;
                 const tx = p.sent || 0;
                 const rtt = p.rtt || 0;
-                const load = Math.min(100, Math.round((rx / (Math.max(1, mStats.mps) * 10)) * 100)); // Estimated neighbor load contribution
+                // const load = Math.min(100, Math.round((rx / (Math.max(1, mStats.mps) * 10)) * 100)); 
 
                 return `
                     <tr class="hover:bg-white/5 transition-colors group">
-                        <td class="p-3 text-white font-bold opacity-70 group-hover:opacity-100 font-mono">${p.id}</td>
+                        <td class="p-3 text-white font-bold opacity-70 group-hover:opacity-100 font-mono flex items-center gap-2">
+                             <span class="w-1.5 h-1.5 rounded-full ${isSuper ? 'bg-bb-gold' : 'bg-bb-green'} shadow-[0_0_4px_currentColor]"></span>
+                            ${p.id.substr(0, 8)}...
+                        </td>
                         <td class="p-3 text-center">
                             <span class="px-1.5 py-0.5 rounded-sm ${isSuper ? 'bg-bb-gold/20 text-bb-gold' : 'bg-white/5 text-bb-muted'} text-[7px] font-black uppercase">
-                                ${isSuper ? 'BACKBONE' : 'EDGE_NODE'}
+                                ${isSuper ? 'BACKBONE' : 'EDGE'}
                             </span>
                         </td>
-                        <td class="p-3 text-center text-bb-muted font-mono">${load}%</td>
                         <td class="p-3 text-center">
-                            <span class="${rtt < 50 ? 'text-bb-green' : rtt < 150 ? 'text-bb-gold' : 'text-bb-red'}">${rtt}ms</span>
+                            <span class="${rtt < 50 ? 'text-bb-green' : rtt < 150 ? 'text-bb-gold' : 'text-bb-red'} font-mono">${rtt}ms</span>
                         </td>
-                        <td class="p-3 text-center group-hover:text-white transition-colors">
-                            <span class="text-bb-green">↓${rx}</span> / <span class="text-bb-blue">↑${tx}</span>
-                        </td>
-                        <td class="p-3 text-right">
-                            <span class="font-black uppercase tracking-tighter ${statusColor}">${p.channelState === 'open' ? 'VERIFIED' : 'SYNC_LOST'}</span>
+                        <td class="p-3 text-right text-[8px] text-bb-muted font-mono">
+                             Rx:${rx} / Tx:${tx}
                         </td>
                     </tr>
                 `;
             }).join('');
         }
     }
+
+    // 4. Update Bandwidth Historic Data (Logic from viewP2P.js)
+    let totalRx = 0, totalTx = 0;
+    if (stats.peers) {
+        stats.peers.forEach(p => { totalRx += p.received || 0; totalTx += p.sent || 0; });
+    }
+    const currentTotal = totalRx + totalTx;
+
+    // Calculate delta if we have previous frame data
+    if (lastStats && lastStats._prevTotal !== undefined) {
+        const delta = currentTotal - lastStats._prevTotal;
+        bandwidthHistory.push(delta);
+        bandwidthHistory.shift();
+
+        const elAct = document.getElementById('p2p-current-activity');
+        if (elAct) elAct.innerText = `${delta} pkts/tick`;
+    }
+    // Store current total in stats object for next frame comparison
+    // Note: Mutating stats object which is passed by reference from p2p module. 
+    // This is checking if we should store it locally or on the stats obj. 
+    // Storing on stats obj is fine as it persists in the P2P module instance usually, 
+    // but here stats comes from p2p.getStats().
+    stats._prevTotal = currentTotal;
+}
+
+function startAnimation() {
+    if (animationId) cancelAnimationFrame(animationId);
+
+    // Topology Canvas
+    const canvasTopo = document.getElementById('p2p-topology-canvas');
+    const ctxTopo = canvasTopo?.getContext('2d');
+
+    // Bandwidth Canvas
+    const canvasBw = document.getElementById('p2p-bandwidth-canvas');
+    const ctxBw = canvasBw?.getContext('2d');
+
+    if (!canvasTopo || !canvasBw) return;
+
+    // Resize handler
+    const resize = () => {
+        if (!canvasTopo || !canvasBw) return;
+        const rectT = canvasTopo.getBoundingClientRect();
+        canvasTopo.width = rectT.width;
+        canvasTopo.height = rectT.height;
+
+        const rectB = canvasBw.getBoundingClientRect();
+        canvasBw.width = rectB.width;
+        canvasBw.height = rectB.height;
+    };
+    // Initial resize
+    resize();
+    // We could add window resize listener but simplistic approach for now
+
+    /* --- TOPOLOGY RENDERER --- */
+    const drawTopo = () => {
+        if (!ctxTopo || !canvasTopo) return;
+
+        ctxTopo.clearRect(0, 0, canvasTopo.width, canvasTopo.height);
+        const cx = canvasTopo.width / 2;
+        const cy = canvasTopo.height / 2;
+
+        // Draw Center (YOU)
+        ctxTopo.beginPath();
+        ctxTopo.arc(cx, cy, 8, 0, Math.PI * 2);
+        ctxTopo.fillStyle = '#3b82f6'; // Blue
+        ctxTopo.shadowColor = '#3b82f6';
+        ctxTopo.shadowBlur = 15;
+        ctxTopo.fill();
+        ctxTopo.shadowBlur = 0;
+
+        ctxTopo.fillStyle = 'white';
+        ctxTopo.font = 'bold 10px monospace';
+        ctxTopo.textAlign = 'center';
+        ctxTopo.fillText('YOU', cx, cy + 20);
+
+        if (lastStats && lastStats.peers) {
+            const time = Date.now() * 0.001;
+            lastStats.peers.forEach((p, i) => {
+                const count = lastStats.peers.length;
+                // Distribute nodes in a circle
+                const angle = (i / Math.max(1, count)) * Math.PI * 2 + (time * 0.1);
+                const radius = 100 + Math.sin(time + i) * 10; // Dynamic radius
+
+                const px = cx + Math.cos(angle) * radius;
+                const py = cy + Math.sin(angle) * radius;
+
+                // Line
+                ctxTopo.beginPath();
+                ctxTopo.moveTo(cx, cy);
+                ctxTopo.lineTo(px, py);
+                ctxTopo.strokeStyle = 'rgba(255,255,255,0.1)';
+                ctxTopo.lineWidth = 1;
+                ctxTopo.stroke();
+
+                // Node
+                ctxTopo.beginPath();
+                ctxTopo.arc(px, py, 6, 0, Math.PI * 2);
+                ctxTopo.fillStyle = p.isSuper ? '#fbbf24' : '#22c55e'; // Gold or Green
+                ctxTopo.shadowColor = ctxTopo.fillStyle;
+                ctxTopo.shadowBlur = 10;
+                ctxTopo.fill();
+                ctxTopo.shadowBlur = 0;
+
+                // Label
+                ctxTopo.fillStyle = 'rgba(255,255,255,0.7)';
+                ctxTopo.font = '8px monospace';
+                ctxTopo.fillText(p.id.substr(0, 4), px, py + 15);
+            });
+        }
+    };
+
+    /* --- BANDWIDTH RENDERER --- */
+    const drawBw = () => {
+        if (!ctxBw || !canvasBw) return;
+
+        ctxBw.clearRect(0, 0, canvasBw.width, canvasBw.height);
+        const w = canvasBw.width;
+        const h = canvasBw.height;
+
+        // Grid
+        ctxBw.strokeStyle = 'rgba(255,255,255,0.05)';
+        ctxBw.beginPath();
+        for (let i = 0; i < w; i += 40) { ctxBw.moveTo(i, 0); ctxBw.lineTo(i, h); }
+        for (let i = 0; i < h; i += 40) { ctxBw.moveTo(0, i); ctxBw.lineTo(w, i); }
+        ctxBw.stroke();
+
+        // Data Line
+        if (bandwidthHistory.length > 1) {
+            const maxVal = Math.max(10, ...bandwidthHistory);
+            const step = w / (bandwidthHistory.length - 1);
+
+            ctxBw.beginPath();
+            ctxBw.moveTo(0, h - (bandwidthHistory[0] / maxVal) * h);
+
+            for (let i = 1; i < bandwidthHistory.length; i++) {
+                const x = i * step;
+                const y = h - (bandwidthHistory[i] / maxVal) * (h * 0.8) - 5;
+                ctxBw.lineTo(x, y);
+            }
+
+            // Gradient Fill
+            ctxBw.lineTo(w, h);
+            ctxBw.lineTo(0, h);
+            ctxBw.closePath();
+            const grad = ctxBw.createLinearGradient(0, 0, 0, h);
+            grad.addColorStop(0, 'rgba(34, 197, 94, 0.5)'); // Green
+            grad.addColorStop(1, 'rgba(34, 197, 94, 0.0)');
+            ctxBw.fillStyle = grad;
+            ctxBw.fill();
+
+            // Stroke on top
+            ctxBw.beginPath();
+            ctxBw.moveTo(0, h - (bandwidthHistory[0] / maxVal) * h);
+            for (let i = 1; i < bandwidthHistory.length; i++) {
+                const x = i * step;
+                const y = h - (bandwidthHistory[i] / maxVal) * (h * 0.8) - 5;
+                ctxBw.lineTo(x, y);
+            }
+            ctxBw.strokeStyle = '#22c55e';
+            ctxBw.lineWidth = 2;
+            ctxBw.stroke();
+        }
+    };
+
+    const loop = () => {
+        drawTopo();
+        drawBw();
+        animationId = requestAnimationFrame(loop);
+    };
+    loop();
 }
 
 function renderMatrixCard(title, desc, items) {
