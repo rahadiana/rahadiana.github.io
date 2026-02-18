@@ -113,22 +113,11 @@ export function render(container) {
                     </div>
 
                     <div class="flex-1 overflow-y-auto scrollbar-thin space-y-1">
-                        <div id="dec-coin-detail-tabs" class="flex gap-1 mb-2">
-                            <button class="detail-subtab px-2 py-0.5 text-[9px] font-bold text-bb-gold" data-detail="MAIN">Main</button>
-                            <button class="detail-subtab px-2 py-0.5 text-[9px] font-bold text-bb-muted" data-detail="DERIVATIVES">Derivatives</button>
-                            <button class="detail-subtab px-2 py-0.5 text-[9px] font-bold text-bb-muted" data-detail="ANALYTICS">Analytics</button>
-                            <button class="detail-subtab px-2 py-0.5 text-[9px] font-bold text-bb-muted" data-detail="SIGNALS">Signals</button>
-                            <button class="detail-subtab px-2 py-0.5 text-[9px] font-bold text-bb-muted" data-detail="LEVELS">Levels</button>
-                            <button class="detail-subtab px-2 py-0.5 text-[9px] font-bold text-bb-muted" data-detail="MICRO">Microstructure</button>
-                            <button id="dec-composer-tab" class="detail-subtab px-2 py-0.5 text-[9px] font-bold text-bb-muted" data-detail="COMPOSER">Composer</button>
-                        </div>
-
                         <div id="dec-coin-detail-content">
                             <div id="dec-coin-main-content">
                                 <!-- Transparency matrix items injected here -->
-                                <div id="dec-composer-slot" class="mt-2"></div>
+                                <div id="dec-drivers" class="space-y-1"></div>
                             </div>
-                            <div id="dec-coin-composer-content" class="hidden mt-2"></div>
                         </div>
                     </div>
                 </div>
@@ -255,47 +244,8 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
         }
     }
 
-    // Attach coin-detail tab handlers (only once)
-    try {
-        const tabs = document.getElementById('dec-coin-detail-tabs');
-        const mainContent = document.getElementById('dec-coin-main-content');
-        const composerContent = document.getElementById('dec-coin-composer-content');
-        if (tabs && !tabs.dataset.bound) {
-            tabs.addEventListener('click', (e) => {
-                const btn = e.target.closest('.detail-subtab');
-                if (!btn) return;
-                const detail = btn.getAttribute('data-detail');
-                // mark active
-                tabs.querySelectorAll('.detail-subtab').forEach(b => b.classList.remove('text-bb-gold')); 
-                btn.classList.add('text-bb-gold');
-
-                if (detail === 'COMPOSER') {
-                    // render composer components table for selected coin
-                    const coin = window.selectedCoin || window.selectedCoin;
-                    if (composerContent) {
-                        composerContent.innerHTML = ViewSignalComposer.getComposerTableHTML(coin);
-                        composerContent.classList.remove('hidden');
-                        if (typeof ViewSignalComposer.attachComposerTableEvents === 'function') ViewSignalComposer.attachComposerTableEvents(composerContent);
-                    }
-                    if (mainContent) mainContent.classList.add('hidden');
-                } else {
-                    if (composerContent) composerContent.classList.add('hidden');
-                    if (mainContent) mainContent.classList.remove('hidden');
-                }
-            });
-            tabs.dataset.bound = '1';
-        }
-        // If a composer tab is already active, ensure content is rendered using current coin
-        const activeComposer = tabs?.querySelector('.detail-subtab.text-bb-gold')?.getAttribute('data-detail') === 'COMPOSER';
-        if (activeComposer && composerContent) {
-            const coin = window.selectedCoin || window.selectedCoin;
-            composerContent.innerHTML = ViewSignalComposer.getComposerDetailHTML(coin);
-            composerContent.classList.remove('hidden');
-            if (mainContent) mainContent.classList.add('hidden');
-        }
-    } catch (e) {
-        console.error('dec tab binding failed', e);
-    }
+    // Tabs removed as requested by user
+    // if (typeof ViewSignalComposer.attachComposerTableEvents === 'function') ...
 
     // 1.5 Pillar Bias & Divergence Guard
     const pillars = calculatePillars(data, signals, master, syn);

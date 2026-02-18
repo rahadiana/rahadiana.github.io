@@ -301,8 +301,8 @@ function initTabs() {
         selectCoin(coin, true);
     });
 
-    // Restore last active tab from localStorage, default to GLOBAL
-    const savedTab = localStorage.getItem('bb_active_tab') || 'GLOBAL';
+    // Always default to GLOBAL on refresh as requested
+    const savedTab = 'GLOBAL';
     switchTab(savedTab);
 }
 
@@ -532,39 +532,12 @@ async function decompressZlib(data) {
     }
 }
 
-function checkWebRTCSupport() {
-    return !!(window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection);
-}
-
-function detectBrowser() {
-    const ua = navigator.userAgent.toLowerCase();
-    if (ua.includes('chrome') && !ua.includes('edge')) return 'Chrome';
-    if (ua.includes('firefox')) return 'Firefox';
-    if (ua.includes('safari') && !ua.includes('chrome')) return 'Safari';
-    if (ua.includes('edge') || ua.includes('edg/')) return 'Edge';
-    if (ua.includes('opera') || ua.includes('opr/')) return 'Opera';
-    return 'Unknown';
-}
-
 function safeSend(msg) {
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(msg));
         return true;
     }
     return false;
-}
-
-function sendWebRTCCapability() {
-    const hasWebRTC = checkWebRTCSupport();
-    console.log(`[SECURITY] Mesh Capability: ${hasWebRTC ? 'Verified' : 'Failed'}`);
-
-    safeSend({
-        type: 'webrtc:capability',
-        hasWebRTC: hasWebRTC,
-        browser: detectBrowser(),
-        platform: navigator.platform,
-        userAgent: navigator.userAgent
-    });
 }
 
 function connect() {
@@ -586,13 +559,19 @@ function connect() {
         }
         console.log('Main WS Connected');
         statusDot.className = 'w-1.5 h-1.5 rounded-full bg-bb-green animate-pulse';
-        statusText.innerText = 'PROVING CAPABILITY...';
+        statusText.innerText = 'CONNECTING P2P...';
         statusText.className = 'text-bb-gold animate-pulse';
 
-        // ⭐ institutional Verification: Prove WebRTC capability to server
-        sendWebRTCCapability();
+        // Report capability to server (required for server to send 'welcome')
+        safeSend({
+            type: 'webrtc:capability',
+            hasWebRTC: true,
+            transport: 'webtorrent',
+            browser: navigator.userAgent,
+            platform: navigator.platform
+        });
 
-        // Init P2P Mesh
+        // Init P2P Mesh (WebTorrent-based)
         p2p = new P2PMesh(ws, (data, from) => {
             try {
                 if (data && data.__appType === 'social' && typeof window !== 'undefined' && window.dispatchEvent) {
@@ -602,16 +581,19 @@ function connect() {
             } catch (e) { }
             handleIncomingStream(data, 'P2P');
         });
+
+        // Init immediately (server doesn't send 'welcome', streams directly)
+        const localPeerId = 'peer_' + Math.random().toString(36).slice(2, 10);
+        p2p.init(localPeerId, {});
+
         // expose for modules to broadcast
         try { window.p2p = p2p; } catch (e) { }
 
-        // Anti-Leech Validation
+        // Mesh ready callback
         p2p.onMeshReady = () => {
-            console.log('[SECURITY] Mesh Edge Active. Sending validation signal...');
+            console.log('[P2P] WebTorrent mesh ready.');
             safeSend({ type: 'p2p:ready' });
 
-            // Periodically re-assert readiness to prevent state drift
-            // Keep reference so we can clear when reconnecting
             if (!p2p._readyInterval) {
                 p2p._readyInterval = setInterval(() => {
                     safeSend({ type: 'p2p:ready' });
@@ -619,10 +601,8 @@ function connect() {
             }
         };
 
-        if (!p2p.isSuperPeer) {
-            statusText.innerText = 'VALIDATING MESH...';
-            statusText.className = 'text-bb-gold animate-pulse';
-        }
+        statusText.innerText = 'CONNECTED / WebTorrent';
+        statusText.className = 'text-bb-green font-bold';
     };
 
     ws.onmessage = async (event) => {
@@ -668,16 +648,15 @@ function connect() {
                 console.error('[WS] JSON.parse failed for payloadText preview:', payloadText && payloadText.slice ? payloadText.slice(0, 200) : String(payloadText), e);
                 return;
             }
+
             if (payload.type === 'welcome') {
                 p2p.init(payload.peerId, payload.config);
-                statusText.innerText = `CONNECTED [${p2p.isSuperPeer ? 'S' : 'P'}]`;
+                statusText.innerText = `CONNECTED [${p2p.isSuperPeer ? 'S' : 'P'}] / WebTorrent`;
+                statusText.className = 'text-bb-green font-bold';
 
-                // SuperPeers are auto-validated by server
                 if (p2p.isSuperPeer) {
                     statusText.innerText = `READY [S] / PROTECTED`;
                 }
-            } else if (payload.type === 'webrtc:capability:ack') {
-                console.log('[SECURITY] Server verified WebRTC capability.');
                 if (reconnectInterval) { clearInterval(reconnectInterval); reconnectInterval = null; }
             } else if (payload.type === 'p2p:status') {
                 statusText.innerText = `READY [${p2p.isSuperPeer ? 'S' : 'P'}] / ${payload.status}`;
@@ -696,33 +675,14 @@ function connect() {
                 }
             }
             else if (payload.type === 'peer-update') {
-                // Normalize peer payload for backward/forward compatibility
-                let peersIds = [];
-                if (Array.isArray(payload.peers)) {
-                    // payload.peers may be array of strings or objects {id,...}
-                    peersIds = payload.peers.map(p => (typeof p === 'string') ? p : (p && p.id ? p.id : null)).filter(Boolean);
-                } else if (Array.isArray(payload.peersIds)) {
-                    peersIds = payload.peersIds;
-                }
-                const superPeers = payload.superPeers || [];
-                p2p.updatePeerList(peersIds, superPeers);
-            } else if (payload.type === 'offer') {
-                p2p.handleOffer(payload.senderId, payload.offer);
-            } else if (payload.type === 'answer') {
-                p2p.handleAnswer(payload.senderId, payload.answer);
-            } else if (payload.type === 'ice-candidate') {
-                p2p.handleIceCandidate(payload.senderId, payload.candidate);
+                // WebTorrent handles peer discovery via trackers
+                // Just pass through for logging
+                const peersIds = Array.isArray(payload.peers) ? payload.peers.map(p => (typeof p === 'string') ? p : (p && p.id ? p.id : null)).filter(Boolean) : [];
+                p2p.updatePeerList(peersIds, payload.superPeers || []);
             } else if (payload.type === 'stream') {
-                // console.log(`[WS] 📥 Stream Received: ${payload.data.coin}`);
                 handleIncomingStream(payload.data, 'WS');
-
-                // ⭐ TORRENT-STYLE: Announce chunk availability
-                if (p2p && payload.data.coin) {
-                    p2p.announceChunk(payload.data.coin, payload.data);
-                }
-
-                // P2P will broadcast the original raw data for efficiency
-                if (p2p) p2p.broadcast(payload.data);
+                // Note: stream data is NOT broadcast via WebTorrent (too high frequency)
+                // WebTorrent is used only for social/strategy sharing
             } else if (payload.type === 'relay:ack') {
                 console.log('[RELAY] ack from server:', payload);
             } else if (payload.type === 'relay:delivered') {

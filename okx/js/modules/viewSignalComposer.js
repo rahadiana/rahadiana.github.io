@@ -15,19 +15,8 @@ import { StrategyAllocator } from './strategyAllocator.js';
 
 const STORAGE_KEY = 'bb_signal_composer';
 
-// ======================== GLOBAL TAB MATRIX VIEWS ========================
-const MATRIX_VIEWS = {
-    OVERVIEW: { name: 'Overview', icon: '📊', desc: 'All main metrics at a glance' },
-    DECISION: { name: 'Decision', icon: '🎯', desc: 'Buy/Sell signals and recommendations' },
-    SMART: { name: 'Smart Money', icon: '🧠', desc: 'Institutional activity tracking' },
-    SYNTHESIS: { name: 'Synthesis', icon: '🧬', desc: 'Flow, efficiency, momentum' },
-    VOLATILITY: { name: 'Volatility', icon: '🌋', desc: 'ATR, Range, Squeeze' },
-    MICROSTRUCTURE: { name: 'Micro', icon: '🔬', desc: 'VPIN, OFI, Toxicity' },
-    LIQUIDITY: { name: 'Liquidity', icon: '💧', desc: 'Spread, depth, slippage' },
-    DERIVATIVES: { name: 'Derivatives', icon: '📈', desc: 'OI, Funding, LSR' },
-    REGIME: { name: 'Regime', icon: '🌡️', desc: 'Market phase detection' },
-    SENTIMENT: { name: 'Sentiment', icon: '😊', desc: 'Fear & greed indicators' }
-};
+// ======================== GLOBAL TAB MATRIX VIEWS (Auto from CATEGORIES) ========================
+// MATRIX_VIEWS is generated dynamically from CATEGORIES below (after CATEGORIES definition)
 
 // ======================== GLOBAL TAB FILTER CHIPS ========================
 const FILTER_CHIPS = {
@@ -77,18 +66,51 @@ export const SIGNAL_COMPONENTS = {
     PRICE_FROM_LOW: { category: 'PRICE', name: 'From 24h Low', icon: '🔻', path: 'raw.PRICE.percent_change_from_bottom', operators: ['>', '<'], defaultThreshold: 5, description: 'Distance from 24h low' },
 
     // ═══════════════════ VOLUME METRICS ═══════════════════
-    VOL_TOTAL_1M: { category: 'VOLUME', name: 'Vol 1m ($)', icon: '📊', path: 'raw.VOL.vol_total_1MENIT', operators: ['>', '<'], defaultThreshold: 50000, description: 'Volume 1 minute' },
-    VOL_TOTAL_5M: { category: 'VOLUME', name: 'Vol 5m ($)', icon: '📊', path: 'raw.VOL.vol_total_5MENIT', operators: ['>', '<'], defaultThreshold: 200000, description: 'Volume 5 minutes' },
-    VOL_TOTAL_15M: { category: 'VOLUME', name: 'Vol 15m ($)', icon: '📊', path: 'raw.VOL.vol_total_15MENIT', operators: ['>', '<'], defaultThreshold: 500000, description: 'Volume 15 minutes' },
-    VOL_TOTAL_1H: { category: 'VOLUME', name: 'Vol 1h ($)', icon: '📊', path: 'raw.VOL.vol_total_1JAM', operators: ['>', '<'], defaultThreshold: 1000000, description: 'Volume 1 hour' },
     VOL_BUY_RATIO_1M: { category: 'VOLUME', name: 'Buy Ratio 1m', icon: '⚖️', path: 'raw.VOL.buy_sell_ratio_1MENIT', operators: ['>', '<', '>=', '<='], defaultThreshold: 1.2, description: 'Buy/Sell ratio 1m' },
     VOL_BUY_RATIO_5M: { category: 'VOLUME', name: 'Buy Ratio 5m', icon: '⚖️', path: 'raw.VOL.buy_sell_ratio_5MENIT', operators: ['>', '<', '>=', '<='], defaultThreshold: 1.2, description: 'Buy/Sell ratio 5m' },
     VOL_BUY_RATIO_15M: { category: 'VOLUME', name: 'Buy Ratio 15m', icon: '⚖️', path: 'raw.VOL.buy_sell_ratio_15MENIT', operators: ['>', '<', '>=', '<='], defaultThreshold: 1.2, description: 'Buy/Sell ratio 15m' },
+    VOL_BUY_RATIO_1H: { category: 'VOLUME', name: 'Buy Ratio 1h', icon: '⚖️', path: '_computed.volBuyRatio1h', operators: ['>', '<', '>=', '<='], defaultThreshold: 1.1, computed: true, description: 'Buy/Sell ratio 1h' },
+
     VOL_SPIKE_1M: { category: 'VOLUME', name: 'Vol Spike 1m', icon: '🚀', path: '_computed.volSpike1m', operators: ['>', '<'], defaultThreshold: 2.0, computed: true, description: 'Volume spike vs hourly avg' },
     VOL_SPIKE_5M: { category: 'VOLUME', name: 'Vol Spike 5m', icon: '🚀', path: '_computed.volSpike5m', operators: ['>', '<'], defaultThreshold: 1.5, computed: true, description: 'Volume spike 5m vs hourly avg' },
+    VOL_SPIKE_15M: { category: 'VOLUME', name: 'Vol Spike 15m', icon: '🚀', path: '_computed.volSpike15m', operators: ['>', '<'], defaultThreshold: 1.2, computed: true, description: 'Volume spike 15m vs hourly avg' },
+    VOL_SPIKE_1H: { category: 'VOLUME', name: 'Vol Spike 1h', icon: '🚀', path: '_computed.volSpike1h', operators: ['>', '<'], defaultThreshold: 1.1, computed: true, description: 'Volume spike 1h vs hourly avg' },
+    VOL_DURABILITY: { category: 'VOLUME', name: 'Vol Durability', icon: '🔋', path: '_computed.volDurability', operators: ['>', '<', '>=', '<='], defaultThreshold: 50, computed: true, description: 'Volume trend sustainability (0-100)' },
+
+    // ═══════════════════ MICROSTRUCTURE ═══════════════════
+    MICRO_VPIN: { category: 'MICRO', name: 'VPIN (Toxic)', icon: '☣️', path: 'signals.micro.vpin.rawValue', operators: ['>', '<'], defaultThreshold: 0.2, description: 'Toxic Flow (VPIN)' },
+    MICRO_VPIN_DIR: { category: 'MICRO', name: 'VPIN Direction', icon: '🧭', path: 'signals.micro.vpin.direction', operators: ['==', '!='], defaultThreshold: 'BULLISH', valueType: 'select', options: ['BULLISH', 'BEARISH', 'NEUTRAL'], description: 'VPIN flow direction' },
+    MICRO_OFI: { category: 'MICRO', name: 'OFI Score', icon: '📊', path: 'signals.micro.ofi.normalizedScore', operators: ['>', '<', '>=', '<='], defaultThreshold: 50, description: 'Order Flow Imbalance (0-100)' },
+    MICRO_TFI: { category: 'MICRO', name: 'Toxic Flow Index', icon: '📉', path: 'signals.micro.toxicity.rawValue', operators: ['>', '<', 'ABS>'], defaultThreshold: 5, description: 'Vol/Freq Divergence Index' },
+    MICRO_SPREAD: { category: 'MICRO', name: 'Spread %', icon: '↔️', path: 'signals.micro.spread.rawValue', operators: ['>', '<'], defaultThreshold: 0.05, description: 'Bid-ask spread' },
+
+    // ═══════════════════ ORDERBOOK ═══════════════════
+    OB_SPREAD: { category: 'OB', name: 'Spread (Bps)', icon: '↔️', path: 'raw.ORDERBOOK.spreadBps', operators: ['>', '<'], defaultThreshold: 5, description: 'Bid-Ask Spread in Basis Points' },
+    OB_IMBALANCE: { category: 'OB', name: 'OB Imbalance', icon: '⚖️', path: 'raw.ORDERBOOK.imbalance', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.2, description: 'Bid/Ask Imbalance (-1 to 1)' },
+    OB_DEPTH_RATIO: { category: 'OB', name: 'Depth Ratio', icon: '🧱', path: 'raw.ORDERBOOK.depthRatio', operators: ['>', '<'], defaultThreshold: 1.0, description: 'Bid Depth / Ask Depth' },
+    OB_WALL_DETECTED: { category: 'OB', name: 'Wall Detected', icon: '🚧', path: 'raw.ORDERBOOK.wallDetected', operators: ['=='], defaultThreshold: true, valueType: 'boolean', description: 'Large liquidity wall present' },
+
+    // ═══════════════════ SYNTHESIS (Flow/Eff) ═══════════════════
+    FLOW_NET_15M: { category: 'SYNTHESIS', name: 'Net Flow 15m', icon: '🌊', path: 'synthesis.flow.net_flow_15MENIT', operators: ['>', '<'], defaultThreshold: 0, description: 'Net USD Flow (15m)' },
+    FLOW_BIAS: { category: 'SYNTHESIS', name: 'Capital Bias', icon: '🧭', path: 'synthesis.flow.capital_bias_15MENIT', operators: ['==', '!='], defaultThreshold: 'ACCUMULATION', valueType: 'select', options: ['ACCUMULATION', 'DISTRIBUTION', 'NEUTRAL'], description: 'Flow Bias (Accum/Dist)' },
+    EFF_CHAR: { category: 'SYNTHESIS', name: 'Market Char', icon: '🎭', path: 'synthesis.efficiency.character_15MENIT', operators: ['==', '!='], defaultThreshold: 'EFFORTLESS', valueType: 'select', options: ['EFFORTLESS', 'CHOPPY', 'ABSORPTION', 'GRINDING'], description: 'Market Character' },
+    EFF_SCORE: { category: 'SYNTHESIS', name: 'Efficiency', icon: '⚙️', path: 'synthesis.efficiency.efficiency_15MENIT', operators: ['>', '<'], defaultThreshold: 50, description: 'Price Efficiency Score' },
+    MOM_AGGR: { category: 'SYNTHESIS', name: 'Aggression', icon: '🦈', path: 'synthesis.momentum.aggression_level_15MENIT', operators: ['==', '!='], defaultThreshold: 'WHALE', valueType: 'select', options: ['WHALE', 'INSTITUTIONAL', 'RETAIL'], description: 'Dominant Aggressor' },
+
+    // ═══════════════════ ENHANCED ═══════════════════
+    ENH_CVD: { category: 'ENHANCED', name: 'CVD Score', icon: '📊', path: 'signals.enhanced.cvd.rawValue', operators: ['>', '<'], defaultThreshold: 0, description: 'Cumulative Volume Delta Score' },
+    ENH_CVD_DIV: { category: 'ENHANCED', name: 'CVD Divergence', icon: '⚠️', path: 'signals.enhanced.cvd.divergence', operators: ['=='], defaultThreshold: true, valueType: 'boolean', description: 'Price/CVD divergence' },
+    ENH_INST: { category: 'ENHANCED', name: 'Inst. Footprint', icon: '👣', path: 'signals.enhanced.institutionalFootprint.rawValue', operators: ['>', '<'], defaultThreshold: 0.6, description: 'Institutional Activity (0-1)' },
+    ENH_MOM_QUAL: { category: 'ENHANCED', name: 'Mom. Quality', icon: '✨', path: 'signals.enhanced.momentumQuality.rawValue', operators: ['>', '<'], defaultThreshold: 0.5, description: 'Quality of Momentum' },
+    ENH_BOOK_RES: { category: 'ENHANCED', name: 'Book Resilience', icon: '🛡️', path: 'signals.enhanced.bookResilience.rawValue', operators: ['>', '<'], defaultThreshold: 0.5, description: 'Orderbook Resilience Score' },
+    ENH_PRESS_ACC: { category: 'ENHANCED', name: 'Pressure Accel', icon: '🚀', path: 'signals.enhanced.pressureAcceleration.rawValue', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.1, description: 'Buying/Selling Pressure Acceleration' },
+    ENH_AMIHUD: { category: 'ENHANCED', name: 'Amihud Illiq', icon: '💧', path: 'signals.enhanced.amihudIlliquidity.rawValue', operators: ['>', '<'], defaultThreshold: 0.5, description: 'Illiquidity Ratio (Higher = Illiquid)' },
 
     // ═══════════════════ FREQUENCY ═══════════════════
-    FREQ_TOTAL_1M: { category: 'FREQ', name: 'Trades/min', icon: '⚡', path: '_computed.freqTotal1m', operators: ['>', '<'], defaultThreshold: 100, computed: true, description: 'Trades per minute' },
+    FREQ_TOTAL_1M: { category: 'FREQ', name: 'Trades 1m', icon: '⚡', path: '_computed.freqTotal1m', operators: ['>', '<'], defaultThreshold: 100, computed: true, description: 'Trades per minute' },
+    FREQ_TOTAL_5M: { category: 'FREQ', name: 'Trades 5m', icon: '⚡', path: '_computed.freqTotal5m', operators: ['>', '<'], defaultThreshold: 500, computed: true, description: 'Trades per 5 minutes' },
+    FREQ_TOTAL_15M: { category: 'FREQ', name: 'Trades 15m', icon: '⚡', path: '_computed.freqTotal15m', operators: ['>', '<'], defaultThreshold: 1500, computed: true, description: 'Trades per 15 minutes' },
+    FREQ_TOTAL_1H: { category: 'FREQ', name: 'Trades 1h', icon: '⚡', path: '_computed.freqTotal1h', operators: ['>', '<'], defaultThreshold: 5000, computed: true, description: 'Trades per hour' },
     FREQ_NET_RATIO: { category: 'FREQ', name: 'Freq Bias', icon: '📶', path: '_computed.freqNetRatio', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.3, computed: true, description: 'Buy-Sell frequency ratio' },
 
     // ═══════════════════ OPEN INTEREST ═══════════════════
@@ -99,10 +121,10 @@ export const SIGNAL_COMPONENTS = {
     OI_CHANGE_1H: { category: 'OI', name: 'OI Δ 1h %', icon: '📊', path: 'raw.OI.oiChange1h', operators: ['>', '<', 'ABS>'], defaultThreshold: 2.0, description: 'OI change 1 hour' },
     OI_CHANGE_4H: { category: 'OI', name: 'OI Δ 4h %', icon: '📊', path: 'raw.OI.oiChange4h', operators: ['>', '<', 'ABS>'], defaultThreshold: 5.0, description: 'OI change 4 hours' },
     OI_CHANGE_24H: { category: 'OI', name: 'OI Δ 24h %', icon: '📊', path: 'raw.OI.oiChange24h', operators: ['>', '<', 'ABS>'], defaultThreshold: 10.0, description: 'OI change 24 hours' },
-    OI_VOLUME_5M: { category: 'OI', name: 'OI Vol 5m', icon: '📈', path: 'raw.OI.oiVolume5m', operators: ['>', '<'], defaultThreshold: 1000, description: 'OI volume 5 min' },
-    OI_VOLUME_10M: { category: 'OI', name: 'OI Vol 10m', icon: '📈', path: 'raw.OI.oiVolume10m', operators: ['>', '<'], defaultThreshold: 2000, description: 'OI volume 10 min' },
-    OI_VOLUME_15M: { category: 'OI', name: 'OI Vol 15m', icon: '📈', path: 'raw.OI.oiVolume15m', operators: ['>', '<'], defaultThreshold: 3000, description: 'OI volume 15 min' },
-    OI_VOLUME_1H: { category: 'OI', name: 'OI Vol 1h', icon: '📈', path: 'raw.OI.oiVolume1h', operators: ['>', '<'], defaultThreshold: 5000, description: 'OI volume 1 hour' },
+    // OI_VOLUME_5M: { category: 'OI', name: 'OI Vol 5m', icon: '📈', path: 'raw.OI.oiVolume5m', operators: ['>', '<'], defaultThreshold: 1000, description: 'OI volume 5 min' },
+    // OI_VOLUME_10M: { category: 'OI', name: 'OI Vol 10m', icon: '📈', path: 'raw.OI.oiVolume10m', operators: ['>', '<'], defaultThreshold: 2000, description: 'OI volume 10 min' },
+    // OI_VOLUME_15M: { category: 'OI', name: 'OI Vol 15m', icon: '📈', path: 'raw.OI.oiVolume15m', operators: ['>', '<'], defaultThreshold: 3000, description: 'OI volume 15 min' },
+    // OI_VOLUME_1H: { category: 'OI', name: 'OI Vol 1h', icon: '📈', path: 'raw.OI.oiVolume1h', operators: ['>', '<'], defaultThreshold: 5000, description: 'OI volume 1 hour' },
     OI_VOL_TREND_5M: { category: 'OI', name: 'OI Vol Trend 5m', icon: '📈', path: 'raw.OI.volumeTrend5m', operators: ['>', '<'], defaultThreshold: 10, description: 'OI volume trend 5 min' },
     OI_VOL_TREND_15M: { category: 'OI', name: 'OI Vol Trend 15m', icon: '📈', path: 'raw.OI.volumeTrend15m', operators: ['>', '<'], defaultThreshold: 20, description: 'OI volume trend 15 min' },
     OI_NET_SCORE: { category: 'OI', name: 'OI Net Score', icon: '🎯', path: 'raw.OI.netScore', operators: ['>', '<', 'ABS>'], defaultThreshold: 10, description: 'OI sentiment score' },
@@ -139,28 +161,39 @@ export const SIGNAL_COMPONENTS = {
 
     DASH_TOTAL: { category: 'DASH', name: 'Dashboard Score', icon: '📊', path: 'dashboard.totalScore', operators: ['>', '<', '>=', '<='], defaultThreshold: 60, description: 'Combined score' },
     DASH_REC: { category: 'DASH', name: 'Recommendation', icon: '💡', path: 'dashboard.recommendation', operators: ['==', '!='], defaultThreshold: 'STRONG_BUY', valueType: 'select', options: ['STRONG_BUY', 'BUY', 'HOLD', 'SELL', 'STRONG_SELL'], description: 'Dashboard rec' },
+    DASH_SENTIMENT: { category: 'DASH', name: 'Sentiment Score', icon: '😊', path: 'dashboard.sentimentScore', operators: ['>', '<', '>=', '<='], defaultThreshold: 60, description: 'Bullish/Bearish alignment' },
+    DASH_ACCUM: { category: 'DASH', name: 'Accumulation Score', icon: '🧺', path: 'dashboard.accumScore', operators: ['>', '<', '>=', '<='], defaultThreshold: 50, description: 'Buying accumulation intensity' },
+    DASH_INTENSITY: { category: 'DASH', name: 'Trade Intensity', icon: '🔥', path: 'dashboard.intensity', operators: ['>', '<', '>=', '<='], defaultThreshold: 7, description: 'Algo trading velocity (0-10)' },
+    DASH_BREAKOUT: { category: 'DASH', name: 'Breakout Prob', icon: '💥', path: 'dashboard.breakoutProb', operators: ['>', '<', '>=', '<='], defaultThreshold: 60, description: 'Breakout probability %' },
+    DASH_TECH: { category: 'DASH', name: 'Technical Score', icon: '📈', path: 'dashboard.technicalScore', operators: ['>', '<', '>=', '<='], defaultThreshold: 60, description: 'Technical strength score' },
 
-    // ═══════════════════ MICROSTRUCTURE ═══════════════════
-    MICRO_VPIN: { category: 'MICRO', name: 'VPIN', icon: '🔬', path: 'signals.micro.vpin.rawValue', operators: ['>', '<'], defaultThreshold: 0.5, description: 'Informed trading prob' },
-    MICRO_VPIN_DIR: { category: 'MICRO', name: 'VPIN Direction', icon: '🧭', path: 'signals.micro.vpin.direction', operators: ['==', '!='], defaultThreshold: 'BULLISH', valueType: 'select', options: ['BULLISH', 'BEARISH', 'NEUTRAL'], description: 'VPIN flow direction' },
-    MICRO_OFI: { category: 'MICRO', name: 'OFI Score', icon: '💧', path: 'signals.micro.ofi.normalizedScore', operators: ['>', '<'], defaultThreshold: 65, description: 'Order flow imbalance' },
-    MICRO_SPREAD: { category: 'MICRO', name: 'Spread %', icon: '↔️', path: 'signals.micro.spread.rawValue', operators: ['>', '<'], defaultThreshold: 0.05, description: 'Bid-ask spread' },
-    MICRO_TOXICITY: { category: 'MICRO', name: 'Toxicity', icon: '☠️', path: 'signals.micro.toxicity.rawValue', operators: ['>', '<'], defaultThreshold: 0.5, description: 'Flow toxicity' },
+    // 1. VOLUME SPIKES (Consolidated below)
 
-    // ═══════════════════ ENHANCED SIGNALS ═══════════════════
-    ENH_CVD: { category: 'ENH', name: 'CVD', icon: '📶', path: 'signals.enhanced.cvd.rawValue', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.3, description: 'Cumulative Vol Delta' },
-    ENH_CVD_DIV: { category: 'ENH', name: 'CVD Divergence', icon: '⚠️', path: 'signals.enhanced.cvd.divergence', operators: ['=='], defaultThreshold: true, valueType: 'boolean', description: 'Price/CVD divergence' },
-    ENH_INST: { category: 'ENH', name: 'Institutional', icon: '🏛️', path: 'signals.enhanced.institutionalFootprint.rawValue', operators: ['>', '<'], defaultThreshold: 0.6, description: 'Institutional activity' },
-    ENH_MOM_QUAL: { category: 'ENH', name: 'Momentum Quality', icon: '⚡', path: 'signals.enhanced.momentumQuality.rawValue', operators: ['>', '<'], defaultThreshold: 0.5, description: 'Momentum quality' },
-    ENH_BOOK_RES: { category: 'ENH', name: 'Book Resilience', icon: '🛡️', path: 'signals.enhanced.bookResilience.rawValue', operators: ['>', '<'], defaultThreshold: 0.5, description: 'Order book recovery' },
-    ENH_PRESSURE: { category: 'ENH', name: 'Pressure Accel', icon: '🚀', path: 'signals.enhanced.pressureAcceleration.rawValue', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.3, description: 'Pressure acceleration' },
-    ENH_AMIHUD: { category: 'ENH', name: 'Amihud Illiq', icon: '🧊', path: 'signals.enhanced.amihudIlliquidity.rawValue', operators: ['>', '<'], defaultThreshold: 0.5, description: 'Illiquidity measure' },
+    // 2. META-GUARD (Risk)
+    GUARD_STATUS: { category: 'RISK', name: 'Guard Status', icon: '🛡️', path: 'signals.institutional_guard.meta_guard_status', operators: ['==', '!='], defaultThreshold: 'ALLOW', valueType: 'select', options: ['ALLOW', 'DOWNGRADE', 'BLOCK', 'UNKNOWN'], description: 'Anti-manipulation status' },
 
-    // ═══════════════════ ORDER BOOK ═══════════════════
-    OB_IMBALANCE: { category: 'OB', name: 'OB Imbalance', icon: '⚖️', path: 'raw.ORDERBOOK.imbalance', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.2, description: 'Bid/Ask imbalance (-1 to 1)' },
-    OB_DEPTH_RATIO: { category: 'OB', name: 'Depth Ratio', icon: '📊', path: 'raw.ORDERBOOK.depthRatio', operators: ['>', '<'], defaultThreshold: 1.0, description: 'Bid/Ask depth ratio' },
-    OB_WALL: { category: 'OB', name: 'Wall Detected', icon: '🧱', path: 'raw.ORDERBOOK.wallDetected', operators: ['=='], defaultThreshold: true, valueType: 'boolean', description: 'Large order wall' },
-    OB_SPREAD: { category: 'OB', name: 'Spread Bps', icon: '↔️', path: 'raw.ORDERBOOK.spreadBps', operators: ['>', '<'], defaultThreshold: 5, description: 'Spread in basis points' },
+    // 3. PRICE CONTEXT
+    PRICE_RANGE_24H: { category: 'PRICE', name: '24h Range %', icon: '📊', path: '_computed.range24h', operators: ['>', '<'], defaultThreshold: 80, description: 'Position in 24h range (0=Low, 100=High)' },
+    PRICE_CHANGE_5M: { category: 'PRICE', name: 'Price Δ 5m', icon: '📉', path: 'raw.PRICE.percent_change_5MENIT', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.5, description: 'Raw price change 5m %' },
+    IS_DISCOUNT: { category: 'PRICE', name: 'Deep Discount', icon: '🏷️', path: '_computed.isDiscount', operators: ['=='], defaultThreshold: true, valueType: 'boolean', description: 'Price >10% below 24h High' },
+
+    // 4. ARBITRAGE & AGGRESSION
+    HAS_ARB_OPP: { category: 'FUNDING', name: 'Arb Opportunity', icon: '🥪', path: '_computed.hasArbOpp', operators: ['=='], defaultThreshold: true, valueType: 'boolean', description: 'High funding diff detected' },
+    AGGRESSION_LEVEL: { category: 'SYN', name: 'Aggression Lvl', icon: '😤', path: 'synthesis.momentum.aggression_level_15MENIT', operators: ['==', '!='], defaultThreshold: 'INSTITUTIONAL', valueType: 'select', options: ['RETAIL', 'MODERATE', 'INSTITUTIONAL', 'WHALE'], description: 'Trade aggression level' },
+
+    // ═══════════════════ STRATEGY FILTERS (NEW) ═══════════════════
+
+    // 5. MARKET REGIME & CHARACTER
+    REGIME_CURRENT: { category: 'STRAT', name: 'Market Regime', icon: '🌍', path: 'signals.marketRegime.currentRegime', operators: ['==', '!='], defaultThreshold: 'TRENDING', valueType: 'select', options: ['TRENDING', 'RANGING', 'BREAKOUT', 'CORRECTION'], description: 'Current market phase' },
+    VOL_REGIME: { category: 'STRAT', name: 'Vol Regime', icon: '🌋', path: 'signals.marketRegime.volRegime', operators: ['==', '!='], defaultThreshold: 'HIGH_VOL', valueType: 'select', options: ['LOW_VOL', 'NORMAL_VOL', 'HIGH_VOL', 'EXTREME_VOL'], description: 'Volatility environment' },
+    MKT_CHARACTER: { category: 'STRAT', name: 'Mkt Character', icon: '🎭', path: 'synthesis.efficiency.character_15MENIT', operators: ['==', '!='], defaultThreshold: 'EFFORTLESS_MOVE', valueType: 'select', options: ['EFFORTLESS_MOVE', 'CHOPPY', 'ABSORPTION', 'GRINDING', 'NORMAL'], description: 'Price movement character' },
+
+    // 6. LIQUIDITY & HEALTH
+    BOOK_HEALTH: { category: 'STRAT', name: 'Book Health', icon: '🏥', path: 'raw.ORDERBOOK.bookHealth', operators: ['==', '!='], defaultThreshold: 'HEALTHY', valueType: 'select', options: ['HEALTHY', 'THIN', 'FRAGILE', 'CRITICAL'], description: 'Order book integrity' },
+    OFI_SCORE: { category: 'STRAT', name: 'OFI Score', icon: '⚖️', path: 'signals.micro.ofi.normalizedScore', operators: ['>', '<'], defaultThreshold: 60, description: 'Order Flow Imbalance (0-100)' },
+    SLIPPAGE_100K: { category: 'STRAT', name: 'Slippage 100k', icon: '💧', path: 'raw.ORDERBOOK.slippage100k', operators: ['<', '>'], defaultThreshold: 0.5, description: 'Slippage % for $100k order' },
+
+
 
     // ═══════════════════ BTC CORRELATION ═══════════════════
     BTC_BETA: { category: 'BTC', name: 'BTC Beta', icon: '🔗', path: '_computed.btcBeta', operators: ['>', '<'], defaultThreshold: 1.0, computed: true, description: 'Volatility vs BTC' },
@@ -178,15 +211,12 @@ export const SIGNAL_COMPONENTS = {
     SYN_VEL_15M: { category: 'SYN', name: 'Velocity 15m', icon: '🏎️', path: 'synthesis.momentum.velocity_15MENIT', operators: ['>', '<', 'ABS>'], defaultThreshold: 5000, description: 'Price momentum' },
     SYN_AGGR: { category: 'SYN', name: 'Aggression', icon: '👊', path: 'synthesis.momentum.aggression_level_15MENIT', operators: ['==', '!='], defaultThreshold: 'INSTITUTIONAL', valueType: 'select', options: ['RETAIL', 'MODERATE', 'INSTITUTIONAL', 'WHALE'], description: 'Participant type' },
 
-    // ═══════════════════ REGIME ═══════════════════
-    REGIME_CURRENT: { category: 'REGIME', name: 'Market Regime', icon: '🌡️', path: 'signals.marketRegime.currentRegime', operators: ['==', '!='], defaultThreshold: 'TRENDING_UP', valueType: 'select', options: ['TRENDING_UP', 'TRENDING_DOWN', 'RANGING', 'VOLATILE', 'ACCUMULATION', 'DISTRIBUTION', 'BREAKOUT'], description: 'Current regime' },
-    REGIME_VOL: { category: 'REGIME', name: 'Vol Regime', icon: '🌋', path: 'signals.marketRegime.volRegime', operators: ['==', '!='], defaultThreshold: 'NORMAL', valueType: 'select', options: ['LOW_VOL', 'NORMAL', 'HIGH_VOL', 'EXTREME_VOL'], description: 'Volatility level' },
-    REGIME_TREND: { category: 'REGIME', name: 'Trend Strength', icon: '💪', path: 'signals.marketRegime.trendStrength', operators: ['>', '<'], defaultThreshold: 0.6, description: 'Trend strength 0-1' },
+    // ═══════════════════ REGIME (Moved to STRAT) ═══════════════════
+    REGIME_TREND: { category: 'STRAT', name: 'Trend Strength', icon: '💪', path: 'signals.marketRegime.trendStrength', operators: ['>', '<'], defaultThreshold: 0.6, description: 'Trend strength 0-1' },
 
-    // ═══════════════════ ORDERBOOK ═══════════════════
-    OB_IMBALANCE: { category: 'OB', name: 'Book Imbalance', icon: '📚', path: 'raw.ORDERBOOK.imbalance', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.2, description: 'Bid/Ask imbalance' },
-    OB_DEPTH: { category: 'OB', name: 'Depth Ratio', icon: '🏊', path: 'raw.ORDERBOOK.depthRatio', operators: ['>', '<'], defaultThreshold: 1.0, description: 'Bid/Ask depth' },
-    OB_WALL: { category: 'OB', name: 'Wall Detected', icon: '🧱', path: 'raw.ORDERBOOK.wallDetected', operators: ['=='], defaultThreshold: true, valueType: 'boolean', description: 'Large order wall' },
+    // ═══════════════════ NEW METRICS ═══════════════════
+    PRICE_RANGE_24H: { category: 'PRICE', name: '24h Range %', icon: '📏', path: '_computed.range24h', operators: ['>', '<'], defaultThreshold: 5.0, computed: true, description: 'Price volatility range' },
+    FUNDING_NEXT: { category: 'FUNDING', name: 'Next Funding', icon: '🔮', path: 'raw.FUNDING.nextFundingRate', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.0001, description: 'Predicted next rate' },
 
     // ═══════════════════ BTC CORRELATION / BENCHMARK ═══════════════════
     BTC_CHANGE_1M: { category: 'BTC', name: 'BTC Δ 1m', icon: '₿', path: '_computed.btcChange1m', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.1, computed: true, description: 'BTC price change 1m' },
@@ -215,24 +245,30 @@ export const SIGNAL_COMPONENTS = {
 };
 
 export const CATEGORIES = {
-    PRICE: { name: 'Price', color: 'bb-gold', icon: '📈' },
-    VOLUME: { name: 'Volume', color: 'bb-blue', icon: '📊' },
-    FREQ: { name: 'Frequency', color: 'indigo-400', icon: '⚡' },
-    OI: { name: 'Open Interest', color: 'bb-green', icon: '🔄' },
-    FUNDING: { name: 'Funding', color: 'purple-400', icon: '💰' },
-    LSR: { name: 'Long/Short', color: 'pink-400', icon: '📐' },
-    LIQ: { name: 'Liquidations', color: 'red-400', icon: '💥' },
-    MASTER: { name: 'Master Signal', color: 'bb-gold', icon: '🎯' },
-    DASH: { name: 'Dashboard', color: 'amber-400', icon: '📋' },
-    MICRO: { name: 'Microstructure', color: 'cyan-400', icon: '🔬' },
-    ENH: { name: 'Enhanced', color: 'emerald-400', icon: '⚡' },
-    SYN: { name: 'Synthesis', color: 'orange-400', icon: '🧬' },
+    PRICE: { name: 'Price', icon: '💲' },
+    VOLUME: { name: 'Volume', icon: '📊' },
+    FREQ: { name: 'Frequency', icon: '⚡' },
+    OI: { name: 'Open Interest', icon: '📈' },
+    FUNDING: { name: 'Funding', icon: '💰' },
+    LSR: { name: 'Long/Short', icon: '⚖️' },
+    LIQ: { name: 'Liquidation', icon: '💥' },
+    MICRO: { name: 'Microstructure', icon: '🔬' },
+    OB: { name: 'Orderbook', icon: '🧱' },
+    SYNTHESIS: { name: 'Synthesis', icon: '🌊' },
+    ENHANCED: { name: 'Enhanced', icon: '✨' },
+    MASTER: { name: 'Master Signal', icon: '🎯' },
+    DASH: { name: 'Dashboard', icon: '🖥️' },
     REGIME: { name: 'Regime', color: 'rose-400', icon: '🌡️' },
-    OB: { name: 'Order Book', color: 'sky-400', icon: '📚' },
     BTC: { name: 'BTC Benchmark', color: 'yellow-500', icon: '₿' },
     ALERT: { name: 'Alerts', color: 'red-500', icon: '🚨' },
-    GUARD: { name: 'META-GUARD', color: 'emerald-500', icon: '🛡️' }
+    GUARD: { name: 'META-GUARD', color: 'emerald-500', icon: '🛡️' },
+    STRAT: { name: 'Strategy Filters', color: 'indigo-500', icon: '♟️' }
 };
+
+// Generate MATRIX_VIEWS from CATEGORIES (replacing hardcoded views)
+const MATRIX_VIEWS = Object.fromEntries(
+    Object.entries(CATEGORIES).map(([k, v]) => [k, { name: v.name, icon: v.icon, desc: `${v.name} components` }])
+);
 
 // Preset Templates
 const PRESET_TEMPLATES = {
@@ -326,7 +362,7 @@ const PRESET_TEMPLATES = {
 let compositions = [];
 let activeComposition = null;
 let currentTab = 'LIST';       // LIST, EDITOR, SCANNER
-let currentMatrix = 'OVERVIEW';
+let currentMatrix = 'PRICE';
 let currentFilter = 'ALL';
 let currentCatFilter = 'ALL';
 let scannerResults = [];
@@ -496,16 +532,6 @@ function renderListTab() {
                 ${renderMatrixTable()}
             </div>
         </div>
-
-        <!-- RIGHT: DETAILS VIEW -->
-        <div class="w-[28%] border-l border-bb-border flex flex-col overflow-hidden bg-bb-panel/10">
-            <div class="p-2 border-b border-bb-border bg-black/30">
-                <span class="text-[8px] font-black text-bb-muted uppercase">Coin Details</span>
-            </div>
-                    <div id="detail-view" class="flex-1 overflow-auto">
-                        ${selectedCoin ? renderCoinDetail(selectedCoin) : renderNoSelection()}
-                    </div>
-        </div>
     `;
 }
 
@@ -620,18 +646,18 @@ function renderMatrixTable() {
     const cols = getMatrixColumns(currentMatrix);
 
     return `
-        <table class="w-full text-[8px]">
+        <table class="w-full text-[7px]">
             <thead class="sticky top-0 bg-bb-black">
                 <tr class="text-bb-muted border-b border-white/10">
-                    <th class="text-left p-1">Coin</th>
-                    ${cols.map(c => `<th class="text-right p-1">${c.name}</th>`).join('')}
+                    <th class="text-left px-1 py-0.5 whitespace-nowrap">Coin</th>
+                    ${cols.map(c => `<th class="text-right px-1 py-0.5 whitespace-nowrap">${c.name}</th>`).join('')}
                 </tr>
             </thead>
             <tbody>
                 ${filtered.slice(0, 50).map(({ coin, data }) => `
                     <tr class="coin-row border-b border-white/5 hover:bg-white/5 cursor-pointer ${selectedCoin === coin ? 'bg-bb-gold/10' : ''}" data-coin="${coin}">
-                        <td class="p-1 font-bold text-white">${coin.replace('-USDT', '')}</td>
-                        ${cols.map(c => `<td class="text-right p-1 ${c.color ? c.color(getNestedValue(data, c.path)) : 'text-white/80'}">${c.format(getNestedValue(data, c.path))}</td>`).join('')}
+                        <td class="px-1 py-0.5 font-bold text-white whitespace-nowrap">${coin.replace('-USDT', '').replace('-SWAP', '')}</td>
+                        ${cols.map(c => `<td class="text-right px-1 py-0.5 whitespace-nowrap ${c.color ? c.color(safeGet(data, c.path)) : 'text-white/80'}">${c.format(safeGet(data, c.path))}</td>`).join('')}
                     </tr>
                 `).join('')}
             </tbody>
@@ -639,80 +665,44 @@ function renderMatrixTable() {
     `;
 }
 
-function getMatrixColumns(view) {
+function getMatrixColumns(categoryKey) {
     const fmtNum = (v, d = 2) => v != null ? Utils.safeFixed(Number(v), d) : '-';
     const fmtPct = v => v != null ? `${v >= 0 ? '+' : ''}${Utils.safeFixed(Number(v), 2)}%` : '-';
-    const fmtUsd = v => v != null ? `$${Utils.safeFixed(v / 1000, 0)}k` : '-';
     const pctCol = v => v > 0 ? 'text-bb-green' : v < 0 ? 'text-bb-red' : 'text-white/60';
 
-    const views = {
-        OVERVIEW: [
-            { name: 'Price', path: 'raw.PRICE.last', format: v => fmtNum(v, 2) },
-            { name: '1m%', path: 'raw.PRICE.percent_change_1MENIT', format: fmtPct, color: pctCol },
-            { name: '5m%', path: 'raw.PRICE.percent_change_5MENIT', format: fmtPct, color: pctCol },
-            { name: '1h%', path: 'raw.PRICE.percent_change_1JAM', format: fmtPct, color: pctCol },
-            { name: 'Vol 1h', path: 'raw.VOL.vol_total_1JAM', format: fmtUsd },
-            { name: 'B/S', path: 'raw.VOL.buy_sell_ratio_5MENIT', format: v => fmtNum(v, 2) }
-        ],
-        DECISION: [
-            { name: 'Score', path: 'signals.masterSignal.normalizedScore', format: v => fmtNum(v, 0) },
-            { name: 'Action', path: 'signals.masterSignal.action', format: v => v || '-', color: v => v === 'LONG' ? 'text-bb-green' : v === 'SHORT' ? 'text-bb-red' : 'text-white/60' },
-            { name: 'Conf', path: 'signals.masterSignal.confirmations', format: v => v ?? '-' },
-            { name: 'Dashboard', path: 'dashboard.totalScore', format: v => fmtNum(v, 0) },
-            { name: 'Rec', path: 'dashboard.recommendation', format: v => v || '-' }
-        ],
-        SMART: [
-            { name: 'Aggression', path: 'synthesis.momentum.aggression_level_15MENIT', format: v => v || '-' },
-            { name: 'Inst', path: 'signals.enhanced.institutionalFootprint.rawValue', format: v => fmtNum(v, 2) },
-            { name: 'VPIN', path: 'signals.micro.vpin.rawValue', format: v => fmtNum(v, 2) },
-            { name: 'CVD', path: 'signals.enhanced.cvd.rawValue', format: v => fmtNum(v, 2), color: pctCol }
-        ],
-        SYNTHESIS: [
-            { name: 'Flow 5m', path: 'synthesis.flow.net_flow_5MENIT', format: fmtUsd, color: pctCol },
-            { name: 'Flow 15m', path: 'synthesis.flow.net_flow_15MENIT', format: fmtUsd, color: pctCol },
-            { name: 'Eff 15m', path: 'synthesis.efficiency.efficiency_15MENIT', format: v => fmtNum(v, 2) },
-            { name: 'Char', path: 'synthesis.efficiency.character_15MENIT', format: v => (v || '-').substring(0, 8) },
-            { name: 'Vel', path: 'synthesis.momentum.velocity_15MENIT', format: fmtUsd, color: pctCol }
-        ],
-        VOLATILITY: [
-            { name: 'ATR%', path: 'signals.volatility.atr.pct', format: v => fmtNum(v, 2) + '%' },
-            { name: '24h Range', path: '_computed.range24h', format: v => fmtNum(v, 1) + '%' },
-            { name: 'From High', path: 'raw.PRICE.percent_change_from_top', format: fmtPct, color: pctCol },
-            { name: 'From Low', path: 'raw.PRICE.percent_change_from_bottom', format: fmtPct, color: pctCol }
-        ],
-        MICROSTRUCTURE: [
-            { name: 'VPIN', path: 'signals.micro.vpin.rawValue', format: v => fmtNum(v, 3) },
-            { name: 'OFI', path: 'signals.micro.ofi.normalizedScore', format: v => fmtNum(v, 0) },
-            { name: 'Spread', path: 'signals.micro.spread.rawValue', format: v => fmtNum(v, 3) + '%' },
-            { name: 'Toxicity', path: 'signals.micro.toxicity.rawValue', format: v => fmtNum(v, 2) }
-        ],
-        LIQUIDITY: [
-            { name: 'OI ($)', path: 'raw.OI.openInterest', format: v => fmtUsd(v / 1000) },
-            { name: 'Tier', path: 'raw.OI.tier', format: v => v ?? '-' },
-            { name: 'Bull S', path: 'raw.OI.bullScore', format: v => fmtNum(v, 0), color: v => v > 0 ? 'text-bb-green' : 'text-bb-muted' },
-            { name: 'Bear S', path: 'raw.OI.bearScore', format: v => fmtNum(v, 0), color: v => v > 0 ? 'text-bb-red' : 'text-bb-muted' },
-            { name: 'Book Imb', path: 'raw.ORDERBOOK.imbalance', format: v => fmtNum(v, 2), color: pctCol }
-        ],
-        DERIVATIVES: [
-            { name: 'OI Δ15m', path: 'raw.OI.oiChange15m', format: fmtPct, color: pctCol },
-            { name: 'OI Δ1h', path: 'raw.OI.oiChange1h', format: fmtPct, color: pctCol },
-            { name: 'Funding', path: 'raw.FUNDING.fundingRate', format: v => fmtNum(v * 100, 4) + '%', color: pctCol },
-            { name: 'LSR', path: 'raw.LSR.ratio', format: v => fmtNum(v, 2) },
-            { name: 'LSR Z', path: 'raw.LSR.z', format: v => fmtNum(v, 2), color: pctCol }
-        ],
-        REGIME: [
-            { name: 'Regime', path: 'signals.marketRegime.currentRegime', format: v => (v || '-').substring(0, 10) },
-            { name: 'Vol Regime', path: 'signals.marketRegime.volRegime', format: v => v || '-' },
-            { name: 'Trend Str', path: 'signals.marketRegime.trendStrength', format: v => fmtNum(v, 2) }
-        ],
-        SENTIMENT: [
+    // Auto-generate columns from SIGNAL_COMPONENTS matching this category
+    const comps = Object.entries(SIGNAL_COMPONENTS).filter(([, c]) => c.category === categoryKey);
+    if (!comps.length) {
+        // Fallback: show price overview if category has no components
+        return [{ name: 'Price', path: 'raw.PRICE.last', format: v => fmtNum(v, 2) }];
+    }
 
-            { name: 'Fund Bias', path: 'raw.FUNDING.marketBias', format: v => v || '-' },
-            { name: 'OI Dir', path: 'raw.OI.marketDirection', format: v => v || '-' }
-        ]
-    };
+    // Limit to max 8 columns for readability
+    return comps.slice(0, 8).map(([id, comp]) => {
+        const path = comp.path;
+        const isPercent = path.includes('percent_change') || path.includes('Change') || path.includes('pct') || path.includes('Pct');
+        const isBool = comp.valueType === 'boolean';
+        const isSelect = comp.valueType === 'select';
+        const isUsd = path.includes('vol_total') || path.includes('openInterest') || path.includes('flow');
 
-    return views[view] || views.OVERVIEW;
+        let format;
+        if (isBool) format = v => v === true ? 'YES' : v === false ? 'NO' : '-';
+        else if (isSelect) format = v => v ? String(v).substring(0, 10) : '-';
+        else if (isUsd) format = v => v != null ? `$${Utils.safeFixed(Number(v) / 1000, 0)}k` : '-';
+        else if (isPercent) format = fmtPct;
+        else format = v => {
+            if (v == null) return '-';
+            if (typeof v === 'string') return v.substring(0, 12);
+            return fmtNum(v, comp.displayDigits || 2);
+        };
+
+        return {
+            name: comp.name,
+            path: path,
+            format: format,
+            color: (isPercent || path.includes('Score') || path.includes('score') || path.includes('ratio')) ? pctCol : undefined
+        };
+    });
 }
 
 function renderCoinDetail(coin) {
@@ -1262,6 +1252,7 @@ function renderEditor() {
                         `).join('')}
                     </div>
                 </div>
+
                 <div class="p-2 bg-black/30 rounded border border-white/10 flex flex-col justify-center">
                     <label class="text-[8px] font-black text-bb-muted uppercase">Cooldown</label>
                     <div class="flex items-center gap-1 mt-1">
@@ -1269,6 +1260,7 @@ function renderEditor() {
                         <span class="text-[7px] text-bb-muted">s</span>
                     </div>
                 </div>
+                ${c.outputAction === 'OKX' ? `
                 <div class="p-2 bg-black/30 rounded border border-white/10 flex flex-col justify-center">
                     <label class="text-[8px] font-black text-bb-muted uppercase">Max Pos</label>
                     <div class="flex items-center gap-1 mt-1">
@@ -1276,9 +1268,11 @@ function renderEditor() {
                         <span class="text-[7px] text-bb-muted">qty</span>
                     </div>
                 </div>
+                ` : ''}
             </div>
 
             <!-- OPTIONS -->
+            ${(c.outputAction === 'SIMULATE' || c.outputAction === 'OKX') ? `
             <div class="p-2 bg-black/30 rounded border border-white/10 flex items-center justify-between">
                 <div>
                     <label class="text-[8px] font-black text-white uppercase">Close on Flip</label>
@@ -1289,6 +1283,7 @@ function renderEditor() {
                     <div class="w-7 h-4 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-bb-gold"></div>
                 </label>
             </div>
+            ` : ''}
 
             <!-- ACTIONS -->
             <div class="flex gap-2">
@@ -1748,7 +1743,26 @@ function showPresetsModal(container) {
         el.addEventListener('click', () => {
             const preset = PRESET_TEMPLATES[el.dataset.key];
             if (preset) {
-                const newSig = { id: Date.now(), name: preset.name, description: preset.description, active: false, coinMode: 'ALL', coins: [], logic: preset.logic || 'AND', conditions: JSON.parse(JSON.stringify(preset.conditions)), outputAction: 'SIGNAL', biasMode: 'AUTO', biasLogic: preset.biasLogic, cooldown: preset.cooldown || 300, minScore: preset.minScore || 70, simConfig: { amount: 1000, leverage: 10, tp: 10, sl: 5 }, webhookConfig: { url: '' }, orderConfig: { ordType: 'market', usd: '', instId: '', tpPct: '', slPct: '' } };
+                const newSig = {
+                    id: Date.now(),
+                    name: preset.name,
+                    description: preset.description,
+                    active: false,
+                    coinMode: 'ALL',
+                    coins: [],
+                    logic: preset.logic || 'AND',
+                    conditions: JSON.parse(JSON.stringify(preset.conditions)),
+                    outputAction: 'SIGNAL',
+                    biasMode: 'AUTO',
+                    biasLogic: preset.biasLogic,
+                    closeOnFlip: false,
+                    maxPositions: 1,
+                    cooldown: preset.cooldown || 300,
+                    minScore: preset.minScore || 70,
+                    simConfig: { amount: 1000, leverage: 10, tp: 10, sl: 5 },
+                    webhookConfig: { url: '' },
+                    orderConfig: { ordType: 'market', usd: '', instId: '', tpPct: '', slPct: '' }
+                };
                 compositions.push(newSig);
                 activeComposition = newSig;
                 saveState();
@@ -1760,17 +1774,47 @@ function showPresetsModal(container) {
     });
 }
 
+
+
+
+function cleanSignalForExport(sig) {
+    const clean = { ...sig };
+    clean.active = false; // Always set active to false on export
+
+    // Ensure defaults for older signals
+    if (clean.closeOnFlip === undefined) clean.closeOnFlip = false;
+    if (clean.maxPositions === undefined && clean.outputAction === 'OKX') clean.maxPositions = 1;
+
+    // Ensure core configuration defaults
+    if (!clean.profile) clean.profile = 'GLOBAL';
+    if (!clean.timeframe) clean.timeframe = 'GLOBAL';
+
+    // Remove unused configs based on outputAction
+    if (clean.outputAction !== 'SIMULATE') delete clean.simConfig;
+    if (clean.outputAction !== 'WEBHOOK') delete clean.webhookConfig;
+    if (clean.outputAction !== 'OKX') {
+        delete clean.orderConfig;
+        delete clean.maxPositions; // maxPositions only relevant for OKX execution
+    }
+
+    // Remove closeOnFlip if not SIMULATE or OKX
+    if (clean.outputAction !== 'SIMULATE' && clean.outputAction !== 'OKX') delete clean.closeOnFlip;
+
+    // Remove minScore if logic is not WEIGHTED
+    if (clean.logic !== 'WEIGHTED') delete clean.minScore;
+
+    return clean;
+}
+
 function exportAllSignals() {
-    // Clone and set active=false for safety
-    const safeExport = compositions.map(c => ({ ...c, active: false }));
+    const safeExport = compositions.map(c => cleanSignalForExport(c));
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(safeExport, null, 2));
     downloadFile(dataStr, "signal_all.json");
 }
 
 function exportSingleSignal() {
     if (!activeComposition) { alert('No active signal to export'); return; }
-    // Clone and set active=false for safety
-    const safeExport = [{ ...activeComposition, active: false }];
+    const safeExport = [cleanSignalForExport(activeComposition)];
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(safeExport, null, 2));
     const nameSafe = (activeComposition.name || 'signal').replace(/[^a-z0-9]/gi, '_').toLowerCase();
     downloadFile(dataStr, `signal_${nameSafe}.json`);
@@ -1786,30 +1830,97 @@ function downloadFile(dataStr, fileName) {
 }
 
 function importConfig(container) {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
-    input.onchange = e => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.readAsText(file, 'UTF-8');
-        reader.onload = readerEvent => {
-            try {
-                const content = readerEvent.target.result;
-                const parsed = JSON.parse(content);
-                if (Array.isArray(parsed)) {
-                    processImports(parsed, container);
-                } else {
-                    alert('❌ Invalid config file format (Expected array)');
-                }
-            } catch (err) {
-                console.error(err);
-                alert('❌ Error parsing JSON file');
-            }
+    // Create Modal Element
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm';
+    modal.innerHTML = `
+        <div class="bg-bb-panel border border-bb-border rounded-lg p-6 w-[600px] max-w-full shadow-2xl relative animate-in fade-in zoom-in duration-200">
+            <h3 class="text-xl font-bold text-bb-gold mb-2">Import Signals</h3>
+            <p class="text-xs text-bb-muted mb-4">Paste your signal configuration JSON below OR upload a file.</p>
+            
+            <textarea id="import-json-text" 
+                class="w-full h-64 bg-bb-dark/50 border border-bb-border rounded p-3 font-mono text-xs text-bb-gray mb-4 focus:border-bb-gold outline-none resize-none" 
+                placeholder='Paste JSON here: [{"id": 123, "name": "My Strategy", ...}]'></textarea>
+            
+            <div class="flex justify-between items-center">
+                <button id="btn-import-file" class="flex items-center gap-2 px-4 py-2 border border-bb-border rounded text-xs hover:bg-bb-dark transition-colors text-bb-muted cursor-pointer">
+                    <span>📂</span> Upload .json File
+                </button>
+                <div class="flex gap-2">
+                    <button id="btn-cancel-import" class="px-4 py-2 text-bb-muted hover:text-white transition-colors text-xs cursor-pointer">Cancel</button>
+                    <button id="btn-confirm-import" class="px-6 py-2 bg-bb-gold/20 text-bb-gold border border-bb-gold/50 rounded hover:bg-bb-gold/30 transition-all font-bold text-xs cursor-pointer">Import Text</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const txtArea = modal.querySelector('#import-json-text');
+    const btnFile = modal.querySelector('#btn-import-file');
+    const btnImport = modal.querySelector('#btn-confirm-import');
+    const btnCancel = modal.querySelector('#btn-cancel-import');
+
+    // Close Modal Helper
+    const close = () => document.body.removeChild(modal);
+
+    // 1. Handle Paste/Text Import
+    btnImport.onclick = () => {
+        const raw = txtArea.value.trim();
+        if (!raw) {
+            alert('❌ Please paste some JSON content first.');
+            return;
         }
-    }
-    input.click();
+        try {
+            const parsed = JSON.parse(raw);
+            // Relaxed validation: Check for ID OR Name OR Logic (common fields)
+            if (Array.isArray(parsed) || (typeof parsed === 'object' && (parsed.id || parsed.name || parsed.logic))) {
+                // Support both Array and Single components
+                const signals = Array.isArray(parsed) ? parsed : [parsed];
+                processImports(signals, container);
+                close();
+            } else {
+                alert('❌ Invalid format. Expected a Signal object (with name/logic) or an Array.');
+            }
+        } catch (e) {
+            console.error(e);
+            alert('❌ JSON Parse Error: ' + e.message);
+        }
+    };
+
+    // 2. Handle File Import
+    btnFile.onclick = () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.onchange = e => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.readAsText(file, 'UTF-8');
+            reader.onload = readerEvent => {
+                try {
+                    const content = readerEvent.target.result;
+                    const parsed = JSON.parse(content);
+                    const signals = Array.isArray(parsed) ? parsed : [parsed];
+                    processImports(signals, container);
+                    close();
+                } catch (err) {
+                    console.error(err);
+                    alert('❌ Error parsing JSON file');
+                }
+            };
+        };
+        input.click();
+    };
+
+    // 3. Cancel
+    btnCancel.onclick = close;
+
+    // Close on click outside
+    modal.onclick = (e) => {
+        if (e.target === modal) close();
+    };
 }
 
 function processImports(importedSignals, container) {
@@ -1823,6 +1934,11 @@ function processImports(importedSignals, container) {
     for (const importedSig of importedSignals) {
         // SAFETY: Force active = false upon import
         importedSig.active = false;
+
+        // Ensure ID Class exists (vital for paste imports)
+        if (!importedSig.id) {
+            importedSig.id = Date.now() + Math.floor(Math.random() * 10000);
+        }
 
         // Check duplication by Name (User requirement: "jika ada config dengan nama yang sama")
         // Note: We also have check by ID, but user specifically mentioned Name. 
@@ -2035,6 +2151,7 @@ export function closePosition(coin) {
     }
 }
 let totalTriggersToday = 0;
+const recentTriggers = []; // Persistent storage for UI visibility
 // Concurrency lock
 const pendingExecutions = new Set(); // Stores "sigId:coin" keys
 
@@ -2048,7 +2165,7 @@ export function runComposerEngine(marketState) {
     if (!active.length) return;
 
     const now = Date.now();
-    const triggers = [];
+    // const triggers = []; // REMOVED: Use global recentTriggers instead
 
     active.forEach(sig => {
         // Use signal's own profile/timeframe settings
@@ -2093,7 +2210,14 @@ export function runComposerEngine(marketState) {
                                         cooldowns.set(key, now);
                                         sig.lastTrigger = now;
                                         totalTriggersToday++;
-                                        triggers.push({ sig: sig.name, coin, bias: result.bias });
+                                        // triggers.push({ sig: sig.name, coin, bias: result.bias });
+
+                                        // Remove existing entry for this coin to prevent stacking
+                                        const existIdx = recentTriggers.findIndex(t => t.coin === coin);
+                                        if (existIdx !== -1) recentTriggers.splice(existIdx, 1);
+
+                                        recentTriggers.unshift({ sig: sig.name, coin, bias: result.bias, ts: now });
+                                        if (recentTriggers.length > 50) recentTriggers.pop();
                                     }
                                 })
                                 .catch(e => console.error(e))
@@ -2116,7 +2240,7 @@ export function runComposerEngine(marketState) {
         });
     });
 
-    updateLiveMonitor(triggers);
+    updateLiveMonitor(recentTriggers);
 }
 
 async function executeSignal(sig, coin, result, data) {
@@ -2227,7 +2351,16 @@ async function executeSignal(sig, coin, result, data) {
                 useATR: sig.allocConfig?.useATR || false
             };
 
-            const usdSize = await StrategyAllocator.sizeFromSignal(signalContext, positions, allocConfig);
+            let usdSize = 0;
+            const manualUsd = sig.orderConfig?.usd ? parseFloat(sig.orderConfig.usd) : 0;
+
+            if (!isNaN(manualUsd) && manualUsd > 0) {
+                usdSize = manualUsd;
+                console.log(`[COMPOSER] Using Manual Amount: $${usdSize}`);
+            } else {
+                usdSize = await StrategyAllocator.sizeFromSignal(signalContext, positions, allocConfig);
+            }
+
             if (usdSize === 0) {
                 console.warn(`[COMPOSER] 🛑 Allocator returned $0 size for ${coin}. Likely budget exhausted or crowd penalty.`);
                 showToast(`🛡️ Sizing: $0 budget for ${coin} (Check Budget/Risk)`, 'warning');
@@ -2236,6 +2369,7 @@ async function executeSignal(sig, coin, result, data) {
 
             // Simple approximation: Coins = USD / Price
             let sz = (usdSize / price).toFixed(5);
+            console.log(`[COMPOSER] Sizing Calc: $${usdSize.toFixed(2)} / ${price} = ${sz} ${coin}`);
 
             // 3. EXECUTION LOGIC
             const side = result.bias === 'LONG' ? 'buy' : 'sell';
@@ -2406,7 +2540,11 @@ async function executeSignal(sig, coin, result, data) {
             return false;
         }
     }
-    return false;
+
+    // For LOG or SIGNAL or SIMULATE or WEBHOOK (handled above) or fallthrough
+    // actually SIGNAL/SIMULATE/WEBHOOK return true early.
+    // So this is for LOG and any new actions not explicitly handled
+    return true;
 }
 
 
@@ -2475,7 +2613,13 @@ function loadState() {
                 const runtime = JSON.parse(rs);
                 if (runtime.cooldowns) {
                     cooldowns.clear();
-                    runtime.cooldowns.forEach(([k, v]) => cooldowns.set(k, v));
+                    const now = Date.now();
+                    runtime.cooldowns.forEach(([k, v]) => {
+                        // Cleanup: Remove cooldowns older than 24 hours
+                        if (now - v < 86400000) {
+                            cooldowns.set(k, v);
+                        }
+                    });
                 }
                 if (runtime.lastTriggeredState) {
                     lastTriggeredState.clear();

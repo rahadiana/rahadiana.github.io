@@ -734,7 +734,7 @@ async function placeOrder() {
     // Enforce max real open positions if configured
     try {
       const maxReal = parseInt(localStorage.getItem('os_max_real_positions') || localStorage.getItem('os_alloc_max') || '5', 10) || 5;
-      const okxList = (posRes && posRes.data) ? posRes.data : [];
+      const okxList = (_lastOkxPositions && Array.isArray(_lastOkxPositions)) ? _lastOkxPositions : [];
       const openCount = okxList.reduce((cnt, p) => {
         const size = Math.abs(Number(p.pos || p.posSize || p.posQty || p.qty || 0));
         return cnt + (size > 0 ? 1 : 0);

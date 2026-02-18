@@ -233,8 +233,19 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
             const avgVal = raw.AVG || sigRoot.AVG || {};
             const { currentPace, histPace, spike: histSpike, total, buy, sell } = calculateVolumePace(vol, avgVal, tf, minutes);
             const pace1hPerMin = ((vol.vol_BUY_1JAM || 0) + (vol.vol_SELL_1JAM || 0)) / 60;
-            const durability = calculateDurability(currentPace, pace1hPerMin);
-            const spike = pace1hPerMin > 0 ? (currentPace / pace1hPerMin) : 0;
+            // SANITY CHECK: Sparse data detection (Same as data_helpers.js)
+            const v1h = ((vol.vol_BUY_1JAM || 0) + (vol.vol_SELL_1JAM || 0));
+            const isSparseData = (v1h > 0) && (v1h < total * 1.1) && (minutes < 60);
+
+            let baseline = pace1hPerMin;
+            if (isSparseData || baseline <= 0) {
+                baseline = histPace > 0 ? (histPace / minutes) : 0; // histPace in viewGlobal is total hist volume? No, calculateVolumePace returns histPace as per-minute
+                // wait, calculateVolumePace in data_helpers returns histPace = histTotal / minutes.
+                baseline = histPace;
+            }
+
+            const spike = (pace1hPerMin > 0 && !isSparseData) ? (currentPace / pace1hPerMin) : 0;
+            const durability = (baseline > 0) ? calculateDurability(currentPace, baseline) : 0.5;
             const ratio = total > 0 ? ((buy - sell) / total) : 0;
             const avgSpike = histPace > 0 ? (currentPace / histPace) : 0;
             return { spike, avgSpike, ratio, durability };

@@ -38,6 +38,52 @@ export function calculateDurability(currentPacePerMin, benchmark1hPerMin) {
   return Math.min(1.0, raw / 2);
 }
 
+// Technical Score Calculation (0-100)
+export function calculateTechnicalScore(price, vol, lsr, funding) {
+  let score = 50; // Base score
+
+  // 1. Price Trend (30%)
+  const chg1h = price.percent_change_1JAM || 0;
+  const chg24h = (price.percent_change_24JAM || price.percent_change_24h || 0);
+
+  if (chg1h > 1.0) score += 10;
+  else if (chg1h > 0.5) score += 5;
+  else if (chg1h < -1.0) score -= 10;
+  else if (chg1h < -0.5) score -= 5;
+
+  if (chg24h > 5.0) score += 5;
+  else if (chg24h < -5.0) score -= 5;
+
+  // 2. Volume Strength (30%)
+  // We need to re-calculate simple spike here or pass it in. 
+  // Simplified: check if recent volume is high
+  const v1h = (vol.vol_BUY_1JAM || 0) + (vol.vol_SELL_1JAM || 0);
+  const v24h = (vol.vol_BUY_24JAM || vol.vol_BUY_24h || 0) + (vol.vol_SELL_24JAM || vol.vol_SELL_24h || 1);
+  const hourlyAvg = v24h / 24;
+
+  if (v1h > hourlyAvg * 2.0) score += 15; // Heavy volume breakout
+  else if (v1h > hourlyAvg * 1.5) score += 10;
+  else if (v1h < hourlyAvg * 0.5) score -= 5; // Low volume
+
+  // 3. Sentiment / LSR (20%) - Contrarian? Or Trend Following?
+  // Let's assume low LSR (< 0.8) is Bullish (Retail Shorting) -> +Score
+  // High LSR (> 1.2) is Bearish (Retail Longing) -> -Score
+  const ratio = lsr.longShortRatio || 1.0;
+  if (ratio < 0.8) score += 10;
+  else if (ratio < 0.9) score += 5;
+  else if (ratio > 1.2) score -= 10;
+  else if (ratio > 1.1) score -= 5;
+
+  // 4. Funding (20%)
+  // High positive funding -> Overbought/Bearish
+  // High negative funding -> Oversold/Bullish
+  const rate = funding.funding_Rate || 0;
+  if (rate < -0.0002) score += 10;
+  else if (rate > 0.0002) score -= 10;
+
+  return Math.max(0, Math.min(100, score));
+}
+
 // === COMPUTED VALUES ===
 // Normalizes the data structure to match expected paths
 export function computeData(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
@@ -90,7 +136,12 @@ export function computeData(data, profile = 'AGGRESSIVE', timeframe = '15MENIT')
     const v1h = ((vol.vol_BUY_1JAM || 0) + (vol.vol_SELL_1JAM || 0));
     const pace1hPerMin = v1h / 60;
 
-    const spike = pace1hPerMin > 0 ? (currentPacePerMin / pace1hPerMin) : 1.0;
+    // SANITY CHECK: If 1H volume is roughly equal to this TF's volume (e.g. fresh data / new coin),
+    // then the 1H baseline is diluted by zeros, causing fake 60x spikes.
+    // If v1h is not significantly larger than total (allow 10% bufer), assume lack of history.
+    const isSparseData = (v1h > 0) && (v1h < total * 1.1) && (minutes < 60);
+
+    const spike = (pace1hPerMin > 0 && !isSparseData) ? (currentPacePerMin / pace1hPerMin) : 1.0;
 
     // Historical average pace per minute for this timeframe
     const histBuy = avgRaw[`avg_VOLCOIN_buy_${tf}`] || 0;
@@ -98,6 +149,13 @@ export function computeData(data, profile = 'AGGRESSIVE', timeframe = '15MENIT')
     const histTotal = histBuy + histSell;
     const histPacePerMin = minutes > 0 ? (histTotal / minutes) : 0;
     const avgSpike = histPacePerMin > 0 ? (currentPacePerMin / histPacePerMin) : 1.0;
+    // If 1H data looks sparse (e.g. app just started), try to use historical average as baseline
+    let baseline = pace1hPerMin;
+    if (isSparseData || baseline <= 0) {
+      baseline = histPacePerMin;
+    }
+
+    const durability = (baseline > 0) ? calculateDurability(currentPacePerMin, baseline) : 0.5;
 
     return {
       spike,        // vs 1H baseline (per-minute)
@@ -105,6 +163,7 @@ export function computeData(data, profile = 'AGGRESSIVE', timeframe = '15MENIT')
       currentPace: currentPacePerMin,
       baselinePace: pace1hPerMin,
       histPace: histPacePerMin,
+      durability,
       total,
       buy,
       sell
@@ -166,9 +225,15 @@ export function computeData(data, profile = 'AGGRESSIVE', timeframe = '15MENIT')
     volSpike1m: getVolSpike('1MENIT', 1).spike,
     volSpike5m: getVolSpike('5MENIT', 5).spike,
     volSpike15m: getVolSpike('15MENIT', 15).spike,
+    volDurability: getVolSpike('15MENIT', 15).durability * 100, // Normalized 0-100
+    volSpike1h: getVolSpike('1JAM', 60).spike,
+    // Buy Ratios (computed if missing in raw)
+    volBuyRatio1h: (vol.vol_BUY_1JAM && vol.vol_SELL_1JAM) ? (vol.vol_BUY_1JAM / vol.vol_SELL_1JAM) : 1.0,
     // Frequency
     freqTotal1m: getFreq('1MENIT').total,
     freqTotal5m: getFreq('5MENIT').total,
+    freqTotal15m: getFreq('15MENIT').total,
+    freqTotal1h: getFreq('1JAM').total,
     freqNetRatio: getFreq('5MENIT').ratio,
     // Funding APY (annualized)
     fundingApy: (fundAn.currentRate || fundingRaw.funding_Rate || 0) * 3 * 365 * 100,
@@ -320,7 +385,9 @@ export function computeData(data, profile = 'AGGRESSIVE', timeframe = '15MENIT')
           return (asks > bids * 1.5) || (bids > asks * 1.5);
         })(),
         spread: obRaw.spread || 0,
-        spreadBps: obRaw.spreadBps || 0
+        spreadBps: obRaw.spreadBps || 0,
+        bookHealth: obRaw.bookHealth || 'HEALTHY',
+        slippage100k: obRaw.slippage100k || 0
       },
       AVG: {
         ...avgRaw
@@ -337,8 +404,15 @@ export function computeData(data, profile = 'AGGRESSIVE', timeframe = '15MENIT')
         if (action === 'LONG') return 'LONG';
         if (action === 'SHORT' && score >= 75) return 'STRONG_SHORT';
         if (action === 'SHORT') return 'SHORT';
+        if (action === 'SHORT') return 'SHORT';
         return 'HOLD';
-      })()
+      })(),
+      sentimentScore: data.signals?.sentiment?.sentimentAlignment?.normalizedScore || 50,
+      accumScore: dash.accumScore?.accumScore || 0,
+      intensity: dash.intensity?.intensity || 0,
+      breakoutProb: dash.breakoutPct?.breakoutPct || 0,
+      riRatio: dash.riRatio?.riRatio || 0,
+      technicalScore: dash.technicalScore?.technicalScore || calculateTechnicalScore(price, vol, lsrRaw, fundingRaw)
     },
     signals: {
       masterSignal: {
@@ -370,7 +444,7 @@ export function computeData(data, profile = 'AGGRESSIVE', timeframe = '15MENIT')
       marketRegime: {
         currentRegime: data.signals?.marketRegime?.currentRegime || 'RANGING',
         volRegime: data.signals?.volatilityRegime?.regime || 'NORMAL',
-        trendStrength: 0.5
+        trendStrength: data.signals?.marketRegime?.trendStrength || data.signals?.trendStrength || 0.5
       },
       institutional_guard: data.signals?.institutional_guard || data.institutional_guard || {}
     },

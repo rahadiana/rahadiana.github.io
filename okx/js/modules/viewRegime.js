@@ -98,10 +98,11 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
         const score = volRegime?.regime === 'EXTREME_VOL' ? 95 : volRegime?.regime === 'HIGH_VOL' ? 75 : volRegime?.regime === 'LOW_VOL' ? 25 : 50;
         elPin.style.left = `${score}%`;
     }
-    if (elAtr) elAtr.innerText = `${(atrPct * Utils.safeFixed(100), 3)}%`;
+    if (elAtr) elAtr.innerText = `${Utils.safeFixed(atrPct * 100, 2)}%`;
 
     // 3. Recommended Profiles
-    const rec = master.recommendedStrategy || master.profileName || master.recommendation || profile;
+    const sigRoot = data.signals || {};
+    const rec = sigRoot.recommendedProfile || master.recommendedStrategy || master.profileName || master.recommendation;
     const profiles = ['CONSERVATIVE', 'MODERATE', 'AGGRESSIVE'];
 
     profiles.forEach(p => {

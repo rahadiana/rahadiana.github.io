@@ -82,7 +82,8 @@ function renderGridContent(coin) {
 
 function renderCategoryCard(catKey, components, data) {
     const cat = CATEGORIES[catKey] || { name: catKey, icon: '❓', color: 'gray-500' };
-    const colorClass = cat.color.replace('bb-', '').replace('-500', '');
+    const colorProp = cat.color || 'gray-500';
+    const colorClass = colorProp.replace('bb-', '').replace('-500', '');
     const headerColor = colorClass === 'gold' ? 'text-bb-gold' :
         colorClass === 'blue' ? 'text-bb-blue' :
             colorClass === 'green' ? 'text-bb-green' :
