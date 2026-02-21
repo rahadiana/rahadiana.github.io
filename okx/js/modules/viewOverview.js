@@ -68,7 +68,7 @@ export function render(container) {
     `;
 }
 
-export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
+export function update(marketState, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENIT') {
     const coins = Object.keys(marketState);
     if (coins.length === 0) return;
 
@@ -86,9 +86,21 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
         const signalsObj = getSignals(data, profile, timeframe);
         const micro = getMicrostructure(data, profile);
 
+        // Helper function for deep extraction
+        const getSigVal = (sigObj, metaKey) => {
+            if (!sigObj) return 0;
+            if (typeof sigObj === 'number') return sigObj;
+            if (metaKey && sigObj.metadata && sigObj.metadata[metaKey] !== undefined) return sigObj.metadata[metaKey];
+            if (sigObj.rawValue !== undefined) return sigObj.rawValue;
+            if (sigObj.normalizedScore !== undefined) return sigObj.normalizedScore;
+            return 0;
+        };
+
         // Stats accumulation
-        if (raw.FUNDING?.funding_Rate) totalFunding += raw.FUNDING.funding_Rate;
-        const lsrVal = raw.LSR?.timeframes_1hour?.longShortRatio ?? raw.LSR?.lsr_1h ?? 1;
+        const fundingRate = getSigVal(signalsObj.derivatives?.fundingPressure, 'currentRate') || raw.FUNDING?.funding_Rate || 0;
+        if (fundingRate) totalFunding += fundingRate;
+
+        const lsrVal = signalsObj.sentiment?.sentimentAlignment?.normalizedScore || raw.LSR?.timeframes_1hour?.longShortRatio || raw.LSR?.lsr_1h || 1;
         totalLSR += lsrVal;
 
         const trend = master.marketRegime || master.currentRegime || 'NEUTRAL';
@@ -104,9 +116,9 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
             chg1h: raw.PRICE?.percent_change_1JAM || 0,
             trend: trend,
             score: master?.normalizedScore ?? master?.score ?? 0,
-            action: master?.action || master?.recommendation?.action || 'NEUT',
-            vol: signalsObj.volatility?.volatilityRegime?.regime || data.analytics?.volatility?.volatilityRegime || 'NORMAL',
-            intensity: micro?.zPress?.zPress ?? micro?.intensity ?? 0
+            action: master?.action || master?.recommendation?.action || 'WAIT',
+            vol: signalsObj.volatility?.volatilityRegime?.metadata?.regime || signalsObj.volatility?.volatilityRegime?.regime || data.analytics?.volatility?.volatilityRegime || 'NORMAL',
+            intensity: getSigVal(micro?.vpin) || micro?.zPress?.zPress || micro?.intensity || 0
         };
     });
 

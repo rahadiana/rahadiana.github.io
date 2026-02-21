@@ -182,7 +182,7 @@ export function render(container) {
     `;
 }
 
-export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
+export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENIT') {
     const raw = data.raw || {};
     const signals = data.signals?.profiles?.[profile]?.timeframes?.[timeframe] || {};
     const master = signals.masterSignal || {};

@@ -164,13 +164,10 @@ const OkxClient = {
 		}
 	},
 	async getPositions(instId) {
-		// If a specific instId is requested, we could filter but for common background engine logic,
-		// we return the global list the user is tracking.
-		if (this._posCache && this._posCache.length > 0) {
-			return { code: '0', data: this._posCache };
-		}
-		// Fallback for when no data is received yet
-		return { code: '0', data: [], msg: 'Positions API disabled (streaming via WS)' };
+		const api = await _ensureApi();
+		const params = instId ? { instId } : null;
+		if (typeof api.getPositions === 'function') return api.getPositions(params);
+		return api.get('/api/v5/account/positions', params);
 	},
 	async getPositionsHistory(instId) { const api = await _ensureApi(); return api.get('/api/v5/account/positions-history', instId ? { instId } : null); },
 	// Backwards-compatible aliases expected by UI
@@ -451,26 +448,37 @@ OkxClient.placeOrderByUsd = async function ({ instId, usd, side = 'buy', ordType
 	// attempt to find instrument ctVal
 	let ctVal = null;
 	let price = null;
+	let ctMult = 1; // Default multiplier for nominal calculations
 	try {
 		const instType = instId.includes('-SWAP') ? 'SWAP' : 'SPOT';
 		const infoRes = await this.get('/api/v5/public/instruments', { instType, instId });
 		const info = infoRes && infoRes.data && infoRes.data[0] ? infoRes.data[0] : null;
-		if (info) ctVal = parseFloat(info.ctVal || info.contractVal || info.contractValUSD || 0) || null;
+		if (info) {
+			ctVal = parseFloat(info.ctVal || info.contractVal || info.contractValUSD || 0) || null;
+			ctMult = parseFloat(info.ctMult || 1) || 1;
+		}
 	} catch (e) { /* ignore */ }
 
 	// fallback to ticker price if ctVal unavailable
-	if (!ctVal) {
-		try {
-			const tk = await this.get('/api/v5/market/ticker', { instId });
-			const t = tk && tk.data && tk.data[0] ? tk.data[0] : null;
-			price = parseFloat(t && (t.last || t.lastPx || t.px) ? (t.last || t.lastPx || t.px) : NaN) || null;
-		} catch (e) { /* ignore */ }
-	}
+	try {
+		const tk = await this.get('/api/v5/market/ticker', { instId });
+		const t = tk && tk.data && tk.data[0] ? tk.data[0] : null;
+		price = parseFloat(t && (t.last || t.lastPx || t.px) ? (t.last || t.lastPx || t.px) : NaN) || null;
+	} catch (e) { /* ignore */ }
 
 	let contracts = 0;
-	if (ctVal && ctVal > 0) contracts = usdNum / ctVal;
-	else if (price && price > 0) contracts = usdNum / price;
-	else throw new Error('Unable to determine conversion (no ctVal and no market price)');
+	if (instId.includes('-USDT-SWAP') && ctVal && price) {
+		// For USDT-margined swaps, the nominal value is ctVal * price * ctMult
+		contracts = usdNum / (ctVal * price * ctMult);
+	} else if (ctVal && ctVal > 0) {
+		// For Coin-margined USD contracts (e.g. BTC-USD-SWAP), ctVal is usually $10 or $100
+		contracts = usdNum / ctVal;
+	} else if (price && price > 0) {
+		// Spot trading
+		contracts = usdNum / price;
+	} else {
+		throw new Error('Unable to determine conversion (no ctVal and no market price)');
+	}
 
 	// use adjustSize to round to instrument lot step
 	const adjusted = await this.adjustSize(instId, String(contracts));
@@ -842,6 +850,13 @@ OkxClient.syncTpSl = async function (instId, tpPct, slPct) {
 	// OKX algo orders expect 'oco' for combined TP/SL or 'conditional' for single ones.
 	const ordType = (tpTriggerPx && slTriggerPx) ? 'oco' : 'conditional';
 
+	// Format prices using tick size limits
+	const decimals = avgPx < 1 ? 6 : avgPx < 10 ? 4 : avgPx < 1000 ? 2 : 1;
+	const formatPx = (p) => {
+		const f = parseFloat(p).toFixed(decimals);
+		return f.endsWith('.0') ? parseInt(f).toString() : f.replace(/0+$/, '').replace(/\.$/, '');
+	};
+
 	const payload = {
 		instId,
 		tdMode,
@@ -849,9 +864,9 @@ OkxClient.syncTpSl = async function (instId, tpPct, slPct) {
 		posSide: posSide,
 		ordType: ordType,
 		sz: String(posSize),
-		tpTriggerPx: tpTriggerPx ? String(tpTriggerPx.toFixed(8)) : undefined,
+		tpTriggerPx: tpTriggerPx ? formatPx(tpTriggerPx) : undefined,
 		tpOrdPx: tpTriggerPx ? '-1' : undefined, // -1 means market
-		slTriggerPx: slTriggerPx ? String(slTriggerPx.toFixed(8)) : undefined,
+		slTriggerPx: slTriggerPx ? formatPx(slTriggerPx) : undefined,
 		slOrdPx: slTriggerPx ? '-1' : undefined
 	};
 

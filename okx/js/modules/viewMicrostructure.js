@@ -123,11 +123,11 @@ export function render(container) {
     `;
 }
 
-export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
+export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENIT') {
     const signalsObj = data.signals?.profiles?.[profile]?.timeframes?.[timeframe]?.signals || {};
     const microRoot = data.microstructure?.[profile] || {};
     const micro = Object.assign({}, microRoot, signalsObj.microstructure || {});
-    
+
     // 1. VPIN Update
     const vpin = micro.vpin || { rawValue: 0, metadata: {} };
     const vpinArc = document.getElementById('vpin-arc');
@@ -197,7 +197,7 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
     }
 
     // 4. Smart Money Index (SMI)
-    const composite = data.signals?.profiles?.[profile]?.timeframes?.[timeframe]?.signals?.composite || {};
+    const composite = signalsObj.composite || {};
     const smi = composite.smartMoneyIndex || { normalizedScore: 50, metadata: {} };
 
     const elSmiVal = document.getElementById('smi-val');

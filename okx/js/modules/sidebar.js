@@ -42,11 +42,14 @@ export function renderList(container, marketState, selectedCoin, onSelect) {
 
         // Signal Indicator
         let action = 'WAIT';
-        if (data.signals?.profiles?.['AGGRESSIVE']?.timeframes?.['15MENIT']?.masterSignal) {
-            action = data.signals.profiles['AGGRESSIVE'].timeframes['15MENIT'].masterSignal.action;
+        const ms = data.masterSignals?.['15MENIT']?.['INSTITUTIONAL_BASE']
+            || data.signals?.profiles?.['INSTITUTIONAL_BASE']?.timeframes?.['15MENIT']?.masterSignal;
+
+        if (ms && ms.action) {
+            action = ms.action;
         }
 
-        const sigColor = action === 'BUY' ? 'bg-bb-green' : action === 'SELL' ? 'bg-bb-red' : 'bg-bb-muted';
+        const sigColor = (action === 'BUY' || action === 'LONG') ? 'bg-bb-green' : (action === 'SELL' || action === 'SHORT') ? 'bg-bb-red' : 'bg-bb-muted';
         const priceColor = change >= 0 ? 'text-bb-green' : 'text-bb-red';
         const selectClasses = isSelected ? 'bg-bb-panel border-l-4 border-l-bb-gold' : 'border-l-4 border-l-transparent';
         const baseClasses = `coin-item p-2 border-b border-bb-border cursor-pointer hover:bg-white/5 transition-colors ${selectClasses}`;

@@ -42,8 +42,7 @@ export async function init() {
       console.log('[OKX-TRADE] Private WS subscription ensured, loading data...');
       await Promise.all([
         loadAccountInfo(),
-        loadRealFills(),
-        // loadRealPositions() // Disabled as requested
+        loadRealPositions()
       ]);
       console.log('[OKX-TRADE] Initialized (Configured) - _lastOkxPositions:', _lastOkxPositions.length);
     } catch (e) {
@@ -131,6 +130,18 @@ export function render(container) {
        <div class="input-group">
           <label>PRICE (Optional)</label>
           <input id="os-price" class="bb-input" placeholder="Market">
+       </div>
+
+       <!-- Native TP / SL -->
+       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px;min-width:0">
+          <div class="input-group" style="min-width:0">
+             <label style="color:var(--bb-green);font-size:9px">TP % (OKX)</label>
+             <input id="os-tp" type="number" step="0.1" class="bb-input" placeholder="0.0" style="width:100%">
+          </div>
+          <div class="input-group" style="min-width:0">
+             <label style="color:var(--bb-red);font-size:9px">SL % (OKX)</label>
+             <input id="os-sl" type="number" step="0.1" class="bb-input" placeholder="0.0" style="width:100%">
+          </div>
        </div>
 
        <!-- Buttons -->
@@ -716,7 +727,10 @@ async function placeOrder() {
   const type = document.getElementById('os-type').value;
   const size = parseFloat(document.getElementById('os-size').value) || 0;
   const price = parseFloat(document.getElementById('os-price').value) || null;
-  if (!coin || coin === '__none') return alert('Select coin');
+  const tpPct = parseFloat(document.getElementById('os-tp') ? document.getElementById('os-tp').value : 0) || 0;
+  const slPct = parseFloat(document.getElementById('os-sl') ? document.getElementById('os-sl').value : 0) || 0;
+
+  if (!coin || coin === '__none' || coin === 'ALL') return alert('Please select a specific asset to trade');
   const order = { coin, side, type, size };
   if (type === 'LIMIT' || type === 'BRACKET') order.limitPrice = price || undefined;
   if (type === 'TWAP') { order.durationMs = 60000; order.sliceCount = 6; }
@@ -929,6 +943,12 @@ async function placeOrder() {
       const oid = res && res.data && res.data[0] && res.data[0].ordId ? res.data[0].ordId : ('okx_' + Math.random().toString(36).slice(2, 9));
       appendFill({ orderId: oid, coin, price: price || 'market', qty: size, ts: Date.now(), note: 'real:placed' });
       renderOrders();
+
+      // Trigger Native TP/SL if provided
+      if (tpPct > 0 || slPct > 0) {
+        setTimeout(() => OkxClient.syncTpSl(coin, tpPct, slPct).catch(e => console.error('[TRADE] TP/SL Sync failed', e)), 2000);
+        showToast(`Syncing Native TP/SL for ${coin}...`, 'info');
+      }
     }).catch(err => {
       showToast('OKX order failed: ' + (err && err.message ? err.message : JSON.stringify(err)), 'error');
     });
@@ -1311,7 +1331,7 @@ async function loadRealFills() {
   const coin = document.getElementById('os-coin')?.value;
   try {
     // fetch recent fills (recent endpoint)
-    const res = await OkxClient.fetchRecentFills({ instId: coin && coin !== '__none' ? coin : undefined, limit: 100 });
+    const res = await OkxClient.fetchRecentFills({ instId: coin && coin !== '__none' && coin !== 'ALL' ? coin : undefined, limit: 100 });
     const list = res && res.data ? res.data : [];
     // sync fills into Composer's position tracker
     try {

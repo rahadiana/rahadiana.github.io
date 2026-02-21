@@ -73,7 +73,7 @@ export function render(container) {
     `;
 }
 
-export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
+export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENIT') {
     // Data sources
     const micro = data.microstructure?.[profile] || {};
     const signals = data.signals?.profiles?.[profile]?.timeframes?.[timeframe]?.signals;
@@ -112,8 +112,8 @@ function updateMicroGrid(micro) {
     const tim = micro.tim?.tim || 50;
     const zPress = micro.zPress?.zPress || 0;
 
-        // Intensity (Mock or Real)
-        if (elInt) elInt.innerText = Utils.safeFixed(Math.abs(zPress) * 5, 1) + '/10';
+    // Intensity (Mock or Real)
+    if (elInt) elInt.innerText = Utils.safeFixed(Math.abs(zPress) * 5, 1) + '/10';
 
     el.innerHTML = `
         ${card('COHESION', coh + '%', micro.cohesion?.level, coh > 60 ? 'text-bb-green' : 'text-bb-gold')}

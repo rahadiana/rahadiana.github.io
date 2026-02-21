@@ -50,7 +50,7 @@ export function render(container) {
     `;
 }
 
-export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
+export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENIT') {
     const signalsObj = data.signals?.profiles?.[profile]?.timeframes?.[timeframe]?.signals || {};
     const analytics = (signalsObj.analytics && Object.keys(signalsObj.analytics).length > 0)
         ? signalsObj.analytics

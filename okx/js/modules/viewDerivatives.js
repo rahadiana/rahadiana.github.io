@@ -1,4 +1,5 @@
 import * as Utils from '../utils.js';
+import { flattenSignals } from '../data_helpers.js';
 
 export function render(container) {
     container.innerHTML = `
@@ -112,9 +113,10 @@ export function render(container) {
     `;
 }
 
-export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
+export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENIT') {
     const rawOi = data.raw?.OI || {};
     const signalsObj = data.signals?.profiles?.[profile]?.timeframes?.[timeframe]?.signals || {};
+    const flat = flattenSignals(signalsObj);
     const deri = signalsObj.derivatives || {};
     const sent = signalsObj.sentiment || {};
     const price = data.raw?.PRICE || {};

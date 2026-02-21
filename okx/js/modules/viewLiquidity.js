@@ -156,7 +156,7 @@ export function render(container) {
     `;
 }
 
-export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
+export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENIT') {
     if (!data) return;
     const coinId = data.coin;
     lastMarketDataReference = data;
@@ -184,7 +184,8 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
 
     const ob = data.raw?.OB || {};
     const signalsObj = data.signals?.profiles?.[profile]?.timeframes?.[timeframe]?.signals || {};
-    const ofi = signalsObj.orderBook?.ofi || { normalizedScore: 50 };
+    // Support both grouped (signalsObj.orderBook?.ofi) and flat access
+    const ofi = signalsObj.orderBook?.ofi || signalsObj.orderBook?.orderFlowImbalance || { normalizedScore: 50 };
 
     // 1. OFI & Basic Summary
     const elOfiScore = document.getElementById('liq-ofi-score');
@@ -242,7 +243,7 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
     const spread = ob.spreadBps || 0;
 
     // 2. Price Impact Matrix (Slippage Breakdown)
-    const metrics = signalsObj.orderBook?.slippageScore?.metadata || {};
+    const metrics = signalsObj.orderBook?.slippageScore?.metadata || signalsObj.orderBook?.slippage?.metadata || {};
 
     const getSlip = (sigVal, rawVal, fallback) => {
         let val = sigVal || rawVal;

@@ -52,7 +52,7 @@ export function render(container) {
     `;
 }
 
-export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
+export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENIT') {
     const volData = data.raw?.VOL || {};
     const priceData = data.raw?.PRICE || {};
     if (Object.keys(volData).length === 0) return;

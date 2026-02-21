@@ -8,29 +8,17 @@ const AUTO_LOG_KEY = 'bb_automation_logs';
 
 // 🔧 TUNED: Profile-based thresholds matching StrategyProfiles.js
 const PROFILE_THRESHOLDS = {
-    CONSERVATIVE: {
-        minScore: 72, minConfidence: 75, minNetFlow: 50000,
-        vpinThreshold: 0.70, oiZThreshold: 2.0, velocityMin: 15000,
-        cooldownMultiplier: 2.0, // Longer cooldowns
-        leverageMax: 5
-    },
-    MODERATE: {
-        minScore: 58, minConfidence: 62, minNetFlow: 25000,
-        vpinThreshold: 0.55, oiZThreshold: 1.5, velocityMin: 8000,
-        cooldownMultiplier: 1.0,
-        leverageMax: 10
-    },
-    AGGRESSIVE: {
+    INSTITUTIONAL_BASE: {
         minScore: 52, minConfidence: 55, minNetFlow: 15000,
         vpinThreshold: 0.45, oiZThreshold: 1.2, velocityMin: 3000,
-        cooldownMultiplier: 0.5, // Shorter cooldowns
+        cooldownMultiplier: 0.5,
         leverageMax: 20
     }
 };
 
 // Helper to get thresholds for a profile
-function getThresholds(profile = 'MODERATE') {
-    return PROFILE_THRESHOLDS[profile] || PROFILE_THRESHOLDS.MODERATE;
+function getThresholds(profile = 'INSTITUTIONAL_BASE') {
+    return PROFILE_THRESHOLDS[profile] || PROFILE_THRESHOLDS.INSTITUTIONAL_BASE;
 }
 
 export function render(container) {
@@ -91,9 +79,7 @@ export function render(container) {
                                     <div class="flex flex-col gap-1.5">
                                         <label class="text-[8px] text-bb-muted uppercase font-black tracking-tighter opacity-60">Risk Profile</label>
                                         <select id="rule-profile" class="bg-bb-black border border-white/10 p-2.5 text-[10px] text-white focus:border-bb-gold outline-none w-full rounded transition-all">
-                                            <option value="CONSERVATIVE">🏛️ CONSERVATIVE</option>
-                                            <option value="MODERATE" selected>⚖️ MODERATE</option>
-                                            <option value="AGGRESSIVE">🎯 AGGRESSIVE</option>
+                                            <option value="INSTITUTIONAL_BASE" selected>🏛️ INSTITUTIONAL</option>
                                         </select>
                                     </div>
                                 </div>
@@ -379,8 +365,8 @@ function renderRulesList() {
     }
 
     list.innerHTML = rules.map(rule => {
-        const profileColor = rule.profile === 'CONSERVATIVE' ? 'bb-blue' : rule.profile === 'AGGRESSIVE' ? 'bb-red' : 'bb-gold';
-        const profileIcon = rule.profile === 'CONSERVATIVE' ? '🏛️' : rule.profile === 'AGGRESSIVE' ? '🎯' : '⚖️';
+        const profileColor = rule.profile === 'INSTITUTIONAL_BASE' ? 'purple-500' : 'bb-gold';
+        const profileIcon = rule.profile === 'INSTITUTIONAL_BASE' ? '🏛️' : '⚖️';
 
         return `
         <div class="p-4 flex justify-between items-center group hover:bg-white/5 transition-all border-b border-white/[0.03]">
@@ -388,7 +374,7 @@ function renderRulesList() {
                 <div class="flex items-center gap-2">
                     <span class="text-[11px] font-black text-white uppercase tracking-wider">${rule.name}</span>
                     <span class="px-2 py-0.5 bg-bb-gold/10 text-bb-gold text-[7px] font-black rounded border border-bb-gold/20 uppercase">${rule.strategy}</span>
-                    <span class="px-2 py-0.5 bg-${profileColor}/10 text-${profileColor} text-[7px] font-black rounded border border-${profileColor}/20 uppercase">${profileIcon} ${rule.profile || 'MODERATE'}</span>
+                    <span class="px-2 py-0.5 bg-${profileColor}/10 text-${profileColor} text-[7px] font-black rounded border border-${profileColor}/20 uppercase">${profileIcon} ${rule.profile || 'INSTITUTIONAL_BASE'}</span>
                     ${rule.autoSimulate ? '<span class="px-2 py-0.5 bg-bb-green/10 text-bb-green text-[7px] font-black rounded border border-bb-green/20 uppercase shadow-lg shadow-bb-green/5">SIM</span>' : ''}
                     ${rule.trailingStop ? '<span class="px-2 py-0.5 bg-bb-blue/10 text-bb-blue text-[7px] font-black rounded border border-bb-blue/20 uppercase">TRAIL</span>' : ''}
                 </div>
@@ -469,7 +455,7 @@ window.app.editRule = (id) => {
 
     container.querySelector('#rule-name').value = rule.name;
     container.querySelector('#rule-strategy').value = rule.strategy;
-    container.querySelector('#rule-profile').value = rule.profile || 'MODERATE';
+    container.querySelector('#rule-profile').value = rule.profile || 'INSTITUTIONAL_BASE';
     container.querySelector('#rule-confidence').value = rule.confidence;
     container.querySelector('#rule-quality').value = rule.minQuality || 0.5;
     container.querySelector('#rule-url').value = rule.url;
@@ -495,7 +481,7 @@ window.app.editRule = (id) => {
 function resetForm(container) {
     container.querySelector('#rule-name').value = '';
     container.querySelector('#rule-strategy').selectedIndex = 0;
-    container.querySelector('#rule-profile').value = 'MODERATE';
+    container.querySelector('#rule-profile').value = 'INSTITUTIONAL_BASE';
     container.querySelector('#rule-confidence').value = 65;
     container.querySelector('#rule-quality').value = 0.5;
     container.querySelector('#rule-url').value = '';
@@ -624,7 +610,7 @@ function getExecutionPrice(data) {
     const price = data?.raw?.PRICE?.last
         || data?.PRICE?.price
         || data?.raw?.PRICE?.price
-        || data?.masterSignals?.['15MENIT']?.MODERATE?.metadata?.lastPrice
+        || data?.masterSignals?.['15MENIT']?.INSTITUTIONAL_BASE?.metadata?.lastPrice
         || 0;
     return price;
 }
@@ -653,9 +639,19 @@ function validateSignalQuality(master, data) {
 function checkSignal(strategy, data, rule = {}) {
     if (!data) return null;
 
-    const profile = rule.profile || 'MODERATE';
+    const profile = rule.profile || 'INSTITUTIONAL_BASE';
     const th = getThresholds(profile);
     const minQuality = rule.minQuality || 0.5;
+
+    // Helper to safely extract any signal value
+    const getSigVal = (sigObj, metaKey) => {
+        if (!sigObj) return 0;
+        if (typeof sigObj === 'number') return sigObj;
+        if (metaKey && sigObj.metadata && sigObj.metadata[metaKey] !== undefined) return sigObj.metadata[metaKey];
+        if (sigObj.rawValue !== undefined) return sigObj.rawValue;
+        if (sigObj.normalizedScore !== undefined) return sigObj.normalizedScore;
+        return 0;
+    };
 
     // === DYNAMIC TIMEFRAME & PROFILE BASED ON STRATEGY ===
     const strategyConfig = {
@@ -729,9 +725,9 @@ function checkSignal(strategy, data, rule = {}) {
             const confirmations = master?.confirmations || 0;
 
             // 🔧 Enhanced signals
-            const instFootprint = enhanced.institutionalFootprint?.rawValue || 0;
-            const momQuality = enhanced.momentumQuality?.rawValue || 0;
-            const cvd = enhanced.cvd?.rawValue || 0;
+            const instFootprint = getSigVal(enhanced.institutionalFootprint);
+            const momQuality = getSigVal(enhanced.momentumQuality);
+            const cvd = getSigVal(enhanced.cvd);
 
             const hasFlow = Math.abs(netFlow) > th.minNetFlow * 0.5;
             const hasScore = score >= th.minScore || score <= (100 - th.minScore);
@@ -762,11 +758,11 @@ function checkSignal(strategy, data, rule = {}) {
         }
 
         case 'SCALP': {
-            const vpin = micro.vpin?.rawValue || micro.vpinBvc?.rawValue || 0;
+            const vpin = getSigVal(micro.vpin) || getSigVal(micro.vpinBvc);
             const efficiency = syn.efficiency?.character_15MENIT || syn.efficiency?.character_5MENIT || '';
-            const cvd = enhanced.cvd?.rawValue || 0;
-            const pressureAccel = enhanced.pressureAcceleration?.rawValue || 0;
-            const bookRes = enhanced.bookResilience?.rawValue || 0;
+            const cvd = getSigVal(enhanced.cvd);
+            const pressureAccel = getSigVal(enhanced.pressureAcceleration);
+            const bookRes = getSigVal(enhanced.bookResilience);
 
             const hasVpin = vpin > th.vpinThreshold;
             const hasEfficiency = efficiency.includes('EFFORTLESS') || efficiency.includes('STRONG');
@@ -789,8 +785,8 @@ function checkSignal(strategy, data, rule = {}) {
         case 'WHALE': {
             const aggr = syn.momentum?.aggression_level_15MENIT || syn.momentum?.aggression_level_5MENIT || 'RETAIL';
             const vel = Math.abs(syn.momentum?.velocity_15MENIT || syn.momentum?.velocity_5MENIT || 0);
-            const instFootprint = enhanced.institutionalFootprint?.rawValue || 0;
-            const amihud = enhanced.amihudIlliquidity?.rawValue || 1;
+            const instFootprint = getSigVal(enhanced.institutionalFootprint);
+            const amihud = getSigVal(enhanced.amihudIlliquidity, 1);
 
             const isInstitutional = aggr === 'INSTITUTIONAL' || aggr === 'WHALE' || instFootprint > 0.6;
             const hasVelocity = vel > th.velocityMin;
@@ -811,8 +807,8 @@ function checkSignal(strategy, data, rule = {}) {
         case 'EFFICIENCY': {
             const eff = syn.efficiency?.efficiency_15MENIT || 0;
             const velocity = syn.momentum?.velocity_15MENIT || 0;
-            const momQuality = enhanced.momentumQuality?.rawValue || 0;
-            const pressureAccel = enhanced.pressureAcceleration?.rawValue || 0;
+            const momQuality = getSigVal(enhanced.momentumQuality);
+            const pressureAccel = getSigVal(enhanced.pressureAcceleration);
 
             const hasEfficiency = eff > 1.0;
             const hasVelocity = velocity > th.velocityMin;
@@ -858,9 +854,9 @@ function checkSignal(strategy, data, rule = {}) {
 
         case 'PATIENCE': {
             const netFlow = syn.flow?.net_flow_15MENIT || 0;
-            const instFootprint = enhanced.institutionalFootprint?.rawValue || 0;
-            const momQuality = enhanced.momentumQuality?.rawValue || 0;
-            const bookRes = enhanced.bookResilience?.rawValue || 0;
+            const instFootprint = getSigVal(enhanced.institutionalFootprint);
+            const momQuality = getSigVal(enhanced.momentumQuality);
+            const bookRes = getSigVal(enhanced.bookResilience);
             const score = master?.normalizedScore || 50;
 
             const isPerfect = (score > th.minScore + 20 || score < (100 - th.minScore - 20)) &&
@@ -887,8 +883,8 @@ function checkSignal(strategy, data, rule = {}) {
             const avgVolPerMin = vol5m / 5;
             const surge = avgVolPerMin > 0 ? vol1m / avgVolPerMin : 0;
             const priceChange = Math.abs(raw?.PRICE?.percent_change_1MENIT || 0);
-            const cvd = enhanced.cvd?.rawValue || 0;
-            const pressureAccel = enhanced.pressureAcceleration?.rawValue || 0;
+            const cvd = getSigVal(enhanced.cvd);
+            const pressureAccel = getSigVal(enhanced.pressureAcceleration);
 
             if (surge > 1.8 && priceChange > 0.3 && Math.abs(cvd) > 0.2) {
                 const bias = cvd > 0 ? 'LONG' : 'SHORT';
@@ -907,7 +903,7 @@ function checkSignal(strategy, data, rule = {}) {
             const netFlow = syn.flow?.net_flow_15MENIT || syn.flow?.net_flow_5MENIT || 0;
             const char = syn.efficiency?.character_15MENIT || '';
             const aggr = syn.momentum?.aggression_level_15MENIT || 'RETAIL';
-            const cvd = enhanced.cvd?.rawValue || 0;
+            const cvd = getSigVal(enhanced.cvd);
             const cvdDivergence = enhanced.cvd?.divergence || false;
 
             const isBlitz = Math.abs(netFlow) > th.minNetFlow &&
@@ -931,7 +927,7 @@ function checkSignal(strategy, data, rule = {}) {
         case 'FLOW': {
             const netFlow = syn.flow?.net_flow_15MENIT || syn.flow?.net_flow_1JAM || 0;
             const flowChar = syn.flow?.character_15MENIT || '';
-            const cvd = enhanced.cvd?.rawValue || 0;
+            const cvd = getSigVal(enhanced.cvd);
 
             // Flow + CVD must agree
             if (Math.abs(netFlow) > th.minNetFlow * 0.8 && flowChar && Math.sign(cvd) === Math.sign(netFlow)) {
@@ -950,8 +946,8 @@ function checkSignal(strategy, data, rule = {}) {
         case 'BREAKOUT': {
             const volRatio = raw?.OI?.volumeRatio || 1;
             const priceChange = raw?.PRICE?.percent_change_15MENIT || 0;
-            const bookRes = enhanced.bookResilience?.rawValue || 0;
-            const vpin = micro.vpin?.rawValue || 0;
+            const bookRes = getSigVal(enhanced.bookResilience);
+            const vpin = getSigVal(micro.vpin);
 
             // Confirmed breakout: Volume + Price + VPIN + Book support
             if (volRatio > 1.5 && Math.abs(priceChange) > 1.0 && vpin > th.vpinThreshold && bookRes > 0.4) {
@@ -970,8 +966,8 @@ function checkSignal(strategy, data, rule = {}) {
         case 'TAPE': {
             const aggr1m = syn.momentum?.aggression_level_1MENIT || 'RETAIL';
             const aggr5m = syn.momentum?.aggression_level_5MENIT || 'RETAIL';
-            const ofi = micro.ofi?.normalizedScore || 50;
-            const cvd = enhanced.cvd?.rawValue || 0;
+            const ofi = micro.ofi?.normalizedScore || getSigVal(micro.ofi) || 50;
+            const cvd = getSigVal(enhanced.cvd);
 
             const isInstitutional = aggr1m === 'INSTITUTIONAL' || aggr5m === 'INSTITUTIONAL';
             const hasOFI = ofi > 65 || ofi < 35;
@@ -1120,8 +1116,8 @@ async function executeWebhook(rule, coin, signal, data) {
     }
 
     // Get profile for leverage caps
-    const profile = rule.profile || 'MODERATE';
-    const profileConfig = PROFILE_THRESHOLDS[profile] || PROFILE_THRESHOLDS.MODERATE;
+    const profile = rule.profile || 'INSTITUTIONAL_BASE';
+    const profileConfig = PROFILE_THRESHOLDS[profile] || PROFILE_THRESHOLDS.INSTITUTIONAL_BASE;
     const cappedLeverage = Math.min(rule.simLeverage || 10, profileConfig.maxLeverage);
 
     const payload = {

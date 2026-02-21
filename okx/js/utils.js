@@ -24,6 +24,19 @@ export const formatPct = (value) => {
 export const safeFixed = (value, decimals = 2) => {
     const n = Number(value);
     if (!Number.isFinite(n)) return (decimals === 0) ? '0' : Number(0).toFixed(decimals);
+
+    if (n === 0 || decimals === 0) return n.toFixed(decimals);
+
+    const abs = Math.abs(n);
+    const threshold = Math.pow(10, -decimals);
+
+    // If the value is smaller than what "decimals" realistically allows, increase precision dynamically
+    if (abs > 0 && abs < threshold) {
+        const leadingZeros = -Math.floor(Math.log10(abs));
+        // Retain ~3 significant digits, capped at 8 total decimals
+        return n.toFixed(Math.min(leadingZeros + 2, 8));
+    }
+
     return n.toFixed(decimals);
 };
 

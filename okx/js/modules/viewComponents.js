@@ -24,7 +24,7 @@ export function render(targetContainer) {
                 </div>
                 <div class="flex items-center gap-2">
                     <span class="text-[9px] text-bb-muted uppercase">Data Source:</span>
-                    <span class="text-[9px] text-white font-bold">AGGRESSIVE / 15m</span>
+                    <span class="text-[9px] text-white font-bold">INSTITUTIONAL / 15m</span>
                 </div>
             </div>
 
@@ -61,8 +61,8 @@ function renderGridContent(coin) {
 
     if (!data) return `<div class="p-4 text-center text-bb-muted animate-pulse">Waiting for data stream...</div>`;
 
-    // Use AGGRESSIVE profile and 15MENIT timeframe as default for component view
-    const computed = computeData(data, 'AGGRESSIVE', '15MENIT');
+    // Use INSTITUTIONAL_BASE profile and 15MENIT timeframe as default for component view
+    const computed = computeData(data, 'INSTITUTIONAL_BASE', '15MENIT');
     if (!computed) return `<div class="p-4 text-center text-bb-muted">Insufficient data for calculations</div>`;
 
     // Group components by category

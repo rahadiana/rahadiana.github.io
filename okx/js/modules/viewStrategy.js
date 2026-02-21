@@ -2,22 +2,11 @@ import * as Utils from '../utils.js';
 
 let currentCategory = 'SCALP';
 let currentSearch = '';
-let currentProfile = 'AGGRESSIVE'; // NEW: Profile selector
+let currentProfile = 'INSTITUTIONAL_BASE'; // Profile selector
 let lastMarketState = null;
 
-// 🔧 TUNED: Profile-based thresholds
 const PROFILE_THRESHOLDS = {
-    CONSERVATIVE: {
-        minScore: 72, minConfidence: 75, minNetFlow: 50000,
-        vpinThreshold: 0.7, oiZThreshold: 2.0, lsrZThreshold: 2.5,
-        efficiencyMin: 2.0, velocityMin: 15000
-    },
-    MODERATE: {
-        minScore: 58, minConfidence: 62, minNetFlow: 25000,
-        vpinThreshold: 0.55, oiZThreshold: 1.5, lsrZThreshold: 2.0,
-        efficiencyMin: 1.2, velocityMin: 8000
-    },
-    AGGRESSIVE: {
+    INSTITUTIONAL_BASE: {
         minScore: 52, minConfidence: 55, minNetFlow: 15000,
         vpinThreshold: 0.45, oiZThreshold: 1.2, lsrZThreshold: 1.5,
         efficiencyMin: 0.8, velocityMin: 3000
@@ -26,7 +15,7 @@ const PROFILE_THRESHOLDS = {
 
 // Helper: Get current profile thresholds
 function getThresholds() {
-    return PROFILE_THRESHOLDS[currentProfile] || PROFILE_THRESHOLDS.AGGRESSIVE;
+    return PROFILE_THRESHOLDS[currentProfile] || PROFILE_THRESHOLDS.INSTITUTIONAL_BASE;
 }
 
 export function render(container) {
@@ -40,9 +29,7 @@ export function render(container) {
                     <div class="flex items-center gap-2">
                         <!-- 🔧 NEW: Profile Selector -->
                         <div class="flex gap-1">
-                            <button id="prof-conservative" class="px-1.5 py-0.5 text-[7px] font-black rounded ${currentProfile === 'CONSERVATIVE' ? 'bg-bb-blue text-white' : 'bg-white/5 text-bb-muted hover:text-white'}">🏛️ CONS</button>
-                            <button id="prof-moderate" class="px-1.5 py-0.5 text-[7px] font-black rounded ${currentProfile === 'MODERATE' ? 'bg-bb-gold text-black' : 'bg-white/5 text-bb-muted hover:text-white'}">⚖️ MOD</button>
-                            <button id="prof-aggressive" class="px-1.5 py-0.5 text-[7px] font-black rounded ${currentProfile === 'AGGRESSIVE' ? 'bg-bb-red text-white' : 'bg-white/5 text-bb-muted hover:text-white'}">🎯 AGG</button>
+                            <button id="prof-institutional" class="px-1.5 py-0.5 text-[7px] font-black rounded ${currentProfile === 'INSTITUTIONAL_BASE' ? 'bg-purple-600 text-white' : 'bg-white/5 text-bb-muted hover:text-white'}">🏛️ INST</button>
                         </div>
                         <div class="relative">
                             <span class="absolute inset-y-0 left-0 pl-2 flex items-center text-bb-muted pointer-events-none">
@@ -162,17 +149,16 @@ export function render(container) {
         }
     });
 
-    // 🔧 NEW: Profile button handlers
-    ['conservative', 'moderate', 'aggressive'].forEach(p => {
-        const btn = container.querySelector(`#prof-${p}`);
-        if (btn) {
-            btn.onclick = () => {
-                currentProfile = p.toUpperCase();
-                render(container);
-                if (lastMarketState) update(lastMarketState);
-            };
-        }
-    });
+    // Profile button handlers (removed old profiles)
+    // INSTITUTIONAL_BASE button
+    const instBtn = container.querySelector('#prof-institutional');
+    if (instBtn) {
+        instBtn.onclick = () => {
+            currentProfile = 'INSTITUTIONAL_BASE';
+            render(container);
+            if (lastMarketState) update(lastMarketState);
+        };
+    }
 
     const searchInput = container.querySelector('#strat-search');
     if (searchInput) {
@@ -198,7 +184,7 @@ const STRATEGIES = {
             const syn = d.synthesis || {};
             const netFlow = syn.flow?.net_flow_1MENIT || 0;
             const efficiency = syn.efficiency?.efficiency_1MENIT || 0;
-            
+
             // 🔧 NEW: Use enhanced signals
             const enhanced = d.signals?.profiles?.[currentProfile]?.timeframes?.['1MENIT']?.signals?.enhanced || {};
             const cvd = enhanced.cvd?.rawValue || 0;
@@ -316,24 +302,24 @@ const STRATEGIES = {
             const mtf = d.signals?.mtfConfluence?.[currentProfile] || {};
             const netFlow = syn.flow?.net_flow_15MENIT || 0;
             const score = master.normalizedScore || 0;
-            
+
             // 🔧 NEW: Use enhanced signals for institutional detection
             const enhanced = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.signals?.enhanced || {};
             const instFootprint = enhanced.institutionalFootprint?.rawValue || 0;
             const momQuality = enhanced.momentumQuality?.rawValue || 0;
             const bookRes = enhanced.bookResilience?.rawValue || 0;
-            
+
             // God Signal: High score + Massive flow + MTF aligned + Institutional presence
-            const isGod = score > th.minScore + 15 && 
-                          Math.abs(netFlow) > th.minNetFlow * 2 && 
-                          mtf.aligned && 
-                          instFootprint > 0.6 &&
-                          momQuality > 0.5;
-            
+            const isGod = score > th.minScore + 15 &&
+                Math.abs(netFlow) > th.minNetFlow * 2 &&
+                mtf.aligned &&
+                instFootprint > 0.6 &&
+                momQuality > 0.5;
+
             if (isGod) {
-                return { 
-                    bias: master.action, 
-                    factors: ['Institutional Footprint', 'Whale Capital Influx', 'Full MTF Alignment', 'High Momentum Quality', 'Book Resilience'], 
+                return {
+                    bias: master.action,
+                    factors: ['Institutional Footprint', 'Whale Capital Influx', 'Full MTF Alignment', 'High Momentum Quality', 'Book Resilience'],
                     confidence: Math.min(98, score + 10),
                     institutional: true
                 };
@@ -352,22 +338,22 @@ const STRATEGIES = {
             const char = syn.efficiency?.character_15MENIT || 'NORMAL';
             const aggr = syn.momentum?.aggression_level_15MENIT || 'RETAIL';
             const master = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.masterSignal || {};
-            
+
             // 🔧 NEW: CVD confirmation
             const enhanced = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.signals?.enhanced || {};
             const cvd = enhanced.cvd?.rawValue || 0;
             const cvdDivergence = enhanced.cvd?.divergence || false;
-            
-            const isBlitz = Math.abs(netFlow) > th.minNetFlow * 1.5 && 
-                           char === 'EFFORTLESS_MOVE' && 
-                           aggr === 'INSTITUTIONAL' &&
-                           Math.sign(cvd) === Math.sign(netFlow) && // CVD confirms direction
-                           !cvdDivergence; // No divergence warning
-            
-            return isBlitz ? { 
-                bias: master.action, 
-                factors: ['Whale Blitz Influx', 'Zero Friction Path', 'CVD Confirmed', 'Institutional Aggression'], 
-                confidence: 95 
+
+            const isBlitz = Math.abs(netFlow) > th.minNetFlow * 1.5 &&
+                char === 'EFFORTLESS_MOVE' &&
+                aggr === 'INSTITUTIONAL' &&
+                Math.sign(cvd) === Math.sign(netFlow) && // CVD confirms direction
+                !cvdDivergence; // No divergence warning
+
+            return isBlitz ? {
+                bias: master.action,
+                factors: ['Whale Blitz Influx', 'Zero Friction Path', 'CVD Confirmed', 'Institutional Aggression'],
+                confidence: 95
             } : null;
         }
     },
@@ -382,21 +368,21 @@ const STRATEGIES = {
             // Support both legacy (BUY/SELL) and new (LONG/SHORT) formats
             const allLong = actions.every(a => a === 'BUY' || a === 'LONG');
             const allShort = actions.every(a => a === 'SELL' || a === 'SHORT');
-            
+
             if (!allLong && !allShort) return null;
-            
+
             // 🔧 NEW: Check momentum quality across timeframes
-            const momQualities = ['5MENIT', '15MENIT', '1JAM'].map(tf => 
+            const momQualities = ['5MENIT', '15MENIT', '1JAM'].map(tf =>
                 p[tf]?.signals?.enhanced?.momentumQuality?.rawValue || 0
             );
             const avgMomQuality = momQualities.reduce((a, b) => a + b, 0) / momQualities.length;
-            
+
             // Only trigger if momentum is clean across TFs
             if (avgMomQuality < 0.4) return null;
-            
-            return { 
-                bias: allLong ? 'LONG' : 'SHORT', 
-                factors: ['Total TF Alignment', 'Congruent Momentum', 'High Momentum Quality', 'Trend Modality'], 
+
+            return {
+                bias: allLong ? 'LONG' : 'SHORT',
+                factors: ['Total TF Alignment', 'Congruent Momentum', 'High Momentum Quality', 'Trend Modality'],
                 confidence: 90 + (avgMomQuality * 8) // Bonus for high quality
             };
         }
@@ -413,7 +399,7 @@ const STRATEGIES = {
             const bookRes = enhanced.bookResilience?.rawValue || 0;
             const vpin = m.vpin?.rawValue || 0;
             const netFlow = syn.flow?.net_flow_15MENIT || 0;
-            
+
             // Confirmed breakout: VPIN + Flow + Book support
             const isBreak = vpin > th.vpinThreshold && Math.abs(netFlow) > th.minNetFlow && bookRes > 0.5;
             return isBreak ? { bias: netFlow > 0 ? 'LONG' : 'SHORT', factors: ['VPIN Confirmation', 'Net Flow Power', 'Book Resilience', 'Volume-OI Spike'], confidence: 88 + (bookRes * 10) } : null;
@@ -443,7 +429,7 @@ const STRATEGIES = {
             const bias = flow.capital_bias_15MENIT || 'NEUTRAL';
             const enhanced = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.signals?.enhanced || {};
             const cvd = enhanced.cvd?.rawValue || 0;
-            
+
             // Flow + CVD must agree
             const isStrong = Math.abs(netFlow) > th.minNetFlow && bias !== 'NEUTRAL' && Math.sign(cvd) === Math.sign(netFlow);
             return isStrong ? { bias: bias === 'ACCUMULATION' ? 'LONG' : 'SHORT', factors: ['Institutional Capital Bias', 'CVD Confirmed', 'High Velocity Inflow'], confidence: 80 } : null;
@@ -474,20 +460,20 @@ const STRATEGIES = {
             const aggr = syn.momentum?.aggression_level_15MENIT || 'RETAIL';
             const vel = syn.momentum?.velocity_15MENIT || 0;
             const master = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.masterSignal || {};
-            
+
             // 🔧 NEW: Use institutional footprint and amihud
             const enhanced = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.signals?.enhanced || {};
             const instFootprint = enhanced.institutionalFootprint?.rawValue || 0;
             const amihud = enhanced.amihudIlliquidity?.rawValue || 1;
-            
+
             // Whale detected: Institutional aggression + High footprint + Low illiquidity (high liquidity)
-            const isWhale = (aggr === 'INSTITUTIONAL' || instFootprint > 0.7) && 
-                           vel > th.velocityMin &&
-                           amihud < 0.5; // Low illiquidity = can execute large orders
-            
-            return isWhale ? { 
-                bias: master.action || 'LONG', 
-                factors: ['Institutional Footprint', 'Whale Intensity', 'Low Illiquidity', 'Large Order Sizing'], 
+            const isWhale = (aggr === 'INSTITUTIONAL' || instFootprint > 0.7) &&
+                vel > th.velocityMin &&
+                amihud < 0.5; // Low illiquidity = can execute large orders
+
+            return isWhale ? {
+                bias: master.action || 'LONG',
+                factors: ['Institutional Footprint', 'Whale Intensity', 'Low Illiquidity', 'Large Order Sizing'],
                 confidence: 80 + (instFootprint * 15)
             } : null;
         }
@@ -526,24 +512,24 @@ const STRATEGIES = {
             const m = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.signals?.microstructure || {};
             const syn = d.synthesis || {};
             const vpin = m.vpin?.rawValue || 0;
-            
+
             // 🔧 NEW: Enhanced signals for better scalping
             const enhanced = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.signals?.enhanced || {};
             const cvd = enhanced.cvd?.rawValue || 0;
             const pressureAccel = enhanced.pressureAcceleration?.rawValue || 0;
             const bookRes = enhanced.bookResilience?.rawValue || 0;
-            
-            const isHot = vpin > th.vpinThreshold && 
-                         (syn.efficiency?.character_15MENIT === 'EFFORTLESS_MOVE') &&
-                         Math.abs(cvd) > 0.3 && // CVD showing direction
-                         bookRes > 0.4; // Good support/resistance
-            
+
+            const isHot = vpin > th.vpinThreshold &&
+                (syn.efficiency?.character_15MENIT === 'EFFORTLESS_MOVE') &&
+                Math.abs(cvd) > 0.3 && // CVD showing direction
+                bookRes > 0.4; // Good support/resistance
+
             const master = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.masterSignal || {};
             const direction = cvd > 0 ? 'LONG' : 'SHORT';
-            
-            return isHot ? { 
-                bias: direction, 
-                factors: ['Informed Flow (VPIN)', 'CVD Momentum', 'Book Resilience', 'Effortless Discovery', 'Pressure Accel'], 
+
+            return isHot ? {
+                bias: direction,
+                factors: ['Informed Flow (VPIN)', 'CVD Momentum', 'Book Resilience', 'Effortless Discovery', 'Pressure Accel'],
                 confidence: Math.min(95, (master.confidence || 70) + 15 + (pressureAccel * 10))
             } : null;
         }
@@ -608,22 +594,22 @@ const STRATEGIES = {
             const syn = d.synthesis || {};
             const eff = syn.efficiency?.efficiency_15MENIT || 0;
             const velocity = syn.momentum?.velocity_15MENIT || 0;
-            
+
             // 🔧 NEW: Enhanced signals for quality detection
             const enhanced = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.signals?.enhanced || {};
             const momQuality = enhanced.momentumQuality?.rawValue || 0;
             const pressureAccel = enhanced.pressureAcceleration?.rawValue || 0;
-            
+
             // High efficiency + Clean momentum + Accelerating pressure
-            const isEfficient = eff > th.efficiencyMin && 
-                               velocity > th.velocityMin &&
-                               momQuality > 0.5 && // Clean move, not choppy
-                               pressureAccel > 0.3; // Accelerating
-            
+            const isEfficient = eff > th.efficiencyMin &&
+                velocity > th.velocityMin &&
+                momQuality > 0.5 && // Clean move, not choppy
+                pressureAccel > 0.3; // Accelerating
+
             const master = d.signals?.profiles?.[currentProfile]?.timeframes?.['15MENIT']?.masterSignal || {};
-            return isEfficient ? { 
-                bias: master.action, 
-                factors: ['High Efficiency', 'Momentum Quality', 'Pressure Acceleration', 'Clean Path'], 
+            return isEfficient ? {
+                bias: master.action,
+                factors: ['High Efficiency', 'Momentum Quality', 'Pressure Acceleration', 'Clean Path'],
                 confidence: 80 + (momQuality * 15)
             } : null;
         }
@@ -639,7 +625,7 @@ const STRATEGIES = {
             const netFlow = syn.flow?.net_flow_15MENIT || 0;
             const enhanced = d.signals?.profiles?.[currentProfile]?.timeframes?.['1JAM']?.signals?.enhanced || {};
             const instFootprint = enhanced.institutionalFootprint?.rawValue || 0;
-            
+
             // Accumulation: Score + Flow + Institutional presence
             const isAccum = (master.normalizedScore || 0) > th.minScore && netFlow > th.minNetFlow * 0.3 && instFootprint > 0.5;
             return isAccum ? { bias: master.action, factors: ['Institutional Footprint', 'Accumulation Phase', 'Positive Net Flow'], confidence: Math.min(90, (master.confidence || 70) + instFootprint * 15) } : null;
@@ -726,13 +712,13 @@ const STRATEGIES = {
             const instFootprint = enhanced.institutionalFootprint?.rawValue || 0;
             const momQuality = enhanced.momentumQuality?.rawValue || 0;
             const bookRes = enhanced.bookResilience?.rawValue || 0;
-            
+
             // Perfect storm: All signals aligned at high levels
-            const isPerfect = (master.normalizedScore || 0) > th.minScore + 20 && 
-                             Math.abs(netFlow) > th.minNetFlow * 3 &&
-                             instFootprint > 0.7 &&
-                             momQuality > 0.6 &&
-                             bookRes > 0.6;
+            const isPerfect = (master.normalizedScore || 0) > th.minScore + 20 &&
+                Math.abs(netFlow) > th.minNetFlow * 3 &&
+                instFootprint > 0.7 &&
+                momQuality > 0.6 &&
+                bookRes > 0.6;
             return isPerfect ? { bias: master.action, factors: ['Perfect Storm', 'All Signals Aligned', 'Institutional Presence', 'High Conviction'], confidence: 98 } : null;
         }
     },

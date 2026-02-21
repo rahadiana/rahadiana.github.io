@@ -86,6 +86,8 @@ export const StrategyAllocator = {
         // Calculate Initial USD Size
         let finalUsd = baseUsd * riskFactor * confFactor * sizeMultiplier * crowdPenalty * advancedFactor;
 
+        console.log(`[Allocator] ${signal.instId} Calc: $${baseUsd} * risk(${riskFactor.toFixed(2)}) * conf(${confFactor.toFixed(2)}) * mult(${sizeMultiplier}) * crowd(${crowdPenalty.toFixed(2)}) * adv(${advancedFactor.toFixed(2)}) = $${finalUsd.toFixed(2)}`);
+
         // 6. ATR Volatility Scaling (Optional)
         if (cfg.useATR && signal.instId) {
             try {
@@ -121,8 +123,10 @@ export const StrategyAllocator = {
             finalUsd = Math.min(finalUsd, remaining);
         }
 
-        // Final Clamp
-        return this.clamp(finalUsd, minUsd, maxUsd);
+        // Final Clamp with Hard Sanity Cap
+        const hardCap = Math.max(maxUsd, 250); // Never ever exceed $250 in a single order regardless of settings
+        const clamped = this.clamp(finalUsd, minUsd, maxUsd);
+        return Math.min(clamped, hardCap);
     },
 
     /**

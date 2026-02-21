@@ -49,19 +49,9 @@ export function render(container) {
             <div class="flex-1 panel flex flex-col overflow-hidden">
                 <div class="panel-header">RECOMMENDED PROFILE ALIGNMENT</div>
                 <div class="flex-1 grid grid-cols-3 divide-x divide-bb-border/30">
-                    <!-- Conservative -->
-                    <div class="flex flex-col items-center justify-center p-4 gap-2" id="reg-prof-con">
-                        <span class="text-[10px] font-bold text-bb-muted">CONSERVATIVE</span>
-                        <div class="w-2 h-2 rounded-full bg-bb-border" id="reg-dot-con"></div>
-                    </div>
-                    <!-- Moderate -->
-                    <div class="flex flex-col items-center justify-center p-4 gap-2" id="reg-prof-mod">
-                        <span class="text-[10px] font-bold text-bb-muted">MODERATE</span>
-                        <div class="w-2 h-2 rounded-full bg-bb-border" id="reg-dot-mod"></div>
-                    </div>
-                    <!-- Aggressive -->
+                    <!-- Institutional -->
                     <div class="flex flex-col items-center justify-center p-4 gap-2" id="reg-prof-agg">
-                        <span class="text-[10px] font-bold text-bb-muted">AGGRESSIVE</span>
+                        <span class="text-[10px] font-bold text-bb-muted">INSTITUTIONAL</span>
                         <div class="w-2 h-2 rounded-full bg-bb-border" id="reg-dot-agg"></div>
                     </div>
                 </div>
@@ -71,19 +61,30 @@ export function render(container) {
     `;
 }
 
-export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
+export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENIT') {
     const master = getMasterSignal(data, profile, timeframe);
     const signalsObj = getSignals(data, profile, timeframe);
     const micro = getMicrostructure(data, profile);
 
+    // Helper function for deep extraction
+    const getSigVal = (sigObj, metaKey) => {
+        if (!sigObj) return 0;
+        if (typeof sigObj === 'number') return sigObj;
+        if (metaKey && sigObj.metadata && sigObj.metadata[metaKey] !== undefined) return sigObj.metadata[metaKey];
+        if (sigObj.rawValue !== undefined) return sigObj.rawValue;
+        if (sigObj.normalizedScore !== undefined) return sigObj.normalizedScore;
+        return 0;
+    };
+
     // Market regime may be a string or an object under master
-    const regimeName = master.marketRegime || master.currentRegime || master.regime || 'RANGING';
-    const confidence = master.confidence ?? master.regimeScore ?? (master.normalizedScore ? Math.round(master.normalizedScore * 100) : 50);
+    const marketRegimeNode = signalsObj.marketRegime || signalsObj.composite?.marketRegime || {};
+    const regimeName = marketRegimeNode.currentRegime || marketRegimeNode.regime || master.marketRegime || master.currentRegime || master.regime || 'UNKNOWN';
+    const confidence = master.confidence ?? master.regimeScore ?? marketRegimeNode.regimeScore ?? (master.normalizedScore ? Math.round(master.normalizedScore * 100) : 50);
 
     // Volatility roots: prefer signals volatility then analytics
     const volRoot = signalsObj.volatility || data.analytics?.volatility || {};
-    const volRegime = volRoot.volatilityRegime || {};
-    const atrPct = volRoot.atrMomentum?.metadata?.atrPct ?? data.analytics?.volatility?.atr ?? 0;
+    const volRegimeName = signalsObj.volatilityRegime?.regime || marketRegimeNode.volRegime || volRoot.volatilityRegime?.metadata?.regime || volRoot.volatilityRegime?.regime || volRoot.regime || 'NORMAL_VOL';
+    const atrPct = getSigVal(volRoot.atrMomentum, 'atrPct') || getSigVal(signalsObj.atrMomentum, 'atrPct') || data.analytics?.volatility?.atr || 0;
 
     // 1. Regime Update
     const elName = document.getElementById('reg-current-name');
@@ -95,7 +96,7 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
     const elPin = document.getElementById('reg-vol-pin');
     const elAtr = document.getElementById('reg-atr-val');
     if (elPin) {
-        const score = volRegime?.regime === 'EXTREME_VOL' ? 95 : volRegime?.regime === 'HIGH_VOL' ? 75 : volRegime?.regime === 'LOW_VOL' ? 25 : 50;
+        const score = volRegimeName === 'EXTREME_VOL' ? 95 : volRegimeName === 'HIGH_VOL' ? 75 : volRegimeName === 'LOW_VOL' ? 25 : 50;
         elPin.style.left = `${score}%`;
     }
     if (elAtr) elAtr.innerText = `${Utils.safeFixed(atrPct * 100, 2)}%`;
@@ -103,13 +104,13 @@ export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
     // 3. Recommended Profiles
     const sigRoot = data.signals || {};
     const rec = sigRoot.recommendedProfile || master.recommendedStrategy || master.profileName || master.recommendation;
-    const profiles = ['CONSERVATIVE', 'MODERATE', 'AGGRESSIVE'];
+    const profiles = ['INSTITUTIONAL_BASE'];
 
     profiles.forEach(p => {
-        const dotId = `reg-dot-${p.toLowerCase().substring(0, 3)}`;
+        const dotId = `reg-dot-agg`; // the id in HTML is reg-dot-agg for institutional
         const elDot = document.getElementById(dotId);
         if (elDot) {
-            if (p === rec) {
+            if (p === rec || rec === 'AGGRESSIVE' || rec === 'INSTITUTIONAL_BASE') {
                 elDot.className = 'w-3 h-3 rounded-full bg-bb-gold animate-ping shadow-[0_0_10px_#fbbf24]';
             } else {
                 elDot.className = 'w-2 h-2 rounded-full bg-bb-border';

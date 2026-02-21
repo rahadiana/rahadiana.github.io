@@ -9,7 +9,7 @@ import * as ViewSimulation from './viewSimulation.js';
 import * as Utils from '../utils.js';
 import OkxClient from '../okx_client.js';
 import { showToast } from './toast.js';
-import { computeData } from '../data_helpers.js';
+import { computeData, getSignals, getMasterSignal, getMicrostructure } from '../data_helpers.js';
 import TradeSafety from './tradeSafety.js';
 import { StrategyAllocator } from './strategyAllocator.js';
 
@@ -83,6 +83,18 @@ export const SIGNAL_COMPONENTS = {
     MICRO_OFI: { category: 'MICRO', name: 'OFI Score', icon: '📊', path: 'signals.micro.ofi.normalizedScore', operators: ['>', '<', '>=', '<='], defaultThreshold: 50, description: 'Order Flow Imbalance (0-100)' },
     MICRO_TFI: { category: 'MICRO', name: 'Toxic Flow Index', icon: '📉', path: 'signals.micro.toxicity.rawValue', operators: ['>', '<', 'ABS>'], defaultThreshold: 5, description: 'Vol/Freq Divergence Index' },
     MICRO_SPREAD: { category: 'MICRO', name: 'Spread %', icon: '↔️', path: 'signals.micro.spread.rawValue', operators: ['>', '<'], defaultThreshold: 0.05, description: 'Bid-ask spread' },
+
+    // NEW ADVANCED MICROSTRUCTURE (INSTITUTIONAL_BASE)
+    MICRO_COHESION: { category: 'MICRO', name: 'Signal Cohesion', icon: '🔗', path: 'microstructure.INSTITUTIONAL_BASE.cohesion.cohesion', operators: ['>', '<', '>=', '<='], defaultThreshold: 70, description: 'Signal agreement (0-100)' },
+    MICRO_FBI: { category: 'MICRO', name: 'Funding Basis Idx', icon: '⚖️', path: 'microstructure.INSTITUTIONAL_BASE.fbi.fbi', operators: ['>', '<', 'ABS>'], defaultThreshold: 80, description: 'Funding extreme indicator' },
+    MICRO_OFSI: { category: 'MICRO', name: 'Order Flow Str', icon: '🌊', path: 'microstructure.INSTITUTIONAL_BASE.ofsi.ofsi', operators: ['>', '<'], defaultThreshold: 60, description: 'Order Flow Strength Index' },
+    MICRO_FSI: { category: 'MICRO', name: 'Funding Sentiment', icon: '🎭', path: 'microstructure.INSTITUTIONAL_BASE.fsi.fsi', operators: ['>', '<'], defaultThreshold: 60, description: 'Funding Sentiment Index' },
+    MICRO_ZPRESS: { category: 'MICRO', name: 'Z-Score Pressure', icon: '🚀', path: 'microstructure.INSTITUTIONAL_BASE.zPress.zPress', operators: ['>', '<', 'ABS>'], defaultThreshold: 2.0, description: 'Price pressure vs ATR' },
+    MICRO_TIM: { category: 'MICRO', name: 'Trade Imbalance', icon: '⚖️', path: 'microstructure.INSTITUTIONAL_BASE.tim.tim', operators: ['>', '<'], defaultThreshold: 60, description: 'Trade Imbalance Metric' },
+    MICRO_SQUEEZE: { category: 'MICRO', name: 'Range Squeeze', icon: '💥', path: 'microstructure.INSTITUTIONAL_BASE.rangeComp.rangeComp', operators: ['>', '<'], defaultThreshold: 80, description: 'Bollinger squeeze/compression' },
+    MICRO_PFCI: { category: 'MICRO', name: 'Price-Fund Corr', icon: '🔀', path: 'microstructure.INSTITUTIONAL_BASE.pfci.pfci', operators: ['>', '<'], defaultThreshold: 70, description: 'Price-Funding Correlation' },
+    MICRO_LSI: { category: 'MICRO', name: 'Liq Stress Index', icon: '💧', path: 'microstructure.INSTITUTIONAL_BASE.lsi.lsi', operators: ['>', '<'], defaultThreshold: 70, description: 'Liquidity Stress Index' },
+    MICRO_VOL_PROF: { category: 'MICRO', name: 'Vol Profile Signal', icon: '📊', path: 'microstructure.INSTITUTIONAL_BASE.volumeProfile.signal', operators: ['==', '!='], defaultThreshold: 'DISCOUNT', valueType: 'select', options: ['OVERVALUED', 'UNDERVALUED', 'PREMIUM', 'DISCOUNT', 'NEUTRAL'], description: 'Volume Profile valuation' },
 
     // ═══════════════════ ORDERBOOK ═══════════════════
     OB_SPREAD: { category: 'OB', name: 'Spread (Bps)', icon: '↔️', path: 'raw.ORDERBOOK.spreadBps', operators: ['>', '<'], defaultThreshold: 5, description: 'Bid-Ask Spread in Basis Points' },
@@ -184,9 +196,9 @@ export const SIGNAL_COMPONENTS = {
     // ═══════════════════ STRATEGY FILTERS (NEW) ═══════════════════
 
     // 5. MARKET REGIME & CHARACTER
-    REGIME_CURRENT: { category: 'STRAT', name: 'Market Regime', icon: '🌍', path: 'signals.marketRegime.currentRegime', operators: ['==', '!='], defaultThreshold: 'TRENDING', valueType: 'select', options: ['TRENDING', 'RANGING', 'BREAKOUT', 'CORRECTION'], description: 'Current market phase' },
-    VOL_REGIME: { category: 'STRAT', name: 'Vol Regime', icon: '🌋', path: 'signals.marketRegime.volRegime', operators: ['==', '!='], defaultThreshold: 'HIGH_VOL', valueType: 'select', options: ['LOW_VOL', 'NORMAL_VOL', 'HIGH_VOL', 'EXTREME_VOL'], description: 'Volatility environment' },
-    MKT_CHARACTER: { category: 'STRAT', name: 'Mkt Character', icon: '🎭', path: 'synthesis.efficiency.character_15MENIT', operators: ['==', '!='], defaultThreshold: 'EFFORTLESS_MOVE', valueType: 'select', options: ['EFFORTLESS_MOVE', 'CHOPPY', 'ABSORPTION', 'GRINDING', 'NORMAL'], description: 'Price movement character' },
+    REGIME_CURRENT: { category: 'REGIME', name: 'Market Regime', icon: '🌍', path: 'signals.marketRegime.currentRegime', operators: ['==', '!='], defaultThreshold: 'TRENDING', valueType: 'select', options: ['TRENDING', 'RANGING', 'BREAKOUT', 'CORRECTION'], description: 'Current market phase' },
+    VOL_REGIME: { category: 'REGIME', name: 'Vol Regime', icon: '🌋', path: 'signals.marketRegime.volRegime', operators: ['==', '!='], defaultThreshold: 'HIGH_VOL', valueType: 'select', options: ['LOW_VOL', 'NORMAL_VOL', 'HIGH_VOL', 'EXTREME_VOL'], description: 'Volatility environment' },
+    MKT_CHARACTER: { category: 'REGIME', name: 'Mkt Character', icon: '🎭', path: 'synthesis.efficiency.character_15MENIT', operators: ['==', '!='], defaultThreshold: 'EFFORTLESS_MOVE', valueType: 'select', options: ['EFFORTLESS_MOVE', 'CHOPPY', 'ABSORPTION', 'GRINDING', 'NORMAL'], description: 'Price movement character' },
 
     // 6. LIQUIDITY & HEALTH
     BOOK_HEALTH: { category: 'STRAT', name: 'Book Health', icon: '🏥', path: 'raw.ORDERBOOK.bookHealth', operators: ['==', '!='], defaultThreshold: 'HEALTHY', valueType: 'select', options: ['HEALTHY', 'THIN', 'FRAGILE', 'CRITICAL'], description: 'Order book integrity' },
@@ -212,7 +224,7 @@ export const SIGNAL_COMPONENTS = {
     SYN_AGGR: { category: 'SYN', name: 'Aggression', icon: '👊', path: 'synthesis.momentum.aggression_level_15MENIT', operators: ['==', '!='], defaultThreshold: 'INSTITUTIONAL', valueType: 'select', options: ['RETAIL', 'MODERATE', 'INSTITUTIONAL', 'WHALE'], description: 'Participant type' },
 
     // ═══════════════════ REGIME (Moved to STRAT) ═══════════════════
-    REGIME_TREND: { category: 'STRAT', name: 'Trend Strength', icon: '💪', path: 'signals.marketRegime.trendStrength', operators: ['>', '<'], defaultThreshold: 0.6, description: 'Trend strength 0-1' },
+    REGIME_TREND: { category: 'REGIME', name: 'Trend Strength', icon: '💪', path: 'signals.marketRegime.trendStrength', operators: ['>', '<'], defaultThreshold: 0.6, description: 'Trend strength 0-1' },
 
     // ═══════════════════ NEW METRICS ═══════════════════
     PRICE_RANGE_24H: { category: 'PRICE', name: '24h Range %', icon: '📏', path: '_computed.range24h', operators: ['>', '<'], defaultThreshold: 5.0, computed: true, description: 'Price volatility range' },
@@ -241,7 +253,17 @@ export const SIGNAL_COMPONENTS = {
     GUARD_CONF_ADJ: { category: 'GUARD', name: 'Confidence Adjustment', icon: '📉', path: 'signals.institutional_guard.confidence_adjustment', operators: ['>', '<', '>=', '<='], defaultThreshold: 0, description: 'Guard confidence modifier' },
     GUARD_NOISE: { category: 'GUARD', name: 'Noise Level', icon: '📢', path: 'signals.institutional_guard.noise_level', operators: ['==', '!='], defaultThreshold: 'CLEAN', valueType: 'select', options: ['CLEAN', 'NOISY', 'EXTREME'], description: 'Signal noise assessment' },
     GUARD_IVS: { category: 'GUARD', name: 'Institutional Validity', icon: '🏛️', path: 'signals.institutional_guard.ivs_score', operators: ['>', '<', '>='], defaultThreshold: 50, description: 'Institutional Validity Score' },
-    GUARD_BLOCK_REASON: { category: 'GUARD', name: 'Block Reason', icon: '🚫', path: 'signals.institutional_guard.block_reason', operators: ['==', '!=', 'CONTAINS'], defaultThreshold: null, valueType: 'select', options: ['NO_POSITIONING', 'HIGH_VOL', 'CAUSALITY_BROKEN', 'CROWD_CONTAMINATION', 'NO_LIQUIDITY', 'SANITY_CHECK_FAILED'], description: 'Reason for blocking execution' }
+    GUARD_BLOCK_REASON: { category: 'GUARD', name: 'Block Reason', icon: '🚫', path: 'signals.institutional_guard.block_reason', operators: ['==', '!=', 'CONTAINS'], defaultThreshold: null, valueType: 'select', options: ['NO_POSITIONING', 'HIGH_VOL', 'CAUSALITY_BROKEN', 'CROWD_CONTAMINATION', 'NO_LIQUIDITY', 'SANITY_CHECK_FAILED'], description: 'Reason for blocking execution' },
+
+    // ═══════════════════ NEW INSTITUTIONAL METRICS ═══════════════════
+    MICRO_KYLE: { category: 'MICRO', name: 'Kyle Lambda', icon: '📉', path: 'microstructure.INSTITUTIONAL_BASE.kyleLambda.rawValue', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.1, description: 'Price impact per volume' },
+    MICRO_VWAP_DIST: { category: 'PRICE', name: 'VWAP Dist %', icon: '📍', path: '_computed.vwapDistance', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.5, description: '% distance to VWAP' },
+    LIQ_SWEEP: { category: 'LIQ', name: 'Liq Sweep', icon: '🧹', path: 'timeframe.signals.institutional.liquiditySweep.rawValue', operators: ['>', '<', '!=', '=='], defaultThreshold: 1, description: 'Liquidity sweep detection' },
+    SYN_SMART_DIV: { category: 'SYN', name: 'Smart Money Div', icon: '🧠', path: 'timeframe.signals.institutional.smartMoneyDivergence.normalizedScore', operators: ['>', '<'], defaultThreshold: 60, description: 'Whale vs Retail divergence' },
+    VOL_FREQ_DIV: { category: 'VOL', name: 'Whale Freq Div', icon: '🐋', path: 'analytics.orderFlow.volumeFreqDivergence.rawValue', operators: ['>', '<'], defaultThreshold: 1.5, description: 'Volume vs Frequency anomaly' },
+    STRAT_CORWIN: { category: 'STRAT', name: 'CS Spread', icon: '📐', path: 'analytics.spreadEstimates.corwinSchultz', operators: ['>', '<'], defaultThreshold: 0.05, description: 'Corwin-Schultz Spread' },
+    BTC_CORR: { category: 'BTC', name: 'Pearson Correlation', icon: '📊', path: 'analytics.correlation.correlation', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.8, description: 'Correlation to BTC (-1 to 1)' },
+    CIS_SCORE: { category: 'MASTER', name: 'CIS Score', icon: '🎖️', path: '_computed.cisScore', operators: ['>', '<'], defaultThreshold: 60, description: 'Composite Microstructure Index' }
 };
 
 export const CATEGORIES = {
@@ -273,14 +295,14 @@ const MATRIX_VIEWS = Object.fromEntries(
 // Preset Templates
 const PRESET_TEMPLATES = {
     // ═══════════════════ SCALPING ═══════════════════
-    SCALP_AGGRESSIVE: { name: '⚡ Scalp Aggressive', description: 'Fast scalping with vol + OB Imbalance', conditions: [{ component: 'VOL_SPIKE_1M', operator: '>', value: 2.0, weight: 2 }, { component: 'OB_IMBALANCE', operator: 'ABS>', value: 0.3, weight: 1.5 }, { component: 'MICRO_VPIN', operator: '>', value: 0.5, weight: 1 }], logic: 'WEIGHTED', minScore: 65, cooldown: 60 },
-    SCALP_MOMENTUM: { name: '🏎️ Momentum Scalp', description: 'Momentum + BTC Outperform', conditions: [{ component: 'SYN_VEL_5M', operator: 'ABS>', value: 5000, weight: 2 }, { component: 'BTC_OUTPERFORM', operator: '==', value: true, weight: 2 }, { component: 'VOL_BUY_RATIO_1M', operator: '>', value: 1.3, weight: 1 }], logic: 'AND', cooldown: 45 },
-    SCALP_EFFICIENCY: { name: '📏 Efficient Move', description: 'Low friction price moves', conditions: [{ component: 'SYN_EFF_5M', operator: '>', value: 2.0, weight: 2 }, { component: 'SYN_CHAR', operator: 'CONTAINS', value: 'EFFORTLESS', weight: 2 }, { component: 'OB_SPREAD', operator: '<', value: 5, weight: 1 }], logic: 'AND', cooldown: 90 },
+    SCALP_AGGRESSIVE: { name: '⚡ Scalp Aggressive', description: 'Fast scalping with vol + OB Imbalance', conditions: [{ component: 'VOL_SPIKE_1M', operator: '>', value: 2.0, weight: 2 }, { component: 'OB_IMBALANCE', operator: 'ABS>', value: 0.3, weight: 1.5 }, { component: 'MICRO_VPIN', operator: '>', value: 0.5, weight: 1 }, { component: 'VOL_DURABILITY', operator: '>', value: 60, weight: 1 }], logic: 'WEIGHTED', minScore: 65, cooldown: 60 },
+    SCALP_MOMENTUM: { name: '🏎️ Momentum Scalp', description: 'Momentum + VWAP Reversion', conditions: [{ component: 'SYN_VEL_5M', operator: 'ABS>', value: 5000, weight: 2 }, { component: 'MICRO_VWAP_DIST', operator: '<', value: 0.3, weight: 2 }, { component: 'BTC_OUTPERFORM', operator: '==', value: true, weight: 1 }], logic: 'AND', cooldown: 45 },
+    SCALP_EFFICIENCY: { name: '📏 Efficient Move', description: 'Low friction price moves', conditions: [{ component: 'SYN_EFF_5M', operator: '>', value: 2.0, weight: 2 }, { component: 'SYN_CHAR', operator: 'CONTAINS', value: 'EFFORTLESS', weight: 2 }, { component: 'CIS_SCORE', operator: '>', value: 65, weight: 1 }], logic: 'AND', cooldown: 90 },
 
     // ═══════════════════ INSTITUTIONAL / WHALE ═══════════════════
-    WHALE_TRACKER: { name: '🐋 Whale Tracker', description: 'Follow institutional flow + Walls', conditions: [{ component: 'ENH_INST', operator: '>', value: 0.6, weight: 2 }, { component: 'OB_WALL', operator: '==', value: true, weight: 2 }, { component: 'SYN_AGGR', operator: '==', value: 'WHALE', weight: 1.5 }], logic: 'AND', cooldown: 300 },
-    SMART_MONEY: { name: '🧠 Smart Money', description: 'Institutional accumulation', conditions: [{ component: 'SYN_BIAS', operator: '==', value: 'ACCUMULATION', weight: 2 }, { component: 'ENH_INST', operator: '>', value: 0.5, weight: 1.5 }, { component: 'MICRO_VPIN', operator: '>', value: 0.4, weight: 1 }, { component: 'VOL_SPIKE_15M', operator: '>', value: 1.2, weight: 1 }], logic: 'WEIGHTED', minScore: 65, cooldown: 300 },
-    DISTRIBUTION: { name: '📤 Distribution', description: 'Smart money selling', conditions: [{ component: 'SYN_BIAS', operator: '==', value: 'DISTRIBUTION', weight: 2 }, { component: 'ENH_INST', operator: '>', value: 0.5, weight: 1.5 }, { component: 'PRICE_CHANGE_1H', operator: '<', value: -0.5, weight: 1 }], logic: 'AND', cooldown: 300, biasLogic: 'SHORT' },
+    WHALE_TRACKER: { name: '🐋 Whale Tracker', description: 'Follow institutional flow + Walls', conditions: [{ component: 'SYN_SMART_DIV', operator: '>', value: 60, weight: 2 }, { component: 'VOL_FREQ_DIV', operator: '>', value: 1.5, weight: 1.5 }, { component: 'ALERT_WHALE', operator: '==', value: true, weight: 1.5 }], logic: 'AND', cooldown: 300 },
+    SMART_MONEY: { name: '🧠 Smart Money', description: 'Institutional accumulation', conditions: [{ component: 'SYN_BIAS', operator: '==', value: 'ACCUMULATION', weight: 2 }, { component: 'SYN_SMART_DIV', operator: '>', value: 65, weight: 1.5 }, { component: 'MICRO_KYLE', operator: '<', value: 0.5, weight: 1 }, { component: 'VOL_SPIKE_15M', operator: '>', value: 1.2, weight: 1 }], logic: 'WEIGHTED', minScore: 65, cooldown: 300, biasLogic: 'LONG' },
+    DISTRIBUTION: { name: '📤 Distribution', description: 'Smart money selling', conditions: [{ component: 'SYN_BIAS', operator: '==', value: 'DISTRIBUTION', weight: 2 }, { component: 'SYN_SMART_DIV', operator: '>', value: 65, weight: 1.5 }, { component: 'PRICE_CHANGE_1H', operator: '<', value: -0.5, weight: 1 }], logic: 'AND', cooldown: 300, biasLogic: 'SHORT' },
 
     // ═══════════════════ DERIVATIVES ═══════════════════
     FUNDING_ARB: { name: '💰 Funding Arb', description: 'Extreme funding contrarian', conditions: [{ component: 'FUNDING_ZSCORE', operator: 'ABS>', value: 2.5, weight: 2 }, { component: 'FUNDING_APY', operator: 'ABS>', value: 30, weight: 1.5 }], logic: 'AND', cooldown: 600, biasLogic: 'CONTRARIAN' },
@@ -290,7 +312,7 @@ const PRESET_TEMPLATES = {
 
     // ═══════════════════ BREAKOUT / MOMENTUM ═══════════════════
     BREAKOUT: { name: '🚀 Breakout', description: 'Volume + OI + OB imbalance', conditions: [{ component: 'VOL_SPIKE_5M', operator: '>', value: 1.8, weight: 2 }, { component: 'OB_IMBALANCE', operator: 'ABS>', value: 0.4, weight: 2 }, { component: 'PRICE_CHANGE_5M', operator: 'ABS>', value: 1.0, weight: 1.5 }], logic: 'WEIGHTED', minScore: 70, cooldown: 180 },
-    SQUEEZE_BREAK: { name: '💥 Squeeze Break', description: 'Vol expansion from consolidation', conditions: [{ component: 'REGIME_VOL', operator: '==', value: 'LOW_VOL', weight: 1 }, { component: 'VOL_SPIKE_5M', operator: '>', value: 2.5, weight: 2 }, { component: 'BTC_BETA', operator: '>', value: 1.2, weight: 1 }], logic: 'AND', cooldown: 180 },
+    SQUEEZE_BREAK: { name: '💥 Squeeze Break', description: 'Vol expansion from consolidation', conditions: [{ component: 'VOL_REGIME', operator: '==', value: 'LOW_VOL', weight: 1 }, { component: 'VOL_SPIKE_5M', operator: '>', value: 2.5, weight: 2 }, { component: 'BTC_BETA', operator: '>', value: 1.2, weight: 1 }], logic: 'AND', cooldown: 180 },
     TREND_CONTINUATION: { name: '📈 Trend Cont', description: 'Ride trend with BTC strength', conditions: [{ component: 'REGIME_CURRENT', operator: 'CONTAINS', value: 'TRENDING', weight: 2 }, { component: 'BTC_OUTPERFORM', operator: '==', value: true, weight: 2 }, { component: 'SYN_EFF_15M', operator: '>', value: 1.3, weight: 1 }], logic: 'AND', cooldown: 300 },
 
     // ═══════════════════ REVERSAL / MEAN REVERSION ═══════════════════
@@ -299,61 +321,62 @@ const PRESET_TEMPLATES = {
     OVERBOUGHT_FADE: { name: '📈 Overbought Fade', description: 'Mean reversion short', conditions: [{ component: 'PRICE_FROM_LOW', operator: '>', value: 8, weight: 2 }, { component: 'LSR_RATIO', operator: '>', value: 1.3, weight: 1.5 }, { component: 'FUNDING_RATE', operator: '>', value: 0.0003, weight: 1 }], logic: 'AND', cooldown: 300, biasLogic: 'SHORT' },
 
     // ═══════════════════ LIQUIDATION ═══════════════════
-    LIQ_PLAY: { name: '💥 Liquidation', description: 'Trade liquidation cascade', conditions: [{ component: 'LIQ_RATE', operator: '>', value: 3.0, weight: 2 }, { component: 'VOL_SPIKE_1M', operator: '>', value: 3.0, weight: 1.5 }], logic: 'AND', cooldown: 120, biasLogic: 'CONTRARIAN' },
+    LIQ_PLAY: { name: '💥 Liquidation Cascade', description: 'Trade liquidation cascade', conditions: [{ component: 'LIQ_RATE', operator: '>', value: 3.0, weight: 2 }, { component: 'VOL_SPIKE_1M', operator: '>', value: 3.0, weight: 1.5 }], logic: 'AND', cooldown: 120, biasLogic: 'CONTRARIAN' },
     LIQ_LONG_SQUEEZE: { name: '🔻 Long Squeeze', description: 'Longs getting liquidated', conditions: [{ component: 'LIQ_DOMINANT', operator: '==', value: 'LONG LIQ', weight: 2 }, { component: 'LIQ_RATE', operator: '>', value: 2.0, weight: 1.5 }, { component: 'PRICE_CHANGE_5M', operator: '<', value: -1.0, weight: 1 }], logic: 'AND', cooldown: 120, biasLogic: 'CONTRARIAN' },
     LIQ_SHORT_SQUEEZE: { name: '🔺 Short Squeeze', description: 'Shorts getting rekt', conditions: [{ component: 'LIQ_DOMINANT', operator: '==', value: 'SHORT LIQ', weight: 2 }, { component: 'LIQ_RATE', operator: '>', value: 2.0, weight: 1.5 }, { component: 'PRICE_CHANGE_5M', operator: '>', value: 1.0, weight: 1 }], logic: 'AND', cooldown: 120, biasLogic: 'LONG' },
+    LIQ_REVERSAL: { name: '🧹 Liq Sweep Reversal', description: 'Sweep > Reversal (Stop hunting)', conditions: [{ component: 'LIQ_SWEEP', operator: '>', value: 0.5, weight: 2 }, { component: 'LSR_ZSCORE', operator: 'ABS>', value: 2.0, weight: 1.5 }], logic: 'AND', cooldown: 300, biasLogic: 'CONTRARIAN' },
 
     // ═══════════════════ MICROSTRUCTURE ═══════════════════
-    TOXIC_FLOW: { name: '☠️ Toxic Flow', description: 'Informed trading detected', conditions: [{ component: 'MICRO_VPIN', operator: '>', value: 0.7, weight: 2 }, { component: 'MICRO_TOXICITY', operator: '>', value: 0.6, weight: 1.5 }, { component: 'VOL_SPIKE_5M', operator: '>', value: 1.5, weight: 1 }], logic: 'AND', cooldown: 180 },
-    BOOK_IMBALANCE: { name: '📚 Book Imbalance', description: 'Order book pressure', conditions: [{ component: 'OB_IMBALANCE', operator: 'ABS>', value: 0.3, weight: 2 }, { component: 'OB_DEPTH', operator: '>', value: 1.5, weight: 1.5 }, { component: 'MICRO_OFI', operator: '>', value: 60, weight: 1 }], logic: 'WEIGHTED', minScore: 60, cooldown: 120 },
-    WALL_BREAK: { name: '🧱 Wall Break', description: 'Breaking order wall', conditions: [{ component: 'OB_WALL', operator: '==', value: true, weight: 1 }, { component: 'VOL_SPIKE_1M', operator: '>', value: 2.5, weight: 2 }, { component: 'PRICE_CHANGE_1M', operator: 'ABS>', value: 0.3, weight: 1.5 }], logic: 'AND', cooldown: 90 },
+    TOXIC_FLOW: { name: '☠️ Toxic Flow', description: 'Informed trading detected', conditions: [{ component: 'MICRO_VPIN', operator: '>', value: 0.7, weight: 2 }, { component: 'MICRO_TFI', operator: '>', value: 0.6, weight: 1.5 }, { component: 'VOL_SPIKE_5M', operator: '>', value: 1.5, weight: 1 }], logic: 'AND', cooldown: 180 },
+    BOOK_IMBALANCE: { name: '📚 Book Imbalance', description: 'Order book pressure', conditions: [{ component: 'OB_IMBALANCE', operator: 'ABS>', value: 0.3, weight: 2 }, { component: 'OB_DEPTH_RATIO', operator: '>', value: 1.5, weight: 1.5 }, { component: 'MICRO_OFI', operator: '>', value: 60, weight: 1 }], logic: 'WEIGHTED', minScore: 60, cooldown: 120 },
+    WALL_BREAK: { name: '🧱 Wall Break', description: 'Breaking order wall', conditions: [{ component: 'OB_WALL_DETECTED', operator: '==', value: true, weight: 1 }, { component: 'VOL_SPIKE_1M', operator: '>', value: 2.5, weight: 2 }, { component: 'PRICE_CHANGE_1M', operator: 'ABS>', value: 0.3, weight: 1.5 }], logic: 'AND', cooldown: 90 },
 
     // ═══════════════════ CONVERGENCE / HIGH CONVICTION ═══════════════════
-    CONVERGENCE: { name: '🎯 Convergence', description: 'Multiple signals aligning', conditions: [{ component: 'MASTER_SCORE', operator: '>=', value: 70, weight: 2 }, { component: 'MASTER_CONFIRMS', operator: '>=', value: 4, weight: 1.5 }, { component: 'DASH_TOTAL', operator: '>=', value: 65, weight: 1 }], logic: 'WEIGHTED', minScore: 70, cooldown: 300 },
-    FULL_ALIGNMENT: { name: '✨ Full Alignment', description: 'Everything agrees', conditions: [{ component: 'MASTER_MTF', operator: '==', value: true, weight: 2 }, { component: 'MASTER_CONFIRMS', operator: '>=', value: 5, weight: 2 }, { component: 'SYN_CHAR', operator: 'CONTAINS', value: 'EFFORTLESS', weight: 1.5 }, { component: 'ENH_INST', operator: '>', value: 0.5, weight: 1 }], logic: 'AND', cooldown: 300 },
-    HIGH_CONFIDENCE: { name: '💪 High Confidence', description: 'Strong conviction setup', conditions: [{ component: 'MASTER_CONFIDENCE', operator: '>=', value: 80, weight: 2 }, { component: 'MASTER_SCORE', operator: '>=', value: 75, weight: 2 }, { component: 'REGIME_TREND', operator: '>', value: 0.6, weight: 1 }], logic: 'AND', cooldown: 300 },
+    CONVERGENCE: { name: '🎯 Convergence', description: 'Multiple signals aligning', conditions: [{ component: 'MASTER_SCORE', operator: '>=', value: 70, weight: 2 }, { component: 'CIS_SCORE', operator: '>=', value: 60, weight: 1.5 }, { component: 'DASH_TOTAL', operator: '>=', value: 65, weight: 1 }, { component: 'ALERT_CONV', operator: '==', value: true, weight: 1.5 }], logic: 'WEIGHTED', minScore: 70, cooldown: 300 },
+    FULL_ALIGNMENT: { name: '✨ Full Alignment', description: 'Everything agrees', conditions: [{ component: 'MASTER_MTF', operator: '==', value: true, weight: 2 }, { component: 'MASTER_CONFIRMS', operator: '>=', value: 5, weight: 2 }, { component: 'SYN_CHAR', operator: 'CONTAINS', value: 'EFFORTLESS', weight: 1.5 }, { component: 'CIS_SCORE', operator: '>', value: 65, weight: 1 }], logic: 'AND', cooldown: 300 },
+    HIGH_CONFIDENCE: { name: '💪 High Confidence', description: 'Strong conviction setup', conditions: [{ component: 'MASTER_CONFIDENCE', operator: '>=', value: 80, weight: 2 }, { component: 'MASTER_SCORE', operator: '>=', value: 75, weight: 2 }, { component: 'STRAT_CORWIN', operator: '<', value: 0.1, weight: 1 }], logic: 'AND', cooldown: 300 },
 
     // ═══════════════════ BTC CORRELATION ═══════════════════
     BTC_FOLLOW: { name: '₿ BTC Follower', description: 'Trade alts that follow BTC', conditions: [{ component: 'BTC_FOLLOWS', operator: '==', value: true, weight: 2 }, { component: 'BTC_CHANGE_5M', operator: 'ABS>', value: 0.3, weight: 1.5 }, { component: 'MASTER_SCORE', operator: '>=', value: 60, weight: 1 }], logic: 'AND', cooldown: 180 },
     BTC_DIVERGE: { name: '↔️ BTC Divergence', description: 'Alts diverging from BTC', conditions: [{ component: 'BTC_DIVERGES', operator: '==', value: true, weight: 2 }, { component: 'BTC_OUTPERFORM', operator: '==', value: true, weight: 1.5 }, { component: 'VOL_SPIKE_5M', operator: '>', value: 1.5, weight: 1 }], logic: 'AND', cooldown: 300 },
     BTC_BETA_PLAY: { name: '📊 High Beta', description: 'High beta alts when BTC moves', conditions: [{ component: 'BTC_BETA', operator: '>', value: 1.5, weight: 2 }, { component: 'BTC_CHANGE_5M', operator: 'ABS>', value: 0.5, weight: 2 }, { component: 'BTC_FOLLOWS', operator: '==', value: true, weight: 1 }], logic: 'AND', cooldown: 180 },
-    BTC_DIP_BUY: { name: '₿ BTC Dip Buy', description: 'Buy alts when BTC dips', conditions: [{ component: 'BTC_CHANGE_15M', operator: '<', value: -1.0, weight: 2 }, { component: 'BTC_FOLLOWS', operator: '==', value: true, weight: 1.5 }, { component: 'MASTER_ACTION', operator: '==', value: 'LONG', weight: 1 }], logic: 'AND', cooldown: 300, biasLogic: 'LONG' },
+    BTC_DIP_BUY: { name: '₿ BTC Dip Buy', description: 'Buy alts when BTC dips', conditions: [{ component: 'BTC_CHANGE_15M', operator: '<', value: -1.0, weight: 2 }, { component: 'BTC_FOLLOWS', operator: '==', value: true, weight: 1.5 }, { component: 'MASTER_ACTION', operator: '==', value: 'BUY', weight: 1 }], logic: 'AND', cooldown: 300, biasLogic: 'LONG' },
 
     // ═══════════════════ SPECIAL CONDITIONS ═══════════════════
     DISCOUNT_HUNTER: { name: '🏷️ Discount Hunter', description: 'Buy significant pullbacks', conditions: [{ component: 'PRICE_FROM_HIGH', operator: '<', value: -10, weight: 2 }, { component: 'ALERT_DISCOUNT', operator: '==', value: true, weight: 1 }, { component: 'SYN_BIAS', operator: '==', value: 'ACCUMULATION', weight: 1.5 }], logic: 'AND', cooldown: 600, biasLogic: 'LONG' },
-    VOLATILITY_PLAY: { name: '🌋 Vol Spike', description: 'High volatility opportunities', conditions: [{ component: 'REGIME_VOL', operator: '==', value: 'HIGH_VOL', weight: 2 }, { component: 'VOL_SPIKE_5M', operator: '>', value: 2.0, weight: 1.5 }, { component: 'MASTER_CONFIDENCE', operator: '>=', value: 65, weight: 1 }], logic: 'AND', cooldown: 120 },
-    QUIET_ACCUMULATION: { name: '🤫 Quiet Accum', description: 'Stealth accumulation', conditions: [{ component: 'REGIME_VOL', operator: '==', value: 'LOW_VOL', weight: 1 }, { component: 'OI_CHANGE_1H', operator: '>', value: 2.0, weight: 2 }, { component: 'SYN_BIAS', operator: '==', value: 'ACCUMULATION', weight: 2 }], logic: 'AND', cooldown: 600, biasLogic: 'LONG' },
+    VOLATILITY_PLAY: { name: '🌋 Vol Spike', description: 'High volatility opportunities', conditions: [{ component: 'VOL_REGIME', operator: '==', value: 'HIGH_VOL', weight: 2 }, { component: 'VOL_SPIKE_5M', operator: '>', value: 2.0, weight: 1.5 }, { component: 'MASTER_CONFIDENCE', operator: '>=', value: 65, weight: 1 }], logic: 'AND', cooldown: 120 },
+    QUIET_ACCUMULATION: { name: '🤫 Quiet Accum', description: 'Stealth accumulation', conditions: [{ component: 'VOL_REGIME', operator: '==', value: 'LOW_VOL', weight: 1 }, { component: 'OI_CHANGE_1H', operator: '>', value: 2.0, weight: 2 }, { component: 'SYN_BIAS', operator: '==', value: 'ACCUMULATION', weight: 2 }], logic: 'AND', cooldown: 600, biasLogic: 'LONG' },
 
     // ═══════════════════ ADVANCED STRATEGIES (from Strategy Tab) ═══════════════════
-    STRAT_FLASH: { name: '⚡ Flash Pump Detector', description: 'Mendeteksi koin SEBELUM pompa signifikan. Masuk di 30 detik pertama pergerakan impulsif. Lev: 5-10x, Hold: 5m-30m', conditions: [{ component: 'VOL_SPIKE_1M', operator: '>', value: 1.5, weight: 2 }, { component: 'MASTER_SCORE', operator: '>', value: 52, weight: 1.5 }, { component: 'SYN_FLOW_1M', operator: '>', value: 5000, weight: 1 }], logic: 'AND', cooldown: 300 },
-    STRAT_GAMMA: { name: '🎲 Gamma Exposure', description: 'Mendeteksi Gamma Squeeze. Korelasi OI dan Volatilitas sebagai proxy hedging dealer options. Lev: 5-10x, Hold: 1h-4h', conditions: [{ component: 'OI_CHANGE_1H', operator: 'ABS>', value: 5.0, weight: 2 }, { component: 'OI_ZSCORE', operator: 'ABS>', value: 2.5, weight: 1.5 }], logic: 'OR', cooldown: 600 },
-    STRAT_CLUSTER: { name: '🎯 Volume Cluster', description: 'Zona harga institusi akumulasi diam-diam (Volume Profile Nodes). High Vol + Low Price Change. Lev: 3-5x, Hold: 4h-12h', conditions: [{ component: 'VOL_SPIKE_1H', operator: '>', value: 1.5, weight: 2 }, { component: 'PRICE_CHANGE_1H', operator: 'ABS<', value: 0.5, weight: 1.5 }], logic: 'AND', cooldown: 600, biasLogic: 'LONG' },
+    STRAT_FLASH: { name: '⚡ Flash Pump Detector', description: 'Mendeteksi koin SEBELUM pompa signifikan. Masuk di 30 detik pertama pergerakan impulsif. Lev: 5-10x, Hold: 5m-30m', conditions: [{ component: 'VOL_SPIKE_1M', operator: '>', value: 1.5, weight: 2 }, { component: 'MASTER_SCORE', operator: '>', value: 52, weight: 1.5 }, { component: 'SYN_FLOW_5M', operator: '>', value: 5000, weight: 1 }], logic: 'AND', cooldown: 300 },
+    STRAT_GAMMA: { name: '🎲 Gamma Exposure', description: 'Mendeteksi Gamma Squeeze. Korelasi OI dan Volatilitas sebagai proxy hedging dealer options. Lev: 5-10x, Hold: 1h-4h', conditions: [{ component: 'OI_CHANGE_1H', operator: 'ABS>', value: 5.0, weight: 2 }, { component: 'OI_NET_SCORE', operator: 'ABS>', value: 15, weight: 1.5 }], logic: 'OR', cooldown: 600 },
+    STRAT_CLUSTER: { name: '🎯 Volume Cluster', description: 'Zona harga institusi akumulasi diam-diam (Volume Profile Nodes). High Vol + Low Price Change. Lev: 3-5x, Hold: 4h-12h', conditions: [{ component: 'VOL_SPIKE_1H', operator: '>', value: 1.5, weight: 2 }, { component: 'PRICE_CHANGE_1H', operator: '>', value: -0.5, weight: 1.5 }, { component: 'PRICE_CHANGE_1H', operator: '<', value: 0.5, weight: 1.5 }], logic: 'AND', cooldown: 600, biasLogic: 'LONG' },
     STRAT_TAPE: { name: '📜 Tape Reading', description: 'Agresivitas Tape (Trade Feed). Urutan order beli/jual agresif. Lev: 10-20x, Hold: 1m-5m', conditions: [{ component: 'SYN_AGGR', operator: '==', value: 'INSTITUTIONAL', weight: 2 }, { component: 'MICRO_VPIN', operator: '>', value: 0.55, weight: 1.5 }], logic: 'AND', cooldown: 120 },
-    STRAT_ANOMALY: { name: '⚠️ Statistical Anomaly', description: 'Pergerakan 3-Sigma menyimpang statistik. Mean reversion atau breakout ekstrim. Lev: 2-5x, Hold: 1h-6h', conditions: [{ component: 'LSR_ZSCORE', operator: 'ABS>', value: 3.0, weight: 2 }, { component: 'OI_ZSCORE', operator: 'ABS>', value: 3.0, weight: 2 }], logic: 'OR', cooldown: 600 },
-    STRAT_COMPOSITE: { name: '👑 Composite Alpha (God Signal)', description: 'Framework paling advanced: Bobot adaptif, Net Flow massif, Institutional Footprint, Konfluensi MTF. Lev: 5-15x, Hold: 15m-1h', conditions: [{ component: 'MASTER_SCORE', operator: '>', value: 67, weight: 2 }, { component: 'SYN_FLOW_15M', operator: 'ABS>', value: 30000, weight: 2 }, { component: 'MASTER_MTF', operator: '==', value: true, weight: 2 }, { component: 'ENH_INST', operator: '>', value: 0.6, weight: 1.5 }], logic: 'AND', cooldown: 600 },
-    STRAT_BLITZ: { name: '⚡ Institutional Blitz', description: 'Konfluensi sempurna: Net Flow besar, EFFORTLESS MOVE, CVD konfirmasi. Setup sniper paling murni. Lev: 10-25x, Hold: 2m-10m', conditions: [{ component: 'SYN_FLOW_15M', operator: 'ABS>', value: 22500, weight: 2 }, { component: 'SYN_CHAR', operator: 'CONTAINS', value: 'EFFORTLESS', weight: 2 }, { component: 'SYN_AGGR', operator: '==', value: 'INSTITUTIONAL', weight: 1.5 }], logic: 'AND', cooldown: 300 },
-    STRAT_MTF_PRO: { name: '📡 MTF Confluence Pro', description: 'Trigger saat 1M, 5M, 15M, 1H sama arah dengan Momentum Quality tinggi. Lev: 3-10x, Hold: 1h-4h', conditions: [{ component: 'MASTER_MTF', operator: '==', value: true, weight: 3 }, { component: 'ENH_MOM_QUALITY', operator: '>', value: 0.4, weight: 2 }], logic: 'AND', cooldown: 600 },
+    STRAT_ANOMALY: { name: '⚠️ Statistical Anomaly', description: 'Pergerakan 3-Sigma menyimpang statistik. Mean reversion atau breakout ekstrim. Lev: 2-5x, Hold: 1h-6h', conditions: [{ component: 'LSR_ZSCORE', operator: 'ABS>', value: 3.0, weight: 2 }, { component: 'OI_NET_SCORE', operator: 'ABS>', value: 20, weight: 2 }], logic: 'OR', cooldown: 600 },
+    STRAT_COMPOSITE: { name: '👑 Composite Alpha (God Signal)', description: 'Framework paling advanced: Bobot adaptif, Net Flow massif, Institutional Footprint, Konfluensi MTF. Lev: 5-15x, Hold: 15m-1h', conditions: [{ component: 'MASTER_SCORE', operator: '>', value: 67, weight: 2 }, { component: 'SYN_FLOW_15M', operator: 'ABS>', value: 30000, weight: 2 }, { component: 'MASTER_MTF', operator: '==', value: true, weight: 2 }, { component: 'ENH_INST', operator: '>', value: 0.6, weight: 1.5 }, { component: 'GUARD_ALLOWED', operator: '==', value: true, weight: 1 }], logic: 'AND', cooldown: 600 },
+    STRAT_BLITZ: { name: '⚡ Institutional Blitz', description: 'Konfluensi sempurna: Net Flow besar, EFFORTLESS MOVE, CVD konfirmasi. Setup sniper paling murni. Lev: 10-25x, Hold: 2m-10m', conditions: [{ component: 'SYN_FLOW_15M', operator: 'ABS>', value: 22500, weight: 2 }, { component: 'SYN_CHAR', operator: 'CONTAINS', value: 'EFFORTLESS', weight: 2 }, { component: 'SYN_AGGR', operator: '==', value: 'INSTITUTIONAL', weight: 1.5 }, { component: 'GUARD_STATUS', operator: '==', value: 'ALLOW', weight: 1 }], logic: 'AND', cooldown: 300 },
+    STRAT_MTF_PRO: { name: '📡 MTF Confluence Pro', description: 'Trigger saat 1M, 5M, 15M, 1H sama arah dengan Momentum Quality tinggi. Lev: 3-10x, Hold: 1h-4h', conditions: [{ component: 'MASTER_MTF', operator: '==', value: true, weight: 3 }, { component: 'ENH_MOM_QUAL', operator: '>', value: 0.4, weight: 2 }], logic: 'AND', cooldown: 600 },
     STRAT_BREAKOUT: { name: '💥 Institutional Breakout', description: 'Ledakan harga divalidasi VPIN tinggi, Book Resilience kuat. Menghindari False Breakout. Lev: 10x, Hold: 15m-1h', conditions: [{ component: 'MICRO_VPIN', operator: '>', value: 0.45, weight: 2 }, { component: 'SYN_FLOW_15M', operator: 'ABS>', value: 15000, weight: 2 }, { component: 'ENH_BOOK_RES', operator: '>', value: 0.5, weight: 1.5 }], logic: 'AND', cooldown: 300 },
-    STRAT_ALPHA: { name: '🏹 Independent Alpha', description: 'Koin Outlier bergerak independen (BTC Decorrelated). Efektif saat BTC sideways. Lev: 5x, Hold: 4h-12h', conditions: [{ component: 'BTC_CORR', operator: '<', value: 0.4, weight: 2 }, { component: 'MASTER_SCORE', operator: '>', value: 52, weight: 1.5 }], logic: 'AND', cooldown: 600 },
+    STRAT_ALPHA: { name: '🏹 Independent Alpha', description: 'Koin Outlier bergerak independen (BTC Decorrelated). Efektif saat BTC sideways. Lev: 5x, Hold: 4h-12h', conditions: [{ component: 'BTC_BETA', operator: '<', value: 0.4, weight: 2 }, { component: 'MASTER_SCORE', operator: '>', value: 52, weight: 1.5 }], logic: 'AND', cooldown: 600 },
     STRAT_FLOW: { name: '🌊 Net Flow Directional', description: 'Murni mengikuti arus modal dengan konfirmasi CVD. Trade sesuai Dominant Capital Bias. Lev: 3-10x, Hold: 1h-4h', conditions: [{ component: 'SYN_FLOW_15M', operator: 'ABS>', value: 15000, weight: 2 }, { component: 'SYN_BIAS', operator: '!=', value: 'NEUTRAL', weight: 1.5 }], logic: 'AND', cooldown: 300 },
     STRAT_SMART_MONEY: { name: '🏦 Smart Money Divergence', description: 'Volume per koin meledak TAPI frekuensi transaksi stabil/turun (Large orders hidden). Lev: 5x, Hold: 4h-24h', conditions: [{ component: 'ENH_INST', operator: '>', value: 0.4, weight: 2 }, { component: 'MASTER_ACTION', operator: '!=', value: 'WAIT', weight: 1 }], logic: 'AND', cooldown: 600 },
     STRAT_WHALE: { name: '🐋 Whale Shadow Tracker', description: 'Membuntuti Whale-Pace dengan Institutional Footprint Score + Amihud Ratio rendah. Lev: 10x, Hold: 30m-1h', conditions: [{ component: 'ENH_INST', operator: '>', value: 0.7, weight: 2 }, { component: 'SYN_VEL_15M', operator: '>', value: 3000, weight: 1.5 }], logic: 'AND', cooldown: 300 },
     STRAT_DIVERGE: { name: '📈 Price-Flow Divergence', description: 'Harga turun tapi Net Flow naik tajam (Hidden Accumulation) atau sebaliknya. Lev: 5-10x, Hold: 1h-2h', conditions: [{ component: 'PRICE_CHANGE_24H', operator: '<', value: -2, weight: 1 }, { component: 'SYN_FLOW_15M', operator: '>', value: 20000, weight: 2 }], logic: 'AND', cooldown: 300, biasLogic: 'LONG' },
-    STRAT_ICEBERG: { name: '🧊 Iceberg Detection', description: 'Pesanan raksasa dipecah-pecah di order book (OFI dan Lambda). Lev: 10x, Hold: 30m-1h', conditions: [{ component: 'OB_IMBALANCE', operator: 'ABS>', value: 0.5, weight: 2 }, { component: 'MICRO_LAMBDA', operator: '>', value: 0.01, weight: 1.5 }, { component: 'ENH_INST', operator: '>', value: 0.3, weight: 1 }], logic: 'AND', cooldown: 300 },
+    STRAT_ICEBERG: { name: '🧊 Iceberg Detection', description: 'Pesanan raksasa dipecah-pecah di order book (OFI dan Lambda). Lev: 10x, Hold: 30m-1h', conditions: [{ component: 'OB_IMBALANCE', operator: 'ABS>', value: 0.5, weight: 2 }, { component: 'ENH_AMIHUD', operator: '>', value: 0.3, weight: 1.5 }, { component: 'ENH_INST', operator: '>', value: 0.3, weight: 1 }], logic: 'AND', cooldown: 300 },
     STRAT_ABSORB: { name: '🧲 Whale Absorption', description: 'Volume meledak tapi harga tidak bergerak (Paku) + Book Resilience tinggi. Paus menyerap ritel. Lev: 10x, Hold: 1h-3h', conditions: [{ component: 'SYN_CHAR', operator: 'CONTAINS', value: 'ABSORPTION', weight: 2 }, { component: 'SYN_FLOW_15M', operator: 'ABS>', value: 15000, weight: 1.5 }, { component: 'ENH_BOOK_RES', operator: '>', value: 0.5, weight: 1.5 }], logic: 'AND', cooldown: 300 },
     STRAT_SWEEP: { name: '🧹 Liquidity Sweep', description: 'Pembersihan likuiditas (wick panjang) sebelum harga berbalik. Snipe di atas/bawah konsolidasi. Lev: 20x, Hold: 5m-15m', conditions: [{ component: 'LSR_ZSCORE', operator: 'ABS>', value: 2.5, weight: 2 }, { component: 'LIQ_RATE', operator: '>', value: 2.0, weight: 1.5 }], logic: 'AND', cooldown: 180 },
     STRAT_TRAP: { name: '🚨 Liquidation Reversal', description: 'Titik jenuh likuidasi ritel (Absorption). Masuk saat Washout dengan CVD berlawanan. Lev: 10x, Hold: 1h-2h', conditions: [{ component: 'SYN_CHAR', operator: 'CONTAINS', value: 'ABSORPTION', weight: 2 }, { component: 'LSR_ZSCORE', operator: 'ABS>', value: 2.0, weight: 1.5 }], logic: 'OR', cooldown: 300, biasLogic: 'CONTRARIAN' },
-    STRAT_VOL: { name: '🌩️ Volatility Breakout', description: 'Transisi konsolidasi sepi ke ledakan volatilitas + Volume Spike + Momentum Quality. Lev: 3-5x, Hold: 4h-8h', conditions: [{ component: 'ENH_MOM_QUALITY', operator: '>', value: 0.4, weight: 2 }, { component: 'VOL_SPIKE_15M', operator: '>', value: 1.5, weight: 1.5 }], logic: 'AND', cooldown: 600 },
-    STRAT_EFFICIENCY: { name: '🧬 Efficiency-Momentum', description: 'Efficiency, momentum quality, dan pressure acceleration. Harga bergerak efisien dengan momentum bersih. Lev: 5-10x, Hold: 30m-2h', conditions: [{ component: 'SYN_EFF_15M', operator: '>', value: 0.8, weight: 2 }, { component: 'SYN_VEL_15M', operator: '>', value: 3000, weight: 1.5 }, { component: 'ENH_MOM_QUALITY', operator: '>', value: 0.5, weight: 1.5 }], logic: 'AND', cooldown: 300 },
+    STRAT_VOL: { name: '🌩️ Volatility Breakout', description: 'Transisi konsolidasi sepi ke ledakan volatilitas + Volume Spike + Momentum Quality. Lev: 3-5x, Hold: 4h-8h', conditions: [{ component: 'ENH_MOM_QUAL', operator: '>', value: 0.4, weight: 2 }, { component: 'VOL_SPIKE_15M', operator: '>', value: 1.5, weight: 1.5 }], logic: 'AND', cooldown: 600 },
+    STRAT_EFFICIENCY: { name: '🧬 Efficiency-Momentum', description: 'Efficiency, momentum quality, dan pressure acceleration. Harga bergerak efisien dengan momentum bersih. Lev: 5-10x, Hold: 30m-2h', conditions: [{ component: 'SYN_EFF_15M', operator: '>', value: 0.8, weight: 2 }, { component: 'SYN_VEL_15M', operator: '>', value: 3000, weight: 1.5 }, { component: 'ENH_MOM_QUAL', operator: '>', value: 0.5, weight: 1.5 }], logic: 'AND', cooldown: 300 },
     STRAT_SWING: { name: '🏛️ Swing Accumulation', description: 'Aset sedang diakumulasi institusi dengan Institutional Footprint tinggi. Hold 1-3 hari mengikuti uang pintar. Lev: 3-5x', conditions: [{ component: 'MASTER_SCORE', operator: '>', value: 52, weight: 1 }, { component: 'SYN_FLOW_15M', operator: '>', value: 4500, weight: 1.5 }, { component: 'ENH_INST', operator: '>', value: 0.5, weight: 2 }], logic: 'AND', cooldown: 900, biasLogic: 'LONG' },
     STRAT_BASIS: { name: '💎 Delta-Neutral Basis', description: 'Selisih harga Futures vs Spot + funding raksasa. Resiko harga nol, murni bunga inap. Lev: 1x, Hold: 7d-30d', conditions: [{ component: 'FUNDING_RATE', operator: 'ABS>', value: 0.001, weight: 2 }], logic: 'AND', cooldown: 3600, biasLogic: 'CONTRARIAN' },
-    STRAT_WALLS: { name: '🧱 Wall Defender', description: 'Harga tertahan tembok pesanan raksasa. Strategi rebound dengan resiko rendah. Lev: 5-12x, Hold: 1h-4h', conditions: [{ component: 'OB_WALL', operator: '==', value: true, weight: 2 }], logic: 'AND', cooldown: 300 },
-    STRAT_FISHER: { name: '🌊 Liquidity Fisher', description: 'Titik jenuh pembalikan saat likuiditas kosong dan menyentuh tembok institusi. Pantulan ekstrim. Lev: 5-10x, Hold: 15m-45m', conditions: [{ component: 'OB_SPREAD', operator: '>', value: 20, weight: 2 }, { component: 'OB_DEPTH', operator: '>', value: 2, weight: 1.5 }], logic: 'AND', cooldown: 300, biasLogic: 'LONG' },
+    STRAT_WALLS: { name: '🧱 Wall Defender', description: 'Harga tertahan tembok pesanan raksasa. Strategi rebound dengan resiko rendah. Lev: 5-12x, Hold: 1h-4h', conditions: [{ component: 'OB_WALL_DETECTED', operator: '==', value: true, weight: 2 }], logic: 'AND', cooldown: 300 },
+    STRAT_FISHER: { name: '🌊 Liquidity Fisher', description: 'Titik jenuh pembalikan saat likuiditas kosong dan menyentuh tembok institusi. Pantulan ekstrim. Lev: 5-10x, Hold: 15m-45m', conditions: [{ component: 'OB_SPREAD', operator: '>', value: 20, weight: 2 }, { component: 'OB_DEPTH_RATIO', operator: '>', value: 2, weight: 1.5 }], logic: 'AND', cooldown: 300, biasLogic: 'LONG' },
     STRAT_VOID: { name: '🕳️ Order Book Vacuum', description: 'Lubang likuiditas antara harga saat ini dengan tembok berikutnya. Pergerakan kilat zona kosong. Lev: 20x, Hold: 5m-10m', conditions: [{ component: 'OB_SPREAD', operator: '>', value: 6.0, weight: 2 }], logic: 'AND', cooldown: 120 },
     STRAT_SENTIMENT: { name: '⚖️ Sentiment Contrarian', description: 'Posisi berlawanan dengan kerumunan ritel optimis/pesimis. Anti-herd entry. Lev: 10x, Hold: 1h-4h', conditions: [{ component: 'LSR_ZSCORE', operator: 'ABS>', value: 1.8, weight: 2 }], logic: 'AND', cooldown: 600, biasLogic: 'CONTRARIAN' },
     STRAT_MEAN_REV: { name: '🔄 Mean Reversion', description: 'Titik jenuh harga jauh dari VWAP + Net Flow stabil/reverse. Snap-back ke rata-rata. Lev: 5-10x, Hold: 30m-1h', conditions: [{ component: 'PRICE_FROM_HIGH', operator: 'ABS>', value: 3, weight: 2 }], logic: 'AND', cooldown: 300, biasLogic: 'CONTRARIAN' },
-    STRAT_PATIENCE: { name: '⌛ Patience Sniper', description: 'Setup Perfect Storm. Semua enhanced signals alignment: MTF Pro, Net Flow, Inst Footprint, Mom Quality, Book Res. Lev: 2-5x, Hold: 12h-48h', conditions: [{ component: 'MASTER_SCORE', operator: '>', value: 72, weight: 2 }, { component: 'SYN_FLOW_15M', operator: 'ABS>', value: 45000, weight: 2 }, { component: 'ENH_INST', operator: '>', value: 0.7, weight: 2 }, { component: 'ENH_MOM_QUALITY', operator: '>', value: 0.6, weight: 1.5 }, { component: 'ENH_BOOK_RES', operator: '>', value: 0.6, weight: 1.5 }], logic: 'AND', cooldown: 900 },
-    STRAT_IGNITION: { name: '📈 Momentum Ignition', description: 'Awal trend sehat: OI naik tajam + Net Capital Inflow + Pressure Acceleration + Momentum Quality. Lev: 3x, Hold: 3d-7d', conditions: [{ component: 'MASTER_SCORE', operator: '>', value: 52, weight: 1 }, { component: 'SYN_FLOW_15M', operator: '>', value: 12000, weight: 1.5 }, { component: 'ENH_MOM_QUALITY', operator: '>', value: 0.5, weight: 2 }], logic: 'AND', cooldown: 600 },
+    STRAT_PATIENCE: { name: '⌛ Patience Sniper', description: 'Setup Perfect Storm. Semua enhanced signals alignment: MTF Pro, Net Flow, Inst Footprint, Mom Quality, Book Res. Lev: 2-5x, Hold: 12h-48h', conditions: [{ component: 'MASTER_SCORE', operator: '>', value: 72, weight: 2 }, { component: 'SYN_FLOW_15M', operator: 'ABS>', value: 45000, weight: 2 }, { component: 'ENH_INST', operator: '>', value: 0.7, weight: 2 }, { component: 'ENH_MOM_QUAL', operator: '>', value: 0.6, weight: 1.5 }, { component: 'ENH_BOOK_RES', operator: '>', value: 0.6, weight: 1.5 }, { component: 'GUARD_ALLOWED', operator: '==', value: true, weight: 1 }], logic: 'AND', cooldown: 900 },
+    STRAT_IGNITION: { name: '📈 Momentum Ignition', description: 'Awal trend sehat: OI naik tajam + Net Capital Inflow + Pressure Acceleration + Momentum Quality. Lev: 3x, Hold: 3d-7d', conditions: [{ component: 'MASTER_SCORE', operator: '>', value: 52, weight: 1 }, { component: 'SYN_FLOW_15M', operator: '>', value: 12000, weight: 1.5 }, { component: 'ENH_MOM_QUAL', operator: '>', value: 0.5, weight: 2 }], logic: 'AND', cooldown: 600 },
     STRAT_FUNDING: { name: '💸 Funding Rate Arb', description: 'Selisih ekstrim Funding Rate vs Premium Index. Long saat funding negatif, Short saat positif tinggi. Lev: 1-3x, Hold: 8h-24h', conditions: [{ component: 'FUNDING_RATE', operator: 'ABS>', value: 0.0008, weight: 2 }], logic: 'AND', cooldown: 1800, biasLogic: 'CONTRARIAN' },
     STRAT_SAFETY: { name: '🛡️ Toxic Flow Filter', description: 'Sistem pelindung modal. Identifikasi koin dimanipulasi robot HFT. JANGAN TRADE. Risk Guard.', conditions: [{ component: 'MICRO_VPIN', operator: '>', value: 0.8, weight: 2 }], logic: 'AND', cooldown: 60, biasLogic: 'STAY_AWAY', maxPositions: 0 }
 };
@@ -367,7 +390,6 @@ let currentFilter = 'ALL';
 let currentCatFilter = 'ALL';
 let scannerResults = [];
 let selectedCoin = null;
-let composerProfile = 'GLOBAL';   // GLOBAL, AGGRESSIVE, MODERATE, CONSERVATIVE, SCALPER
 let composerTimeframe = 'GLOBAL'; // GLOBAL, 1MENIT, 5MENIT, 15MENIT, 30MENIT, 1JAM
 let currentDetailTab = 'MAIN';
 let scannerSignalId = null;
@@ -376,11 +398,8 @@ const STORAGE_KEY_MAPPING = STORAGE_KEY + '_mapping';
 
 // ⚡ Helper: Get active profile/timeframe (resolve GLOBAL from main settings)
 function getActiveProfileTimeframe() {
-    // Import global settings if GLOBAL is selected
-    const globalProfile = window.globalViewSettings?.profile || 'AGGRESSIVE';
     const globalTimeframe = window.globalViewSettings?.timeframe || '15MENIT';
-
-    const profile = composerProfile === 'GLOBAL' ? globalProfile : composerProfile;
+    const profile = 'GLOBAL'; // Legacy profile system removed
     const timeframe = composerTimeframe === 'GLOBAL' ? globalTimeframe : composerTimeframe;
 
     return { profile, timeframe };
@@ -388,13 +407,9 @@ function getActiveProfileTimeframe() {
 
 // ⚡ Helper: Get profile/timeframe from a signal (respects signal's own setting or falls back to global)
 function getSignalProfileTimeframe(sig) {
-    const globalProfile = window.globalViewSettings?.profile || 'AGGRESSIVE';
     const globalTimeframe = window.globalViewSettings?.timeframe || '15MENIT';
-
-    const sigProfile = sig?.profile || 'GLOBAL';
+    const profile = 'GLOBAL'; // Legacy profile system removed
     const sigTimeframe = sig?.timeframe || 'GLOBAL';
-
-    const profile = sigProfile === 'GLOBAL' ? globalProfile : sigProfile;
     const timeframe = sigTimeframe === 'GLOBAL' ? globalTimeframe : sigTimeframe;
 
     return { profile, timeframe };
@@ -441,13 +456,7 @@ export function render(container) {
                     <span class="text-[8px] text-bb-muted uppercase font-black">📊 Data Source:</span>
                     <div class="flex items-center gap-2">
                         <span class="text-[7px] text-bb-muted uppercase">Profile:</span>
-                        <select id="composer-profile" class="bg-bb-black border border-bb-border text-[9px] text-white px-2 py-0.5 rounded focus:border-bb-gold outline-none">
-                            <option value="GLOBAL" ${composerProfile === 'GLOBAL' ? 'selected' : ''}>🌐 GLOBAL</option>
-                            <option value="AGGRESSIVE" ${composerProfile === 'AGGRESSIVE' ? 'selected' : ''}>🔥 AGGRESSIVE</option>
-                            <option value="MODERATE" ${composerProfile === 'MODERATE' ? 'selected' : ''}>⚖️ MODERATE</option>
-                            <option value="CONSERVATIVE" ${composerProfile === 'CONSERVATIVE' ? 'selected' : ''}>🛡️ CONSERVATIVE</option>
-                            <option value="SCALPER" ${composerProfile === 'SCALPER' ? 'selected' : ''}>⚡ SCALPER</option>
-                        </select>
+                        <span class="text-[9px] text-bb-gold font-bold px-2 py-0.5 bg-black/50 border border-bb-border rounded">🌐 GLOBAL</span>
                     </div>
                     <div class="flex items-center gap-2">
                         <span class="text-[7px] text-bb-muted uppercase">Timeframe:</span>
@@ -902,8 +911,8 @@ export function detectUnitFromPath(path) {
     if (!path) return '';
     const p = path.toLowerCase();
     if (p.includes('funding') || p.includes('fundingrate') || p.includes('funding_rate')) return '%';
-    if (p.includes('percent') || p.includes('percent_change') || p.includes('delta') || p.includes('change')) return '%';
-    //    if (p.includes('price') || p.includes('last') || p.includes('openinterest') || p.includes('oi') || p.includes('vol')) return '$';
+    if (p.includes('percent') || p.includes('percent_change') || p.includes('delta') || p.includes('change') || p.includes('distance') || p.includes('spread')) return '%';
+    if (p.includes('score')) return 'pts';
     return '';
 }
 
@@ -1160,16 +1169,6 @@ function renderEditor() {
             <div class="p-2 bg-black/30 rounded border border-white/10 space-y-1.5">
                 <label class="text-[8px] font-black text-bb-muted uppercase">📊 Data Source</label>
                 <div class="flex gap-3 items-center">
-                    <div class="flex items-center gap-1.5">
-                        <span class="text-[7px] text-bb-muted">Profile:</span>
-                        <select id="edit-profile" class="bg-bb-black border border-white/20 text-[9px] text-white px-1.5 py-0.5 rounded">
-                            <option value="GLOBAL" ${(c.profile || 'GLOBAL') === 'GLOBAL' ? 'selected' : ''}>🌐 GLOBAL</option>
-                            <option value="AGGRESSIVE" ${c.profile === 'AGGRESSIVE' ? 'selected' : ''}>🔥 AGGRESSIVE</option>
-                            <option value="MODERATE" ${c.profile === 'MODERATE' ? 'selected' : ''}>⚖️ MODERATE</option>
-                            <option value="CONSERVATIVE" ${c.profile === 'CONSERVATIVE' ? 'selected' : ''}>🛡️ CONSERVATIVE</option>
-                            <option value="SCALPER" ${c.profile === 'SCALPER' ? 'selected' : ''}>⚡ SCALPER</option>
-                        </select>
-                    </div>
                     <div class="flex items-center gap-1.5">
                         <span class="text-[7px] text-bb-muted">Timeframe:</span>
                         <select id="edit-timeframe" class="bg-bb-black border border-white/20 text-[9px] text-white px-1.5 py-0.5 rounded">
@@ -1753,8 +1752,7 @@ function showPresetsModal(container) {
                     logic: preset.logic || 'AND',
                     conditions: JSON.parse(JSON.stringify(preset.conditions)),
                     outputAction: 'SIGNAL',
-                    biasMode: 'AUTO',
-                    biasLogic: preset.biasLogic,
+                    biasMode: preset.biasLogic || 'AUTO',
                     closeOnFlip: false,
                     maxPositions: 1,
                     cooldown: preset.cooldown || 300,
@@ -2061,8 +2059,14 @@ function evaluateSignal(sig, coin, data) {
             const ma = data.signals?.masterSignal?.action;
             bias = (ma === 'BUY' || ma === 'LONG') ? 'SHORT' : 'LONG';
         } else {
-            const ma = data.signals?.masterSignal?.action;
-            bias = (ma === 'BUY' || ma === 'LONG') ? 'LONG' : (ma === 'SELL' || ma === 'SHORT') ? 'SHORT' : 'WAIT';
+            const ma = data.signals?.masterSignal?.action || 'WAIT';
+            if (ma === 'BUY' || ma === 'LONG' || ma === 'STRONG_BUY' || ma === 'STRONG_LONG') bias = 'LONG';
+            else if (ma === 'SELL' || ma === 'SHORT' || ma === 'STRONG_SELL' || ma === 'STRONG_SHORT') bias = 'SHORT';
+            else {
+                // Dynamic directional momentum fallback if AI Master is neutral
+                const chg = data.raw?.PRICE?.percent_change_5MENIT || 0;
+                bias = chg > 0 ? 'LONG' : (chg < 0 ? 'SHORT' : 'WAIT');
+            }
         }
     }
 
@@ -2091,8 +2095,82 @@ function evaluateCondition(cond, data) {
     return { passed, actual, target };
 }
 
-function getNestedValue(obj, path) {
+function getNestedValue(obj, path, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENIT') {
     if (!obj || !path) return undefined;
+
+    // Fast-path: Check if the path natively exists on the object (e.g., from computeData's normalized schema)
+    const directVal = path.split('.').reduce((o, k) => (o || {})[k], obj);
+    if (directVal !== undefined) return directVal;
+
+    // Helper to safely extract any signal value
+    const getSigVal = (sigObj, metaKey) => {
+        if (!sigObj) return undefined;
+        if (typeof sigObj === 'number' || typeof sigObj === 'string' || typeof sigObj === 'boolean') return sigObj;
+        if (metaKey && sigObj.metadata && sigObj.metadata[metaKey] !== undefined) return sigObj.metadata[metaKey];
+        if (sigObj.rawValue !== undefined) return sigObj.rawValue;
+        if (sigObj.normalizedScore !== undefined) return sigObj.normalizedScore;
+        return undefined; // Let the standard split reducer try next if needed
+    };
+
+    // Intercept legacy paths and bind them to the new v2 schema structure
+    if (path.startsWith('signals.')) {
+        const sigPath = path.substring(8); // remove 'signals.'
+
+        // 1. Master Signal routing
+        if (sigPath.startsWith('masterSignal.')) {
+            const ms = getMasterSignal(obj, profile, timeframe) || {};
+            const key = sigPath.replace('masterSignal.', '');
+
+            // Map legacy mtfAligned specifically to the new mtfConfluence schema
+            if (key === 'mtfAligned') {
+                return obj.signals?.mtfConfluence?.[profile]?.aligned || false;
+            }
+
+            return key.split('.').reduce((o, k) => (o || {})[k], ms);
+        }
+
+        // 2. Microstructure routing
+        if (sigPath.startsWith('micro.')) {
+            const micro = getMicrostructure(obj, profile) || {};
+            const subPath = sigPath.replace('micro.', '');
+            const baseObj = subPath.split('.')[0];
+            const valObj = micro[baseObj];
+            if (valObj) {
+                // Return dynamic value if trying to read rawValue / normalizedScore 
+                const sigVal = getSigVal(valObj);
+                if (sigVal !== undefined && (subPath.endsWith('.rawValue') || subPath.endsWith('.normalizedScore'))) return sigVal;
+            }
+            return subPath.split('.').reduce((o, k) => (o || {})[k], micro);
+        }
+
+        // 3. Fallback to extracting from grouped signals (Enhanced, Synthesis, etc)
+        const signalsObj = getSignals(obj, profile, timeframe) || {};
+
+        // Let's resolve 'signals.enhanced.cvd.rawValue' type paths against the flat signals
+        const parts = sigPath.split('.');
+        const category = parts[0]; // e.g., 'enhanced', 'marketRegime', 'institutional_guard'
+
+        if (category === 'enhanced' || category === 'marketRegime' || category === 'institutional_guard') {
+            // Map legacy top-level prefixes to the new flat structures where possible
+            const componentName = parts[1];
+            const tailPath = parts.slice(1).join('.');
+
+            // First see if componentName directly exists in flattened signals
+            const flatValObj = signalsObj[componentName];
+            if (flatValObj) {
+                const sigVal = getSigVal(flatValObj);
+                if (sigVal !== undefined && (tailPath.endsWith('.rawValue') || tailPath.endsWith('.normalizedScore'))) return sigVal;
+            }
+
+            // Try standard reduction on the signalsObj
+            let reduced = tailPath.split('.').reduce((o, k) => (o || {})[k], signalsObj);
+            if (reduced !== undefined) return reduced;
+
+            // Try the category root if it's there
+            return tailPath.split('.').reduce((o, k) => (o || {})[k], signalsObj[category] || {});
+        }
+    }
+
     return path.split('.').reduce((o, k) => (o || {})[k], obj);
 }
 
@@ -2376,16 +2454,19 @@ async function executeSignal(sig, coin, result, data) {
 
             // 🛡️ SMART DUPLICATE CHECK 🛡️
             // "Jika nilai order sama, jangan order baru"
-            const lastExec = lastExecutions.get(coin);
+            let lastExec = lastExecutions.get(coin);
+            if (!lastExec) {
+                try {
+                    const stored = localStorage.getItem(`last_exec_v2_${coin}`);
+                    if (stored) lastExec = JSON.parse(stored);
+                } catch (e) { }
+            }
             if (lastExec) {
                 const isSameSide = lastExec.side === side;
-                const isSameSize = Math.abs(Number(lastExec.size) - Number(sz)) < (Number(sz) * 0.01); // 1% tolerance
-                const isRecent = (Date.now() - lastExec.ts) < 5 * 60_000; // 5 min memory
+                const isRecent = (Date.now() - lastExec.ts) < 60_000; // STRICT 60-second cooldown for entries
 
-                // If it's a NEW entry (not a DCA of existing position) and identical to last, BLOCK.
-                // We assume if 'existing' is present, we might be doing DCA, so we check that separately.
-                if (isSameSide && isSameSize && isRecent && !existing) {
-                    console.log(`[COMPOSER] 🛑 Duplicate blocked for ${coin}: Side(${side}) Size(${sz}) matches last exec.`);
+                if (isSameSide && isRecent && !existing) {
+                    console.log(`[COMPOSER] 🛑 STORM BLOCKED (Entry) ${coin}: Waiting for 60s cooldown. (Last exec: ${((Date.now() - lastExec.ts) / 1000).toFixed(1)}s ago)`);
                     return false;
                 }
             }
@@ -2411,26 +2492,32 @@ async function executeSignal(sig, coin, result, data) {
 
                         const dcaKey = `dca_count_${coin}`;
                         const dcaCount = Number(localStorage.getItem(dcaKey) || 0);
+                        const lastDcaTs = Number(localStorage.getItem(`last_dca_ts_${coin}`) || 0);
+                        const dcaCooldownPassed = (Date.now() - lastDcaTs) > 60_000;
+
+                        if (!dcaCooldownPassed) {
+                            console.log(`[COMPOSER] 🛑 STORM BLOCKED (DCA) ${coin}: Cooldown active. Waiting OKX API to sync average price.`);
+                            return false;
+                        }
 
                         if (pnlPct < minDD && dcaCount < maxCounts) {
                             console.log(`[COMPOSER] Smart DCA Triggered for ${coin}: PnL ${pnlPct * 100}% < ${minDD * 100}%, Count ${dcaCount}/${maxCounts}`);
 
                             // OPTIMISTIC UPDATE: Increment count BEFORE async call to prevent race
                             localStorage.setItem(dcaKey, dcaCount + 1);
+                            // SET LOCK BEFORE ASYNC CALL TO PREVENT RACING
+                            lastExecutions.set(coin, { side, size: sz, price, ts: Date.now() });
+                            try { localStorage.setItem(`last_exec_v2_${coin}`, JSON.stringify({ side, size: sz, price, ts: Date.now() })); } catch (e) { }
 
                             try {
                                 const tdMode = localStorage.getItem('okx_margin_mode') || 'cross';
-                                const adj = await OkxClient.adjustSize(coin, String(sz));
-                                if (parseFloat(adj) === 0) {
-                                    showToast(`Order too small for ${coin} lot step (min required > $${usdSize.toFixed(2)})`, 'error');
-                                } else {
-                                    await OkxClient.placeOrder({ instId: coin, side: side, ordType: 'market', sz: String(adj), tdMode });
-                                    // Trigger TP/SL Sync after DCA
-                                    const tp = sig.orderConfig?.tpPct;
-                                    const sl = sig.orderConfig?.slPct;
-                                    if (tp || sl) {
-                                        setTimeout(() => OkxClient.syncTpSl(coin, tp, sl).catch(e => console.error('[COMPOSER] TP/SL Sync failed after DCA', e)), 2000);
-                                    }
+                                console.log(`[COMPOSER] 🚀 FIRE DCA: ${coin} $${usdSize.toFixed(2)} (Count ${dcaCount + 1})`);
+                                await OkxClient.placeOrderByUsd({ instId: coin, usd: usdSize, side: side, ordType: 'market', tdMode });
+                                // Trigger TP/SL Sync after DCA
+                                const tp = sig.orderConfig?.tpPct;
+                                const sl = sig.orderConfig?.slPct;
+                                if (tp || sl) {
+                                    setTimeout(() => OkxClient.syncTpSl(coin, tp, sl).catch(e => console.error('[COMPOSER] TP/SL Sync failed after DCA', e)), 2000);
                                 }
                             } catch (e) {
                                 console.error('[COMPOSER] placeOrder adjusted failed', e);
@@ -2438,8 +2525,6 @@ async function executeSignal(sig, coin, result, data) {
                             }
 
                             showToast(`🧠 Smart DCA: ${coin} accumulated`, 'success');
-
-                            lastExecutions.set(coin, { side, size: sz, price, ts: Date.now() });
                             return true;
                         } else {
                             console.log(`[COMPOSER] Smart DCA skipped: PnL ${pnlPct * 100}%, Count ${dcaCount}`);
@@ -2483,6 +2568,7 @@ async function executeSignal(sig, coin, result, data) {
                             // Reset DCA counter on a full close
                             localStorage.setItem(`dca_count_${coin}`, 0);
                             lastExecutions.set(coin, { side: closeSide, size: String(closeSz), price, ts: Date.now() });
+                            try { localStorage.setItem(`last_exec_v2_${coin}`, JSON.stringify({ side: closeSide, size: String(closeSz), price, ts: Date.now() })); } catch (e) { }
                             return true;
                         } catch (e) {
                             console.error('[COMPOSER] closeOnFlip failed', e);
@@ -2498,19 +2584,19 @@ async function executeSignal(sig, coin, result, data) {
                 // ─── NEW ENTRY ────────────────────────────────────────
                 console.log(`[COMPOSER] Opening NEW position for ${coin} size=${sz} ($${usdSize.toFixed(2)})`);
 
+                // SET LOCK BEFORE ASYNC CALL TO PREVENT RACING
+                lastExecutions.set(coin, { side, size: sz, price, ts: Date.now() });
+                try { localStorage.setItem(`last_exec_v2_${coin}`, JSON.stringify({ side, size: sz, price, ts: Date.now() })); } catch (e) { }
+
                 try {
                     const tdMode = localStorage.getItem('okx_margin_mode') || 'cross';
-                    const adj = await OkxClient.adjustSize(coin, String(sz));
-                    if (parseFloat(adj) === 0) {
-                        showToast(`Order too small for ${coin} lot step (min required > $${usdSize.toFixed(2)})`, 'error');
-                    } else {
-                        await OkxClient.placeOrder({ instId: coin, side: side, ordType: 'market', sz: String(adj), tdMode });
-                        // Trigger TP/SL Sync
-                        const tp = sig.orderConfig?.tpPct;
-                        const sl = sig.orderConfig?.slPct;
-                        if (tp || sl) {
-                            setTimeout(() => OkxClient.syncTpSl(coin, tp, sl).catch(e => console.error('[COMPOSER] TP/SL Sync failed', e)), 2000);
-                        }
+                    console.log(`[COMPOSER] 🚀 FIRE ENTRY: ${coin} $${usdSize.toFixed(2)}`);
+                    await OkxClient.placeOrderByUsd({ instId: coin, usd: usdSize, side: side, ordType: 'market', tdMode });
+                    // Trigger TP/SL Sync
+                    const tp = sig.orderConfig?.tpPct;
+                    const sl = sig.orderConfig?.slPct;
+                    if (tp || sl) {
+                        setTimeout(() => OkxClient.syncTpSl(coin, tp, sl).catch(e => console.error('[COMPOSER] TP/SL Sync failed', e)), 2000);
                     }
                 } catch (e) {
                     console.error('[COMPOSER] new entry placeOrder failed', e);
@@ -2520,8 +2606,6 @@ async function executeSignal(sig, coin, result, data) {
                 showToast(`🎼 Signal Executed: ${coin} ${side}`, 'success');
                 // Reset DCA count on new entry
                 localStorage.setItem(`dca_count_${coin}`, 0);
-
-                lastExecutions.set(coin, { side, size: sz, price, ts: Date.now() });
 
                 // Update signal mapping for REAL mode
                 const currentOwned = sigPosMapping.get(sig.id) || [];

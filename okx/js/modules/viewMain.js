@@ -98,7 +98,7 @@ export function render(container) {
     `;
 }
 
-export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
+export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENIT') {
     // 1.1 Price Action
     updatePriceAction(data.raw?.PRICE, data.analytics?.priceAction, timeframe);
 
@@ -224,7 +224,7 @@ function updateRegime(regime, vol) {
         </div>
         
         <div class="mt-2 text-[9px] text-bb-muted text-center border-t border-bb-border pt-1">
-            RECC: <span class="text-white font-bold">AGGRESSIVE</span>
+            RECC: <span class="text-white font-bold">INSTITUTIONAL</span>
         </div>
     `;
 }

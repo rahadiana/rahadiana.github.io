@@ -66,7 +66,7 @@ export function render(container) {
     });
 }
 
-export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
+export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENIT') {
     if (!data) return;
     lastData = data;
 
@@ -91,12 +91,12 @@ function calculateLiquidationMap(price, atr, liqData) {
     // 1. Leverage tiers with MMR per-tier (OKX-like approximations)
     const baseLeverages = [
         { x: 100, mmr: 0.005, weight: 1.5 },
-        { x: 75,  mmr: 0.0065, weight: 1.3 },
-        { x: 50,  mmr: 0.01, weight: 1.2 },
-        { x: 25,  mmr: 0.015, weight: 1.0 },
-        { x: 20,  mmr: 0.02, weight: 0.9 },
-        { x: 10,  mmr: 0.05, weight: 0.7 },
-        { x: 5,   mmr: 0.10, weight: 0.5 }
+        { x: 75, mmr: 0.0065, weight: 1.3 },
+        { x: 50, mmr: 0.01, weight: 1.2 },
+        { x: 25, mmr: 0.015, weight: 1.0 },
+        { x: 20, mmr: 0.02, weight: 0.9 },
+        { x: 10, mmr: 0.05, weight: 0.7 },
+        { x: 5, mmr: 0.10, weight: 0.5 }
     ];
 
     let clusters = [];

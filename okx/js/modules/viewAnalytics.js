@@ -62,7 +62,7 @@ export function render(container) {
     `;
 }
 
-export function update(data, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
+export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENIT') {
     const signalsObj = data.signals?.profiles?.[profile]?.timeframes?.[timeframe]?.signals || {};
     // FIX: Proper fallback if nested analytics is missing or empty
     const analytics = (signalsObj.analytics && Object.keys(signalsObj.analytics).length > 0)
@@ -185,7 +185,7 @@ function updateOrderFlow(of) {
 
         <div>
             <div class="flex justify-between text-[10px] mb-1">
-                <span class="text-bb-muted">AGGRESSIVE BUY</span>
+                <span class="text-bb-muted">INSTITUTIONAL BIAS</span>
                 <span class="${aggBuy > 0.55 ? 'text-bb-green' : 'text-white'} font-bold">${Utils.safeFixed(aggBuy * 100, 1)}%</span>
             </div>
             <div class="w-full bg-bb-dark h-1.5 rounded overflow-hidden">

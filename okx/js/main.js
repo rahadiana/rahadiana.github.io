@@ -94,7 +94,7 @@ let shouldReconnect = true;
 const marketState = {};
 window.marketState = marketState; // Expose for Signal Composer
 let selectedCoin = null;
-let selectedProfile = 'MODERATE';
+let selectedProfile = 'INSTITUTIONAL_BASE';
 let selectedTimeframe = '15MENIT';
 
 // Packet Deduplication & Health Monitoring
@@ -121,7 +121,7 @@ const tradeModePill = document.getElementById('trade-mode-pill');
 const apiStatusLbl = document.getElementById('api-status');
 // settings button is shown per-view inside OKX Trade tab
 
-// ⭐ AGGRESSIVE MESH HEALTH MONITOR (3s reaction time)
+// ⭐ INSTITUTIONAL MESH HEALTH MONITOR (3s reaction time)
 setInterval(() => {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     if (p2p && p2p.isSuperPeer) return;
@@ -913,15 +913,21 @@ function updateTicker(data) {
     const price = data.raw?.PRICE?.last || data.PRICE?.price || 0;
     const change = data.raw?.PRICE?.percent_change_24h || data.PRICE?.percent_change_24h || data.raw?.PRICE?.percent_change_1JAM || 0;
     const vol = (data.raw?.VOL?.vol_BUY_1JAM || 0) + (data.raw?.VOL?.vol_SELL_1JAM || 0);
-    const regime = data.signals?.marketRegime?.currentRegime || 'UNKNOWN';
+    const regime = data.signals?.composite?.marketRegime?.metadata?.regime || data.signals?.marketRegime?.currentRegime || 'UNKNOWN';
     const pColor = change >= 0 ? 'text-bb-green' : 'text-bb-red';
 
-    let masterSig = 'NEUTRAL';
+    let masterSig = 'WAIT';
     let conf = 0;
-    if (data.masterSignals?.['15MENIT']?.MODERATE) {
-        masterSig = data.masterSignals['15MENIT'].MODERATE.action;
-        conf = data.masterSignals['15MENIT'].MODERATE.confidence;
+
+    // Retrieve master signal safely from new schema
+    const ms = data.masterSignals?.['15MENIT']?.['INSTITUTIONAL_BASE']
+        || data.signals?.profiles?.['INSTITUTIONAL_BASE']?.timeframes?.['15MENIT']?.masterSignal;
+
+    if (ms) {
+        masterSig = ms.action || 'WAIT';
+        conf = ms.confidence || 0;
     }
+
     // Support both old (BUY/SELL) and new (LONG/SHORT) signal format
     const sColor = (masterSig === 'BUY' || masterSig === 'LONG') ? 'text-bb-green' : (masterSig === 'SELL' || masterSig === 'SHORT') ? 'text-bb-red' : 'text-bb-muted';
 

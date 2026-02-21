@@ -9,7 +9,7 @@ let currentSort = { column: 'totalVol', dir: 'desc' };
 let currentSearch = '';
 let activeFilterChip = 'ALL';
 let cachedMarketState = null;
-let cachedProfile = 'AGGRESSIVE';
+let cachedProfile = 'INSTITUTIONAL_BASE';
 let cachedTimeframe = '15MENIT';
 
 // ⚡ Export settings for other modules (like Composer)
@@ -205,7 +205,7 @@ const getSortVal = (r, col) => {
     if (val && typeof val === 'object' && val.spike !== undefined) return val.spike;
     return val;
 };
-export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT') {
+export function update(marketState, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENIT') {
     cachedMarketState = marketState;
     cachedProfile = profile;
     cachedTimeframe = timeframe;
@@ -220,14 +220,29 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
         const tfObj = profileObj.timeframes?.[timeframe] || {};
         const signals = getSignals(data, profile, timeframe);
         const master = getMasterSignal(data, profile, timeframe);
+        if (id === 'TAO-USDT-SWAP') {
+            console.log("TAO DATA DEBUG:", { signals, master, rawSignalsObj: tfObj.signals });
+        }
         const micro = getMicrostructure(data, profile);
         const volModule = tfObj.volatility || signals.volatility || {};
         const price = raw.PRICE || sigRoot.PRICE || {};
         const vol = raw.VOL || sigRoot.VOL || {};
         const oiRaw = raw.OI || sigRoot.OI || {};
         const fundingRaw = raw.FUNDING || sigRoot.FUNDING || {};
-        const analytics = data.analytics || {};
-        const fundAn = analytics.funding || {};
+        const aiMetrics = sigRoot.ai_metrics || {};
+        const syn = aiMetrics.synthesis || data.synthesis || {};
+        const volRegime = sigRoot.volatilityRegime || {};
+        const marketRegime = sigRoot.marketRegime || {};
+
+        // Helper to aggressively find the numeric value of a signal, adapting to various potential schema shapes
+        const getSigVal = (sigObj, metaKey) => {
+            if (!sigObj) return 0;
+            if (typeof sigObj === 'number') return sigObj; // Already flat
+            if (metaKey && sigObj.metadata && sigObj.metadata[metaKey] !== undefined) return Number(sigObj.metadata[metaKey]) || 0;
+            if (sigObj.rawValue !== undefined) return Number(sigObj.rawValue) || 0;
+            if (sigObj.normalizedScore !== undefined) return Number(sigObj.normalizedScore) || 0;
+            return 0; // Fallback
+        };
 
         const getSpikeData = (tf, minutes) => {
             const avgVal = raw.AVG || sigRoot.AVG || {};
@@ -261,7 +276,7 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
             return { total: t, buy: b, sell: s, net, ratio };
         };
 
-        const syn = data.synthesis || {};
+        // We use aiMetrics for advanced insights in the new schema
         const flow = syn.flow || {};
         const eff = syn.efficiency || {};
         const mom = syn.momentum || {};
@@ -299,38 +314,60 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
             confRequired: master.requiredConfirmations || 3,
 
             // SMART Matrix Mapping (REPAIRED)
-            smi: master.normalizedScore || 0,
-            intensity: dash.intensity?.intensity || micro?.vpin?.rawValue || signals.microstructure?.vpin?.rawValue || 0,
-            divergence: signals.microstructure?.volumeFreqDivergence?.rawValue || 0,
-            accum: dash.accumScore?.accumScore || 0,
-            whale: signals.microstructure?.volumeFreqDivergence?.rawValue || 0,
-            riRatio: dash.riRatio?.riRatio || 0,
-            pressure: signals.microstructure?.vwoi?.rawValue || 0,
-            trend: master.marketRegime || master.currentRegime || sigRoot.marketRegime?.currentRegime || 'RANGING',
-            breakout: dash.breakoutPct?.breakoutPct || 0,
+            smi: master.normalizedScore || dash.smi || 0,
+            intensity: getSigVal(signals.microstructure?.vpin) || dash.intensity?.intensity || 0,
+            divergence: getSigVal(signals.microstructure?.volumeFreqDivergence, 'freqImbalance') || getSigVal(signals.orderBook?.orderFlowImbalance, 'tradeSizeImbalance') || dash.divergence || 0,
+            accum: dash.accumScore?.accumScore || aiMetrics.accumScore || getSigVal(signals.microstructure?.accumScore) || 0,
+            whale: getSigVal(signals.microstructure?.volumeFreqDivergence, 'volImbalance') || dash.whale || 0,
+            riRatio: dash.riRatio?.riRatio || aiMetrics.riRatio || data.analytics?.orderFlow?.takerBuyRatio || getSigVal(signals.orderBook?.orderFlowImbalance, 'takerBuyRatio') || 0,
+            pressure: getSigVal(signals.microstructure?.vwoi) || dash.pressure || 0,
+            trend: marketRegime.currentRegime || master.marketRegime || master.currentRegime || 'RANGING',
+            breakout: dash.breakoutPct?.breakoutPct || aiMetrics.breakoutPct || 0,
             lsi: signals.sentiment?.sentimentAlignment?.normalizedScore || 50,
-            mode: sigRoot.volatilityRegime?.regime || 'NORMAL',
+            mode: signals.volatility?.volatilityRegime?.metadata?.regime || volModule.volatilityRegime?.regime || volRegime.regime || 'NORMAL',
             signal: master.action || 'WAIT',
             volQuality: dash.volQuality?.qualityScore || (getSpikeData('15MENIT', 15).durability * 100),
 
             // VOLATILITY Matrix Mapping
-            atrPct: volModule.atrMomentum?.metadata?.atrPct || 0,
-            gkPct: volModule.gkVolatility?.metadata?.gkVolPct || 0,
-            avgVol: volModule.volatilityRegime?.avgVolatility || 0,
-            volRegime: volModule.volatilityRegime?.regime || 'NORMAL',
+            atrPct: getSigVal(signals.volatility?.atrMomentum, 'atrPct') || getSigVal(volModule.atrMomentum, 'atrPct') || 0,
+            gkPct: getSigVal(signals.volatility?.gkVolatility, 'gkVolPct') || getSigVal(volModule.gkVolatility, 'gkVolPct') || 0,
+            avgVol: getSigVal(signals.volatility?.volatilityRegime, 'avgVolatility') || getSigVal(volModule.volatilityRegime, 'avgVolatility') || volRegime?.avgVolatility || 0,
+            volRegime: signals.volatility?.volatilityRegime?.metadata?.regime || signals.volatility?.volatilityRegime?.regime || volModule.volatilityRegime?.regime || volRegime.regime || 'NORMAL',
 
             fundingDiv: {
-                rate: fundAn.currentRate || 0,
-                hasDivergence: fundAn.hasDivergence || false
+                rate: signals.derivatives?.fundingPressure?.metadata?.currentRate || fundingRaw.funding_Rate || 0,
+                hasDivergence: signals.derivatives?.fundingPressure?.metadata?.hasDivergence || false
             },
             liqQuality: dash.liqQuality?.qualityScore || signals.derivatives?.liquidationCascade?.normalizedScore || 0,
             momentum: signals.volatility?.atrMomentum?.rawValue || 0,
 
             // Raw Microstructure
-            vpin: signals.microstructure?.vpin?.rawValue || 0,
-            lambda: signals.microstructure?.kyleLambda?.rawValue || 0,
-            vwoi: signals.microstructure?.vwoi?.rawValue || 0,
-            ofi: signals.orderBook?.ofi?.normalizedScore || 50,
+            vpin: getSigVal(signals.microstructure?.vpin),
+            lambda: getSigVal(signals.microstructure?.kyleLambda),
+            vwoi: getSigVal(signals.microstructure?.vwoi),
+            ofi: getSigVal(signals.orderBook?.ofi),
+
+            // Advanced Microstructure (New Schema)
+            cohesion: data.microstructure?.INSTITUTIONAL_BASE?.cohesion?.cohesion || 0,
+            fbi: data.microstructure?.INSTITUTIONAL_BASE?.fbi?.fbi || 0,
+            ofsi: data.microstructure?.INSTITUTIONAL_BASE?.ofsi?.ofsi || 0,
+            fsi: data.microstructure?.INSTITUTIONAL_BASE?.fsi?.fsi || 0,
+            zPress: data.microstructure?.INSTITUTIONAL_BASE?.zPress?.zPress || 0,
+            tim: data.microstructure?.INSTITUTIONAL_BASE?.tim?.tim || 0,
+            rangeComp: data.microstructure?.INSTITUTIONAL_BASE?.rangeComp?.rangeComp || 0,
+            pfci: data.microstructure?.INSTITUTIONAL_BASE?.pfci?.pfci || 0,
+            microLsi: data.microstructure?.INSTITUTIONAL_BASE?.lsi?.lsi || 0,
+            vpSignal: data.microstructure?.INSTITUTIONAL_BASE?.volumeProfile?.signal || 'NEUTRAL',
+            vpInterp: data.microstructure?.INSTITUTIONAL_BASE?.volumeProfile?.interpretation || 'AT_POC',
+            // --- New Institutional ---
+            lambda: data.microstructure?.INSTITUTIONAL_BASE?.kyleLambda?.rawValue || 0,
+            liqSweep: tfObj.signals?.institutional?.liquiditySweep?.rawValue || 0,
+            smartDiv: tfObj.signals?.institutional?.smartMoneyDivergence?.normalizedScore || 0,
+            volFreqDiv: data.analytics?.orderFlow?.volumeFreqDivergence?.rawValue || 0,
+            corwin: data.analytics?.spreadEstimates?.corwinSchultz || 0,
+            correlation: data.analytics?.correlation?.correlation || 0,
+            cis: data.analytics?.cis?.cis || tfObj.signals?.microstructure?.cis?.cis || 0,
+            // -------------------------
             bidDepth: raw.OB?.bidDepth || 0,
             askDepth: raw.OB?.askDepth || 0,
             spread: raw.OB?.spreadBps || 0,
@@ -352,13 +389,13 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
             })(),
             bookHealth: raw.OB?.bookHealth || 'N/A',
             oi: raw.OI?.oiChange1h || 0,
-            funding: fundAn.currentRate !== undefined ? fundAn.currentRate : (fundingRaw.funding_Rate || 0),
-            nextFunding: fundAn.nextRate !== undefined ? fundAn.nextRate : (fundingRaw.funding_nextFundingRate || 0),
-            payout8h: fundAn.fundingAPR || (fundAn.currentRate ? fundAn.currentRate * 3 * 365 * 100 : 0), // Use APR as the projection
-            fundingBias: fundAn.fundingPressure || (fundingRaw.funding_Rate > 0 ? 'LONG HEAVY' : fundingRaw.funding_Rate < 0 ? 'SHORT HEAVY' : 'BALANCED'),
+            funding: signals.derivatives?.fundingPressure?.metadata?.currentRate || fundingRaw.funding_Rate || 0,
+            nextFunding: signals.derivatives?.fundingPressure?.metadata?.nextRate || fundingRaw.funding_nextFundingRate || 0,
+            payout8h: signals.derivatives?.fundingPressure?.metadata?.fundingAPR || (fundingRaw.funding_Rate ? fundingRaw.funding_Rate * 3 * 365 * 100 : 0),
+            fundingBias: signals.derivatives?.fundingPressure?.metadata?.fundingPressure || (fundingRaw.funding_Rate > 0 ? 'LONG HEAVY' : fundingRaw.funding_Rate < 0 ? 'SHORT HEAVY' : 'BALANCED'),
             liqRisk: signals.derivatives?.liquidationCascade?.normalizedScore || 0,
-            marketRegime: sigRoot.marketRegime?.currentRegime || 'RANGING',
-            volRegime: sigRoot.volatilityRegime?.regime || 'NORMAL',
+            marketRegime: marketRegime.currentRegime || 'RANGING',
+            volRegime: volRegime.regime || 'NORMAL',
             lsr: signals.sentiment?.sentimentAlignment?.normalizedScore || 50,
             lsrZ: signals.sentiment?.sentimentAlignment?.metadata?.avgZScore || 0,
             lsrRatio: (() => {
@@ -367,9 +404,9 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
                 const key = tfMap[timeframe] || 'timeframes_15min';
                 return lsrData[key]?.longShortRatio || 1.0;
             })(),
-            takerBuy: analytics.orderFlow?.takerBuyRatio || 0.5,
-            aggressive: analytics.orderFlow?.aggressiveBuyPct || 0.5,
-            tradeSizeImb: analytics.orderFlow?.tradeSizeImbalance || 0,
+            takerBuy: data.analytics?.orderFlow?.takerBuyRatio || getSigVal(signals.orderBook?.orderFlowImbalance, 'takerBuyRatio') || 0.5,
+            aggressive: data.analytics?.orderFlow?.aggressiveBuyPct || getSigVal(signals.orderBook?.orderFlowImbalance, 'aggressiveBuyPct') || 0.5,
+            tradeSizeImb: data.analytics?.orderFlow?.tradeSizeImbalance || getSigVal(signals.orderBook?.orderFlowImbalance, 'tradeSizeImbalance') || 0,
 
             // Other TF data
             chg1m: Number(price.percent_change_1MENIT) || 0,
@@ -398,7 +435,7 @@ export function update(marketState, profile = 'AGGRESSIVE', timeframe = '15MENIT
             f2h: getFreqData('2JAM'),
             f24h: getFreqData('24JAM'),
             vwapDelta: (() => {
-                const vwap = analytics.execution?.vwap || 0;
+                const vwap = sigRoot.execution?.vwap || 0;
                 if (vwap > 0 && price.last > 0) return ((price.last - vwap) / vwap) * 100;
                 return 0;
             })(),
@@ -575,9 +612,23 @@ function renderHeader() {
             html += th('FRIC', 'fric15m', 'text-center');
             html += th('VELO', 'velocity15m', 'text-right');
         } else if (currentMatrix === 'MICROSTRUCTURE') {
+            html += th('COHESION', 'cohesion', 'text-center');
+            html += th('OFSI', 'ofsi', 'text-center');
+            html += th('FBI', 'fbi', 'text-center');
+            html += th('FSI', 'fsi', 'text-center');
+            html += th('Z-PRESS', 'zPress', 'text-center');
+            html += th('TIM', 'tim', 'text-center');
+            html += th('SQUEEZE', 'rangeComp', 'text-center');
+            html += th('PFCI', 'pfci', 'text-center');
+            html += th('MICRO-LSI', 'microLsi', 'text-center');
+            html += th('VOL-PROF', 'vpSignal', 'text-center');
             html += th('VPIN', 'vpin', 'text-center');
+            html += th('CIS', 'cis', 'text-center');
+            html += th('SMART-DIV', 'smartDiv', 'text-center');
+            html += th('LIQ-SWEEP', 'liqSweep', 'text-center');
             html += th('KYLE', 'lambda', 'text-center');
-            html += th('VWOI', 'vwoi', 'text-center');
+            html += th('CS-SPREAD', 'corwin', 'text-center');
+            html += th('CORR', 'correlation', 'text-center');
             html += th('WHALE', 'whale', 'text-center');
         } else if (currentMatrix === 'LIQUIDITY') {
             html += th('OFI', 'ofi', 'text-center');
@@ -756,7 +807,11 @@ function renderRows(data) {
             rowHtml += wrap(r.intensity ? Utils.safeFixed(r.intensity, 2) : '-', 'text-center', r.intensity > 1.8 ? 'text-bb-red font-bold' : 'text-bb-muted');
             rowHtml += wrap(r.divergence ? Utils.safeFixed(r.divergence, 2) : '-', 'text-center', r.divergence > 0.3 ? 'text-bb-gold font-bold' : 'text-bb-muted');
             rowHtml += wrap(r.accum ? Utils.safeFixed(r.accum, 0) : '-', 'text-center', r.accum > 60 ? 'text-bb-green' : r.accum < 40 ? 'text-bb-red' : 'text-bb-muted');
-            rowHtml += wrap(r.whale > 0.3 ? '🐋' : '-', 'text-center');
+
+            const whaleVal = r.whale ? Utils.safeFixed(r.whale, 2) : '-';
+            const whaleIcon = r.whale > 0.3 ? ' 🐋' : '';
+            rowHtml += wrap(whaleVal + whaleIcon, 'text-center', r.whale > 0.3 ? 'text-bb-gold font-bold' : 'text-bb-muted');
+
             rowHtml += wrap(r.riRatio ? `${Utils.safeFixed(r.riRatio * 100, 0)}%` : '-', 'text-center', r.riRatio > 0.7 ? 'text-bb-green' : r.riRatio < 0.3 ? 'text-bb-muted/50' : 'text-bb-muted');
             rowHtml += wrap(r.pressure ? Utils.safeFixed(r.pressure, 2) : '0', 'text-center', r.pressure > 0.1 ? 'text-bb-green' : r.pressure < -0.1 ? 'text-bb-red' : 'text-bb-muted');
             rowHtml += wrap(`<span class="px-1 bg-white/5 text-[8px]">${r.trend}</span>`, 'text-center');
@@ -803,9 +858,31 @@ function renderRows(data) {
                 rowHtml += wrap(`${Math.round(r.conf)}%`, 'text-center', 'text-bb-gold font-bold');
                 rowHtml += wrap(`${r.confCount}/${r.confRequired}`, 'text-center', 'text-white opacity-60');
             } else if (currentMatrix === 'MICROSTRUCTURE') {
+                rowHtml += wrap(Utils.safeFixed(r.cohesion, 0), 'text-center', r.cohesion > 70 ? 'text-bb-green font-bold' : r.cohesion < 30 ? 'text-bb-red font-bold' : 'text-white');
+                rowHtml += wrap(Utils.safeFixed(r.ofsi, 0), 'text-center', r.ofsi > 60 ? 'text-bb-green' : r.ofsi < 40 ? 'text-bb-red' : 'text-white');
+                rowHtml += wrap(Utils.safeFixed(r.fbi, 0), 'text-center', r.fbi > 80 ? 'text-bb-red' : r.fbi < 20 ? 'text-bb-green' : 'text-white');
+                rowHtml += wrap(Utils.safeFixed(r.fsi, 0), 'text-center', r.fsi > 60 ? 'text-bb-green' : r.fsi < 40 ? 'text-bb-red' : 'text-white');
+
+                const zColor = r.zPress > 2 ? 'text-bb-green font-bold' : r.zPress < -2 ? 'text-bb-red font-bold' : 'text-white';
+                rowHtml += wrap(Utils.safeFixed(r.zPress, 2), 'text-center', zColor);
+
+                rowHtml += wrap(Utils.safeFixed(r.tim, 0), 'text-center', r.tim > 60 ? 'text-bb-green' : r.tim < 40 ? 'text-bb-red' : 'text-white');
+                rowHtml += wrap(Utils.safeFixed(r.rangeComp, 0), 'text-center', r.rangeComp > 80 ? 'text-bb-gold font-bold animate-pulse' : 'text-white');
+                rowHtml += wrap(Utils.safeFixed(r.pfci, 0), 'text-center', r.pfci > 70 ? 'text-bb-purple' : 'text-white');
+
+                rowHtml += wrap(Utils.safeFixed(r.microLsi, 0), 'text-center', r.microLsi > 70 ? 'text-bb-red font-bold' : 'text-white');
+
+                const vpColor = r.vpSignal === 'DISCOUNT' || r.vpSignal === 'UNDERVALUED' ? 'text-bb-green font-bold' :
+                    r.vpSignal === 'PREMIUM' || r.vpSignal === 'OVERVALUED' ? 'text-bb-red font-bold' : 'text-white text-[8px]';
+                rowHtml += wrap(`${r.vpSignal}<br><span class="text-[8px] text-white/50">${r.vpInterp}</span>`, 'text-center', vpColor);
+
                 rowHtml += wrap(Utils.safeFixed(r.vpin, 3), 'text-center', r.vpin > 0.6 ? 'text-bb-red' : 'text-white');
+                rowHtml += wrap(Utils.safeFixed(r.cis, 0), 'text-center', r.cis > 65 ? 'text-bb-green font-bold' : r.cis < 35 ? 'text-bb-red' : 'text-bb-gold');
+                rowHtml += wrap(Utils.safeFixed(r.smartDiv, 1), 'text-center', r.smartDiv > 60 ? 'text-bb-green' : 'text-bb-muted');
+                rowHtml += wrap(r.liqSweep > 0.5 ? '🧹' : '-', 'text-center');
                 rowHtml += wrap(Utils.safeFixed(r.lambda, 6), 'text-center', 'text-bb-blue');
-                rowHtml += wrap(Utils.safeFixed(r.vwoi, 2), 'text-center', r.vwoi > 0.1 ? 'text-bb-green' : r.vwoi < -0.1 ? 'text-bb-red' : 'text-bb-muted');
+                rowHtml += wrap(`${Utils.safeFixed(r.corwin, 3)}%`, 'text-center', 'text-bb-gold');
+                rowHtml += wrap(Utils.safeFixed(r.correlation, 2), 'text-center', Math.abs(r.correlation) > 0.8 ? 'text-bb-green font-bold' : 'text-white');
                 rowHtml += wrap(Utils.safeFixed(r.whale, 2), 'text-center', 'text-bb-gold');
             } else if (currentMatrix === 'SYNTHESIS') {
                 const fColor = r.netFlow15m > 0 ? 'text-bb-green' : r.netFlow15m < 0 ? 'text-bb-red' : 'text-bb-muted';

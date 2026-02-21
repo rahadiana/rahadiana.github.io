@@ -1,5 +1,5 @@
 import * as Utils from '../utils.js';
-
+import { getMasterSignal, getMicrostructure } from '../data_helpers.js';
 let currentMode = 'LIQUIDATION'; // Default mode
 let lastState = null;
 let lastRenderTime = 0;
@@ -285,7 +285,7 @@ function renderTreemap(marketState, container) {
                 const threshold = 0.35; // show only meaningful signals
                 if (hlOverlay && s >= threshold) {
                     const color = s > 0.7 ? 'bg-bb-red' : 'bg-bb-gold';
-                    hlBadgeHtml = `<div class="absolute top-1 right-1 px-1.5 py-0.5 text-[9px] font-black text-white rounded ${color} shadow-md">HL ${Math.round(s*100)}%</div>`;
+                    hlBadgeHtml = `<div class="absolute top-1 right-1 px-1.5 py-0.5 text-[9px] font-black text-white rounded ${color} shadow-md">HL ${Math.round(s * 100)}%</div>`;
                 }
             }
         } catch (e) { /* ignore */ }
@@ -316,12 +316,14 @@ function renderRadar(marketState, container) {
 
     const coins = Object.keys(marketState).map(id => {
         const d = marketState[id];
-        const master = d.signals?.profiles?.AGGRESSIVE?.timeframes?.['15MENIT']?.masterSignal || {};
+        const master = getMasterSignal(d, 'INSTITUTIONAL_BASE', '15MENIT') || {};
+        if (id === 'BTC-USDT-SWAP') { console.log('RADAR DEBUG BTC MASTER:', master, 'DATA:', d); }
         const price = d.raw?.PRICE || {};
+        const score = master.score || master.normalizedScore || d.dashboard?.smi || d.signals?.masterSignal?.normalizedScore || 50;
         return {
             id, coin: id,
-            smi: master.normalizedScore || 50,
-            chg: price.percent_change_24h || 0,
+            smi: score,
+            chg: price.percent_change_24JAM ?? price.percent_change_24h ?? 0,
             vol: (() => {
                 const coinVol = price.total_vol || 0;
                 const px = price.last || 0;
@@ -366,7 +368,7 @@ function renderRadar(marketState, container) {
 
     document.getElementById('legend-text').innerText = 'X-Axis: Intelligence Score (SMI) | Y-Axis: 24H Price Performance';
     document.getElementById('heatmap-total-label').innerText = 'AVG SMI:';
-        document.getElementById('heatmap-total').innerText = `${Utils.formatNumber(coins.reduce((sum, c) => sum + c.smi, 0) / Math.max(1, coins.length), 1)}`;
+    document.getElementById('heatmap-total').innerText = `${Utils.formatNumber(coins.reduce((sum, c) => sum + c.smi, 0) / Math.max(1, coins.length), 1)}`;
 }
 
 /**
@@ -375,10 +377,13 @@ function renderRadar(marketState, container) {
 function renderConvergence(marketState, container) {
     const coins = Object.keys(marketState).map(id => {
         const d = marketState[id];
-        const tfData = d.signals?.profiles?.AGGRESSIVE?.timeframes || {};
+        const tfData = d.signals?.profiles?.INSTITUTIONAL_BASE?.timeframes || {};
         return {
             id, coin: id,
-            tfs: ['1MENIT', '5MENIT', '15MENIT', '1JAM'].map(tf => tfData[tf]?.masterSignal?.action || 'WAIT')
+            tfs: ['1MENIT', '5MENIT', '15MENIT', '1JAM'].map(tf => {
+                const ms = getMasterSignal(d, 'INSTITUTIONAL_BASE', tf) || {};
+                return ms.action || 'WAIT';
+            })
         };
     }).sort((a, b) => {
         // Support both BUY/SELL (legacy) and LONG/SHORT (new) format
@@ -408,7 +413,7 @@ function renderConvergence(marketState, container) {
     document.getElementById('heatmap-total-label').innerText = 'MARKET BREADTH (BULLISH):';
     const totalEl = document.getElementById('heatmap-total');
     if (totalEl) {
-           totalEl.innerText = `${Utils.safeFixed(breadthPct, 1)}%`;
+        totalEl.innerText = `${Utils.safeFixed(breadthPct, 1)}%`;
         totalEl.className = `text-[10px] font-bold ${breadthPct > 60 ? 'text-bb-green' : breadthPct < 40 ? 'text-bb-red' : 'text-white'}`;
     }
 }
@@ -463,14 +468,15 @@ function renderBeta(marketState, container) {
 function renderAlpha(marketState, container) {
     const coins = Object.keys(marketState).map(id => {
         const d = marketState[id];
-        const master = d.signals?.profiles?.AGGRESSIVE?.timeframes?.['15MENIT']?.masterSignal || {};
+        const master = getMasterSignal(d, 'INSTITUTIONAL_BASE', '15MENIT') || {};
         const corr = d.analytics?.correlation || { correlation: 0.8 };
+        const score = master.score || master.normalizedScore || d.dashboard?.smi || d.signals?.masterSignal?.normalizedScore || 50;
         // Alpha score = Normal Score * (1 - Correlation)
-        const alpha = (master.normalizedScore || 50) * (1 - (corr.correlation || 0.8));
+        const alpha = score * (1 - (corr.correlation || 0.8));
         return {
             id, coin: id,
             alpha: alpha,
-            score: master.normalizedScore || 50,
+            score: score,
             corr: corr.correlation || 0.8
         };
     }).sort((a, b) => b.alpha - a.alpha).slice(0, 12);
@@ -606,7 +612,7 @@ function renderSkew(marketState, container) {
     const coins = Object.keys(marketState).map(id => {
         const d = marketState[id];
         const of = d.analytics?.orderFlow || {};
-        const micro = d.signals?.profiles?.AGGRESSIVE?.timeframes?.['15MENIT']?.signals?.microstructure || {};
+        const micro = getMicrostructure(d, 'INSTITUTIONAL_BASE') || {};
         return {
             id, coin: id,
             skew: of.tradeSizeImbalance || 0,
@@ -669,11 +675,25 @@ function renderOIEfficiency(marketState, container) {
         };
     }).sort((a, b) => b.eff - a.eff);
 
-    const maxOI = Math.max(0.1, ...coins.map(c => Math.abs(c.oiChgPct)));
-    const maxVol = Math.max(1000000, ...coins.map(c => c.vol));
+    // X-Axis (OI Change): Use 90th percentile clamping to avoid a single outlier compressing the chart
+    const sortedOI = [...coins].map(c => Math.abs(c.oiChgPct)).sort((a, b) => a - b);
+    const robustMaxOI = sortedOI.length > 0 ? Math.max(0.5, sortedOI[Math.floor(sortedOI.length * 0.9)] || 0.5) : 0.5;
 
-    const mapX = (val) => w / 2 + (val / maxOI) * (w / 2 - padding);
-    const mapY = (val) => h - padding - (val / maxVol) * (h - padding * 2);
+    // Y-Axis (Volume): Use Logarithmic scale since BTC dwarps all altcoins
+    const minLogVol = 5; // 10^5 = 100k
+    const maxLogVol = Math.max(6, ...coins.map(c => Math.log10(Math.max(100000, c.vol))));
+
+    const mapX = (val) => {
+        const clampedVal = Math.max(-robustMaxOI * 1.5, Math.min(robustMaxOI * 1.5, val));
+        return w / 2 + (clampedVal / (robustMaxOI * 1.5)) * (w / 2 - padding);
+    };
+
+    const mapY = (val) => {
+        const logV = Math.log10(Math.max(100000, val));
+        const normalized = (logV - minLogVol) / (maxLogVol - minLogVol);
+        const clampedNorm = Math.max(0, Math.min(1.2, normalized));
+        return h - padding - (clampedNorm) * (h - padding * 2);
+    };
 
     container.innerHTML = `
         <svg class="w-full h-full">
@@ -717,8 +737,21 @@ function renderSentimentZ(marketState, container) {
 
     const coins = Object.keys(marketState).map(id => {
         const d = marketState[id];
-        const signals = d.signals?.profiles?.AGGRESSIVE?.timeframes?.['15MENIT']?.signals?.sentiment || {};
-        const z = signals.sentimentAlignment?.metadata?.avgZScore || 0;
+
+        // Safely extract Z-Score from deep paths or default to 0
+        let z = 0;
+
+        // Source 1: The original deep sentimentAlignment path
+        const sentSignals = d.signals?.profiles?.INSTITUTIONAL_BASE?.timeframes?.['15MENIT']?.signals?.sentiment || {};
+        if (sentSignals.sentimentAlignment?.metadata?.avgZScore !== undefined) {
+            z = sentSignals.sentimentAlignment.metadata.avgZScore;
+        }
+        // Source 2: Flat Price Pressure Z-Score (Microstructure)
+        else {
+            const micro = getMicrostructure(d, 'INSTITUTIONAL_BASE') || {};
+            z = micro.zPress?.zPress || 0;
+        }
+
         return { id, coin: id, z: z };
     }).sort((a, b) => b.z - a.z);
 
