@@ -447,6 +447,7 @@ export function render(container) {
                         <button id="btn-presets" class="px-2 py-1 bg-purple-500/10 border border-purple-500/30 text-purple-400 text-[9px] font-black hover:bg-purple-500/20 rounded">📋 PRESETS</button>
                         <button id="btn-import" class="px-2 py-1 bg-blue-500/10 border border-blue-500/30 text-blue-400 text-[9px] font-black hover:bg-blue-500/20 rounded">📥 IMPORT</button>
                         <button id="btn-export-all" class="px-2 py-1 bg-green-500/10 border border-green-500/30 text-green-400 text-[9px] font-black hover:bg-green-500/20 rounded">📤 EXPORT ALL</button>
+                        <a id="btn-chat-ai" href="https://chatgpt.com/g/g-69944e77eb0881919d85b78a182fc7b0-signal-composer" target="_blank" rel="noopener noreferrer" class="px-2 py-1 bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 text-[9px] font-black hover:bg-indigo-500/20 rounded">🤖 CHAT AI</a>
                         <button id="btn-new" class="px-2 py-1 bg-bb-gold/10 border border-bb-gold/30 text-bb-gold text-[9px] font-black hover:bg-bb-gold/20 rounded">+ NEW</button>
                     </div>
                 </div>
