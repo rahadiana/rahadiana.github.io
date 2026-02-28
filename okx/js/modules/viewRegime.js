@@ -68,12 +68,12 @@ export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENI
 
     // Helper function for deep extraction
     const getSigVal = (sigObj, metaKey) => {
-        if (!sigObj) return 0;
+        if (!sigObj) return null;
         if (typeof sigObj === 'number') return sigObj;
         if (metaKey && sigObj.metadata && sigObj.metadata[metaKey] !== undefined) return sigObj.metadata[metaKey];
         if (sigObj.rawValue !== undefined) return sigObj.rawValue;
         if (sigObj.normalizedScore !== undefined) return sigObj.normalizedScore;
-        return 0;
+        return null;
     };
 
     // Market regime may be a string or an object under master
@@ -84,7 +84,7 @@ export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENI
     // Volatility roots: prefer signals volatility then analytics
     const volRoot = signalsObj.volatility || data.analytics?.volatility || {};
     const volRegimeName = signalsObj.volatilityRegime?.regime || marketRegimeNode.volRegime || volRoot.volatilityRegime?.metadata?.regime || volRoot.volatilityRegime?.regime || volRoot.regime || 'NORMAL_VOL';
-    const atrPct = getSigVal(volRoot.atrMomentum, 'atrPct') || getSigVal(signalsObj.atrMomentum, 'atrPct') || data.analytics?.volatility?.atr || 0;
+    const atrPct = getSigVal(volRoot.atrMomentum, 'atrPct') ?? getSigVal(signalsObj.atrMomentum, 'atrPct') ?? data.analytics?.volatility?.atr ?? 0;
 
     // 1. Regime Update
     const elName = document.getElementById('reg-current-name');

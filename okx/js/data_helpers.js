@@ -40,10 +40,18 @@ export function getMasterSignal(data, profile, timeframe) {
     || data.signals?.masterSignals?.[timeframe]?.[profile]
     || {};
 
-  return { ...ms, ...rec };
+  const final = { ...ms, ...rec };
+  // Normalize keys for consistency across modules
+  if (final.score !== undefined && final.normalizedScore === undefined) final.normalizedScore = final.score;
+  if (final.action === 'BUY') final.action = 'LONG';
+  if (final.action === 'SELL') final.action = 'SHORT';
+
+  return final;
 }
 
 export function getMicrostructure(data, profile) {
+  // Support both raw data (profiles nesting) and normalized data from computeData
+  if (data?.signals?.micro) return data.signals.micro;
   return data.microstructure?.[profile] || {};
 }
 
@@ -144,7 +152,10 @@ export function computeData(data, profile = 'INSTITUTIONAL_BASE', timeframe = '1
     ...(data.masterSignals?.[timeframe]?.[profile] || {}),
     ...(tfObj.recommendation || {})
   };
+  // Debug logging removed: tfMaster is available for downstream normalization
   const analytics = data.analytics || {};
+  // Ensure new analytics fields from schema are surfaced
+  const candleSpreadRoot = data.candleSpread || analytics.candleSpread || {};
 
   // Raw data
   const price = raw.PRICE || sigRoot.PRICE || {};
@@ -275,7 +286,7 @@ export function computeData(data, profile = 'INSTITUTIONAL_BASE', timeframe = '1
     volDurability: getVolSpike('15MENIT', 15).durability * 100, // Normalized 0-100
     volSpike1h: getVolSpike('1JAM', 60).spike,
     // Buy Ratios (computed if missing in raw)
-    volBuyRatio1h: (vol.vol_BUY_1JAM && vol.vol_SELL_1JAM) ? (vol.vol_BUY_1JAM / vol.vol_SELL_1JAM) : 1.0,
+    volBuyRatio1h: (vol.vol_BUY_1JAM != null && vol.vol_SELL_1JAM > 0) ? (vol.vol_BUY_1JAM / vol.vol_SELL_1JAM) : null,
     // Frequency
     freqTotal1m: getFreq('1MENIT').total,
     freqTotal5m: getFreq('5MENIT').total,
@@ -303,12 +314,30 @@ export function computeData(data, profile = 'INSTITUTIONAL_BASE', timeframe = '1
     btcOutperform,
     // Add vwap distance
     vwapDistance: (() => {
-      const vwap = analytics.execution?.vwap?.value;
       const last = price.last || 0;
-      return (vwap && vwap > 0) ? ((last - vwap) / vwap) * 100 : 0;
+      // Try multiple shapes/locations for VWAP coming from different backends
+      let candidate = null;
+      const execRoot = analytics.execution ?? data.execution ?? {};
+
+      if (execRoot !== null && execRoot !== undefined) {
+        if (typeof execRoot === 'number') candidate = execRoot;
+        else if (typeof execRoot === 'object') {
+          if (execRoot.value !== undefined && execRoot.value !== null) candidate = execRoot.value;
+          else if (execRoot.vwap !== undefined && execRoot.vwap !== null) candidate = execRoot.vwap;
+          else if (execRoot.price !== undefined && execRoot.price !== null) candidate = execRoot.price;
+        }
+      }
+
+      // Fallbacks: analytics.priceAction.vwap, analytics.execution.vwap (direct number), or data.signals.execution.vwap
+      if (candidate === null || candidate === undefined) {
+        candidate = analytics.priceAction?.vwap ?? analytics.execution?.vwap ?? data.signals?.execution?.vwap ?? null;
+      }
+
+      const vwap = (candidate !== null && candidate !== undefined) ? Number(candidate) : NaN;
+      return (!isNaN(vwap) && vwap > 0) ? ((last - vwap) / vwap) * 100 : 0;
     })(),
     // Add CIS shorthand
-    cisScore: tfSignalsRaw.microstructure?.cis?.cis || tfSignals.cis?.cis || 0
+    cisScore: data.microstructure?.[profile]?.cis?.cis ?? tfSignalsRaw.microstructure?.cis?.cis ?? tfSignals.cis?.cis ?? null
   };
 
   // Build normalized data structure with correct paths
@@ -336,9 +365,9 @@ export function computeData(data, profile = 'INSTITUTIONAL_BASE', timeframe = '1
         vol_total_5MENIT: vol.vol_total_5MENIT || (vol.vol_BUY_5MENIT || 0) + (vol.vol_SELL_5MENIT || 0),
         vol_total_15MENIT: vol.vol_total_15MENIT || (vol.vol_BUY_15MENIT || 0) + (vol.vol_SELL_15MENIT || 0),
         vol_total_1JAM: vol.vol_total_1JAM || (vol.vol_BUY_1JAM || 0) + (vol.vol_SELL_1JAM || 0),
-        buy_sell_ratio_1MENIT: vol.vol_SELL_1MENIT > 0 ? (vol.vol_BUY_1MENIT || 0) / vol.vol_SELL_1MENIT : 1,
-        buy_sell_ratio_5MENIT: vol.vol_SELL_5MENIT > 0 ? (vol.vol_BUY_5MENIT || 0) / vol.vol_SELL_5MENIT : 1,
-        buy_sell_ratio_15MENIT: vol.vol_SELL_15MENIT > 0 ? (vol.vol_BUY_15MENIT || 0) / vol.vol_SELL_15MENIT : 1
+        buy_sell_ratio_1MENIT: vol.vol_SELL_1MENIT > 0 ? (vol.vol_BUY_1MENIT || 0) / vol.vol_SELL_1MENIT : null,
+        buy_sell_ratio_5MENIT: vol.vol_SELL_5MENIT > 0 ? (vol.vol_BUY_5MENIT || 0) / vol.vol_SELL_5MENIT : null,
+        buy_sell_ratio_15MENIT: vol.vol_SELL_15MENIT > 0 ? (vol.vol_BUY_15MENIT || 0) / vol.vol_SELL_15MENIT : null
       },
       OI: {
         openInterest: oiRaw.oi || oiRaw.openInterest || 0,
@@ -380,25 +409,32 @@ export function computeData(data, profile = 'INSTITUTIONAL_BASE', timeframe = '1
         ratio: (() => {
           const tfMap = { '1MENIT': 'timeframes_5min', '5MENIT': 'timeframes_5min', '15MENIT': 'timeframes_15min', '30MENIT': 'timeframes_15min', '1JAM': 'timeframes_1hour' };
           const key = tfMap[timeframe] || 'timeframes_15min';
-          return lsrRaw[key]?.longShortRatio || 1.0;
+          return lsrRaw[key]?.longShortRatio;
         })(),
-        // Correct: long/short ratios come from the nested timeframe object
         longAccountRatio: (() => {
           const tfMap = { '1MENIT': 'timeframes_5min', '5MENIT': 'timeframes_5min', '15MENIT': 'timeframes_15min', '30MENIT': 'timeframes_15min', '1JAM': 'timeframes_1hour' };
           const key = tfMap[timeframe] || 'timeframes_15min';
-          return (lsrRaw[key]?.longRatio || lsrRaw.longRatio || 0.5) * 100;
+          const tfData = lsrRaw[key] || {};
+          const ratio = tfData.longRatio || lsrRaw.longRatio;
+          return ratio != null ? ratio * 100 : null;
         })(),
         shortAccountRatio: (() => {
           const tfMap = { '1MENIT': 'timeframes_5min', '5MENIT': 'timeframes_5min', '15MENIT': 'timeframes_15min', '30MENIT': 'timeframes_15min', '1JAM': 'timeframes_1hour' };
           const key = tfMap[timeframe] || 'timeframes_15min';
-          return (lsrRaw[key]?.shortRatio || lsrRaw.shortRatio || 0.5) * 100;
+          const tfData = lsrRaw[key] || {};
+          const ratio = tfData.shortRatio || lsrRaw.shortRatio;
+          return ratio != null ? ratio * 100 : null;
         })(),
         z: (() => {
           const tfMap = { '1MENIT': 'timeframes_5min', '5MENIT': 'timeframes_5min', '15MENIT': 'timeframes_15min', '30MENIT': 'timeframes_15min', '1JAM': 'timeframes_1hour' };
           const key = tfMap[timeframe] || 'timeframes_15min';
-          return lsrRaw[key]?.z || tfSignals.sentimentAlignment?.metadata?.avgZScore || tfSignalsRaw.sentiment?.sentimentAlignment?.metadata?.avgZScore || 0;
+          return lsrRaw[key]?.z ?? tfSignals.sentimentAlignment?.metadata?.avgZScore ?? tfSignalsRaw.sentiment?.sentimentAlignment?.metadata?.avgZScore;
         })(),
-        percentile: lsrRaw.summary?.percentile || lsrRaw.percentile || 50
+        percentile: (() => {
+          const tfMap = { '1MENIT': 'timeframes_5min', '5MENIT': 'timeframes_5min', '15MENIT': 'timeframes_15min', '30MENIT': 'timeframes_15min', '1JAM': 'timeframes_1hour' };
+          const key = tfMap[timeframe] || 'timeframes_15min';
+          return lsrRaw[key]?.sentimentScore ?? lsrRaw.summary?.sentimentScore ?? lsrRaw.summary?.percentile ?? lsrRaw.percentile;
+        })()
       },
       LIQ: (() => {
         // Support both flat (post-flatten) and grouped (raw) access
@@ -419,7 +455,7 @@ export function computeData(data, profile = 'INSTITUTIONAL_BASE', timeframe = '1
         }
 
         return {
-          liqRate: cascade?.normalizedScore || rawLiq.liqRate || 0,
+          liqRate: cascade?.normalizedScore ?? rawLiq.liqRate ?? null,
           dominantSide: side
         };
       })(),
@@ -432,18 +468,18 @@ export function computeData(data, profile = 'INSTITUTIONAL_BASE', timeframe = '1
         })(),
         depthRatio: (() => {
           const bids = obRaw.bidDepth || 0;
-          const asks = obRaw.askDepth || 1;
-          return bids / asks;
+          const asks = obRaw.askDepth || 0;
+          return asks > 0 ? (bids / asks) : null;
         })(),
         wallDetected: (() => {
           const bids = obRaw.bidDepth || 0;
           const asks = obRaw.askDepth || 0;
           return (asks > bids * 1.5) || (bids > asks * 1.5);
         })(),
-        spread: obRaw.spread || 0,
-        spreadBps: obRaw.spreadBps || 0,
-        bookHealth: obRaw.bookHealth || 'HEALTHY',
-        slippage100k: obRaw.slippage100k || 0
+        spread: obRaw.spread ?? null,
+        spreadBps: obRaw.spreadBps ?? null,
+        bookHealth: obRaw.bookHealth || 'NORMAL',
+        slippage100k: obRaw.slippage100k ?? null
       },
       AVG: {
         ...avgRaw
@@ -452,67 +488,184 @@ export function computeData(data, profile = 'INSTITUTIONAL_BASE', timeframe = '1
     _computed: computed,
     synthesis: syn,
     microstructure: data.microstructure || {},
-    analytics: data.analytics || {},
+    analytics: ({
+      ...analytics,
+      candleSpread: candleSpreadRoot
+    }),
     signals: sigRoot,
     institutional: sigRoot.institutional || {},
     dashboard: {
-      totalScore: tfMaster.score || tfMaster.normalizedScore || 0,
+      ...dash,
+      totalScore: tfMaster.score ?? tfMaster.normalizedScore ?? null,
       recommendation: (() => {
-        const score = tfMaster.score || tfMaster.normalizedScore || 50;
+        const score = tfMaster.score ?? tfMaster.normalizedScore ?? null;
+        if (score === null) return 'HOLD';
         const action = tfMaster.action || 'WAIT';
         if (action === 'LONG' && score >= 75) return 'STRONG_LONG';
         if (action === 'LONG') return 'LONG';
         if (action === 'SHORT' && score >= 75) return 'STRONG_SHORT';
-        if (action === 'SHORT') return 'SHORT';
-        if (action === 'SHORT') return 'SHORT';
         return 'HOLD';
       })(),
-      sentimentScore: tfSignals.sentimentAlignment?.normalizedScore || tfSignalsRaw.sentiment?.sentimentAlignment?.normalizedScore || data.signals?.sentiment?.sentimentAlignment?.normalizedScore || 50,
-      accumScore: dash.accumScore?.accumScore || 0,
-      intensity: dash.intensity?.intensity || 0,
-      breakoutProb: dash.breakoutPct?.breakoutPct || 0,
-      riRatio: dash.riRatio?.riRatio || 0,
-      technicalScore: dash.technicalScore?.technicalScore || calculateTechnicalScore(price, vol, lsrRaw, fundingRaw)
+      sentimentScore: tfSignals.sentimentAlignment?.normalizedScore ?? tfSignalsRaw.sentiment?.sentimentAlignment?.normalizedScore ?? data.signals?.sentiment?.sentimentAlignment?.normalizedScore,
+      accumScore: dash.accumScore?.accumScore,
+      intensity: dash.intensity?.intensity,
+      breakoutProb: dash.breakoutPct?.breakoutPct,
+      riRatio: dash.riRatio?.riRatio,
+      technicalScore: dash.technicalScore?.technicalScore ?? calculateTechnicalScore(price, vol, lsrRaw, fundingRaw),
+      // Volume Quality & Liquidity Quality normalization for UI
+      volQuality: {
+        normalizedScore: (dash.volQuality?.qualityScore !== undefined && dash.volQuality?.qualityScore !== null)
+          ? dash.volQuality.qualityScore
+          : Math.round((computed.volDurability || 0) * 100)
+      },
+      liqQuality: {
+        normalizedScore: (dash.liqQuality?.qualityScore !== undefined && dash.liqQuality?.qualityScore !== null)
+          ? dash.liqQuality.qualityScore
+          : (sigRoot.derivatives?.liquidationCascade?.normalizedScore ?? 0)
+      }
     },
     signals: {
+      ...sigRoot, // KEEP RAW SIGNALS
       masterSignal: {
-        normalizedScore: tfMaster.score || tfMaster.normalizedScore || 0,
-        action: tfMaster.action || 'WAIT',
-        confidence: tfMaster.confidence || 0,
-        confirmations: tfMaster.confirmations || 0,
-        mtfAligned: data.signals?.mtfConfluence?.[profile]?.aligned || tfMaster.mtfAligned || false,
-        tier: tfMaster.tier || 5,
-        contributingSignals: tfMaster.contributingSignals || []
+        // Include the full timeframe master/recommendation object so all example fields
+        // (including shouldTrade, adjustmentFactors, metadata, etc.) are directly available.
+        ...tfMaster,
+        // Maintain normalized, stable top-level accessors used by UI modules
+        normalizedScore: tfMaster.score ?? tfMaster.normalizedScore,
+        action: (tfMaster.action === 'BUY') ? 'LONG' : (tfMaster.action === 'SELL') ? 'SHORT' : (tfMaster.action ?? 'WAIT'),
+        confidence: tfMaster.confidence ?? 0,
+        confirmations: tfMaster.confirmations ?? 0,
+        mtfAligned: data.signals?.mtfConfluence?.[profile]?.aligned ?? tfMaster.mtfAligned ?? false,
+        tier: tfMaster.tier ?? 5,
+        contributingSignals: tfMaster.contributingSignals || [],
+        // Propagate position sizing and risk management from timeframe master/recommendation
+        positionSizing: tfMaster.positionSizing ?? tfObj.positionSizing ?? tfObj.recommendation?.positionSizing ?? null,
+        riskManagement: tfMaster.riskManagement ?? tfObj.riskManagement ?? tfObj.recommendation?.riskManagement ?? null
       },
       micro: {
         vpin: {
-          rawValue: tfSignals.vpin?.rawValue || tfSignalsRaw.microstructure?.vpin?.rawValue || data.microstructure?.[profile]?.vpin?.rawValue || 0,
-          direction: tfSignals.vpin?.direction || tfSignalsRaw.microstructure?.vpin?.direction || data.microstructure?.[profile]?.vpin?.direction || 'NEUTRAL'
+          rawValue: tfSignals.vpin?.rawValue ?? tfSignalsRaw.microstructure?.vpin?.rawValue ?? data.microstructure?.[profile]?.vpin?.rawValue ?? null,
+          direction: tfSignals.vpin?.direction ?? tfSignalsRaw.microstructure?.vpin?.direction ?? data.microstructure?.[profile]?.vpin?.direction ?? 'NEUTRAL'
         },
         ofi: {
-          normalizedScore: tfSignals.ofi?.normalizedScore || tfSignalsRaw.orderBook?.ofi?.normalizedScore || tfSignals.orderFlowImbalance?.normalizedScore || tfSignalsRaw.orderBook?.orderFlowImbalance?.normalizedScore || data.orderBook?.orderFlowImbalance?.normalizedScore || 50
+          normalizedScore: tfSignals.ofi?.normalizedScore
+            ?? tfSignalsRaw.orderBook?.ofi?.normalizedScore
+            ?? tfSignals.orderFlowImbalance?.normalizedScore
+            ?? tfSignalsRaw.orderBook?.orderFlowImbalance?.normalizedScore
+            ?? data.orderBook?.orderFlowImbalance?.normalizedScore
+            ?? data.orderBook?.ofi?.normalizedScore
+            ?? analytics?.sorterMetrics?.toxicFlow?.vpin?.normalizedScore
+            ?? analytics?.sorterMetrics?.toxicFlow?.vpin?.rawValue
+            ?? null
         },
-        spread: { rawValue: obRaw.spreadBps ? obRaw.spreadBps / 100 : (obRaw.spread ? obRaw.spread : 0) },
-        toxicity: { rawValue: tfSignals.volumeFreqDivergence?.rawValue || tfSignalsRaw.microstructure?.volumeFreqDivergence?.rawValue || data.microstructure?.[profile]?.volumeFreqDivergence?.rawValue || 0 }
+        spread: { rawValue: (obRaw.spreadBps != null) ? obRaw.spreadBps / 100 : (obRaw.spread ?? null) },
+        toxicity: { rawValue: tfSignals.volumeFreqDivergence?.rawValue ?? tfSignalsRaw.microstructure?.volumeFreqDivergence?.rawValue ?? data.microstructure?.[profile]?.volumeFreqDivergence?.rawValue ?? null },
+        accVol: {
+          accumulatedVolume: tfSignals.accVol?.accumulatedVolume ?? tfSignalsRaw.microstructure?.accVol?.accumulatedVolume ?? data.microstructure?.[profile]?.accVol?.accumulatedVolume ?? data.microstructure?.[profile]?.accVol?.accVol ?? data.microstructure?.[profile]?.accVol?.rawValue ?? null,
+          rawValue: tfSignals.accVol?.rawValue ?? tfSignals.accVol?.accumulatedVolume ?? tfSignalsRaw.microstructure?.accVol?.rawValue ?? tfSignalsRaw.microstructure?.accVol?.accumulatedVolume ?? data.microstructure?.[profile]?.accVol?.rawValue ?? data.microstructure?.[profile]?.accVol?.accumulatedVolume ?? data.microstructure?.[profile]?.accVol?.accVol ?? null,
+          divergence: tfSignals.accVol?.divergence ?? tfSignalsRaw.microstructure?.accVol?.divergence ?? data.microstructure?.[profile]?.accVol?.divergence ?? null
+        },
+        // Advanced dynamic profile mapping
+        cohesion: data.microstructure?.[profile]?.cohesion || {},
+        fbi: data.microstructure?.[profile]?.fbi || {},
+        ofsi: data.microstructure?.[profile]?.ofsi || {},
+        fsi: data.microstructure?.[profile]?.fsi || {},
+        zPress: data.microstructure?.[profile]?.zPress || {},
+        tim: data.microstructure?.[profile]?.tim || {},
+        rangeComp: data.microstructure?.[profile]?.rangeComp || {},
+        pfci: data.microstructure?.[profile]?.pfci || {},
+        lsi: data.microstructure?.[profile]?.lsi || {},
+        volumeProfile: data.microstructure?.[profile]?.volumeProfile || {},
+        kyleLambda: {
+          rawValue: tfSignals.kyleLambda?.rawValue ?? tfSignalsRaw.microstructure?.kyleLambda?.rawValue ?? data.microstructure?.[profile]?.kyleLambda?.rawValue ?? data.microstructure?.[profile]?.kyleLambda?.value ?? null,
+          direction: tfSignals.kyleLambda?.direction ?? tfSignalsRaw.microstructure?.kyleLambda?.direction ?? data.microstructure?.[profile]?.kyleLambda?.direction ?? null
+        },
+        cvdDivergence: (function(){
+          const src = data.microstructure?.[profile]?.cvdDivergence || tfSignals.cvdDivergence || tfSignalsRaw.microstructure?.cvdDivergence || null;
+          if (!src) {
+            return (dash.cvd ? { cvdSignal: dash.cvd?.signal || 'NONE', divergenceStrength: dash.cvd?.metadata?.divergenceType || 'NONE', isDivergent: (dash.cvd?.metadata?.divergenceType !== 'NONE') } : {});
+          }
+          return {
+            cvdSignal: src.cvdSignal ?? src.signal ?? null,
+            divergenceStrength: src.divergenceStrength ?? src.metadata?.divergenceType ?? src.divergenceType ?? null,
+            isDivergent: (src.isDivergent !== undefined) ? src.isDivergent : (src.divergenceStrength ? src.divergenceStrength !== 'NONE' : false)
+          };
+        })(),
+        cis: data.microstructure?.[profile]?.cis || {},
+        // Map institutional/composite metrics here for easy Signal Composer access
+        liqSweep: tfObj.signals?.institutional?.liquiditySweep || {},
+        smartMoney: tfObj.signals?.composite?.smartMoneyIndex || {}
       },
       enhanced: {
-        cvd: { rawValue: mom.velocity_15MENIT > 0 ? 0.5 : -0.5, divergence: false },
-        institutionalFootprint: { rawValue: mom.aggression_level_15MENIT === 'WHALE' ? 0.9 : mom.aggression_level_15MENIT === 'INSTITUTIONAL' ? 0.7 : 0.3 },
-        momentumQuality: { rawValue: Math.min(1, Math.abs(mom.velocity_15MENIT || 0) / 10000) },
-        bookResilience: { rawValue: dash.liqQuality?.qualityScore / 100 || 0.5 },
-        pressureAcceleration: { rawValue: 0 },
-        amihudIlliquidity: { rawValue: 0.5 }
+        cvd: dash.cvd ? {
+          rawValue: dash.cvd.rawValue,
+          direction: dash.cvd.direction,
+          divergence: dash.cvd.metadata?.divergenceType !== 'NONE',
+          divergenceType: dash.cvd.metadata?.divergenceType
+        } : null,
+
+        institutionalFootprint: dash.institutionalFootprint ? {
+          rawValue: dash.institutionalFootprint.rawValue
+        } : null,
+
+        momentumQuality: dash.momentumQuality ? {
+          rawValue: dash.momentumQuality.rawValue
+        } : null,
+
+        bookResilience: dash.bookResilience ? {
+          rawValue: dash.bookResilience.rawValue
+        } : null,
+
+        pressureAcceleration: dash.pressureAcceleration ? {
+          rawValue: dash.pressureAcceleration.rawValue
+        } : null,
+
+        amihudIlliquidity: dash.amihudIlliquidity ? {
+          rawValue: dash.amihudIlliquidity.rawValue
+        } : null
       },
       marketRegime: {
-        currentRegime: tfSignals.marketRegime?.currentRegime || tfSignalsRaw.composite?.marketRegime?.currentRegime || data.signals?.marketRegime?.currentRegime || 'RANGING',
-        volRegime: tfSignals.volatilityRegime?.regime || tfSignalsRaw.volatility?.volatilityRegime?.regime || data.signals?.volatilityRegime?.regime || 'NORMAL',
-        trendStrength: tfSignals.marketRegime?.trendStrength || tfSignalsRaw.composite?.marketRegime?.trendStrength || data.signals?.marketRegime?.trendStrength || data.signals?.trendStrength || 0.5
+        currentRegime: tfSignals.marketRegime?.currentRegime ?? tfSignals.composite?.marketRegime?.currentRegime ?? tfSignalsRaw.composite?.marketRegime?.currentRegime ?? data.signals?.marketRegime?.currentRegime,
+        volRegime: tfSignals.volatilityRegime?.regime ?? tfSignals.composite?.marketRegime?.volRegime ?? tfSignalsRaw.volatility?.volatilityRegime?.regime ?? data.signals?.volatilityRegime?.regime,
+        trendStrength: tfSignals.marketRegime?.trendStrength ?? tfSignals.composite?.marketRegime?.trendStrength ?? tfSignalsRaw.composite?.marketRegime?.trendStrength ?? data.signals?.marketRegime?.trendStrength ?? data.signals?.trendStrength
       },
-      institutional_guard: data.signals?.institutional_guard || data.institutional_guard || {}
+      institutional_guard: data.signals?.institutional_guard || data.institutional_guard || {},
+      fundingExtreme: dash.fundingExtreme || data.fundingExtreme || data.signals?.fundingExtreme || null,
+      macroPremium: (function() {
+        const mp = data.analytics?.sorterMetrics?.macroPremium || dash.macroPremium || data.sorterMetrics?.macroPremium || data.signals?.macroPremium || null;
+        if (!mp) return null;
+        if (mp.normalizedScore !== undefined) return mp.normalizedScore;
+        if (mp.rawValue !== undefined) return mp.rawValue;
+        return null;
+      })()
+      ,
+      hawkes: (function() {
+        const h = data.analytics?.sorterMetrics?.toxicFlow?.hawkes || analytics.toxicFlow?.hawkes || data.sorterMetrics?.toxicFlow?.hawkes || data.signals?.toxicFlow?.hawkes || null;
+        if (!h) return null;
+        if (h.normalizedScore !== undefined) return h.normalizedScore;
+        if (h.rawValue !== undefined) return h.rawValue;
+        return null;
+      })(),
+      // Expose other analytics groups for easier UI consumption
+      // orderFlow: analytics.orderFlow || data.analytics?.orderFlow || null,
+      // mtfAnalysis: analytics.mtfAnalysis || data.analytics?.mtfAnalysis || null,
+      // spreadEstimates: analytics.spreadEstimates || data.analytics?.spreadEstimates || null,
+      // volatility: analytics.volatility || data.analytics?.volatility || null,
+      // priceAction: analytics.priceAction || data.analytics?.priceAction || null,
+      // customMetrics: analytics.customMetrics || data.analytics?.customMetrics || null,
+      // sorterMetrics: analytics.sorterMetrics || data.analytics?.sorterMetrics || null
     },
     profile: profileObj,
     timeframe: tfObj
   };
+
+  // Expose common analytics groups as shortcuts for UI convenience (if present)
+  normalized.analytics.orderFlow = analytics.orderFlow || data.analytics?.orderFlow || null;
+  normalized.analytics.mtfAnalysis = analytics.mtfAnalysis || data.analytics?.mtfAnalysis || null;
+  normalized.analytics.spreadEstimates = analytics.spreadEstimates || data.analytics?.spreadEstimates || null;
+  normalized.analytics.sorterMetrics = analytics.sorterMetrics || data.analytics?.sorterMetrics || null;
+  normalized.analytics.priceAction = analytics.priceAction || data.analytics?.priceAction || null;
+  normalized.analytics.volatility = analytics.volatility || data.analytics?.volatility || null;
 
   return normalized;
 }

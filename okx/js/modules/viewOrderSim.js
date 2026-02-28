@@ -1051,8 +1051,18 @@ async function loadAccountInfo() {
   }
 }
 
-async function loadRealPositions() {
-  const el = document.getElementById('os-positions'); if (!el) { console.warn('[loadRealPositions] os-positions element not found'); return; }
+async function loadRealPositions(attempt = 0) {
+  const el = document.getElementById('os-positions');
+  if (!el) {
+    // If the view hasn't been rendered yet, retry a few times before giving up
+    if (attempt < 5) {
+      console.debug('[loadRealPositions] os-positions not found, retrying...', attempt + 1);
+      setTimeout(() => loadRealPositions(attempt + 1), 300);
+      return;
+    }
+    console.debug('[loadRealPositions] os-positions element not found after retries — view likely not mounted');
+    return;
+  }
   // el.innerHTML = '<div class="muted">Loading positions...</div>'; // Disabled to prevent overwrite
   const now = Date.now();
   if (now - _lastPosFetch < FETCH_THROTTLE_MS) { console.debug('[loadRealPositions] throttled, skipping'); return; }

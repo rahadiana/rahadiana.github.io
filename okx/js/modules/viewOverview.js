@@ -88,19 +88,19 @@ export function update(marketState, profile = 'INSTITUTIONAL_BASE', timeframe = 
 
         // Helper function for deep extraction
         const getSigVal = (sigObj, metaKey) => {
-            if (!sigObj) return 0;
+            if (!sigObj) return null;
             if (typeof sigObj === 'number') return sigObj;
             if (metaKey && sigObj.metadata && sigObj.metadata[metaKey] !== undefined) return sigObj.metadata[metaKey];
             if (sigObj.rawValue !== undefined) return sigObj.rawValue;
             if (sigObj.normalizedScore !== undefined) return sigObj.normalizedScore;
-            return 0;
+            return null;
         };
 
         // Stats accumulation
-        const fundingRate = getSigVal(signalsObj.derivatives?.fundingPressure, 'currentRate') || raw.FUNDING?.funding_Rate || 0;
+        const fundingRate = getSigVal(signalsObj.derivatives?.fundingPressure, 'currentRate') ?? raw.FUNDING?.funding_Rate ?? 0;
         if (fundingRate) totalFunding += fundingRate;
 
-        const lsrVal = signalsObj.sentiment?.sentimentAlignment?.normalizedScore || raw.LSR?.timeframes_1hour?.longShortRatio || raw.LSR?.lsr_1h || 1;
+        const lsrVal = signalsObj.sentiment?.sentimentAlignment?.normalizedScore ?? raw.LSR?.timeframes_1hour?.longShortRatio ?? raw.LSR?.lsr_1h ?? 1;
         totalLSR += lsrVal;
 
         const trend = master.marketRegime || master.currentRegime || 'NEUTRAL';
@@ -118,7 +118,7 @@ export function update(marketState, profile = 'INSTITUTIONAL_BASE', timeframe = 
             score: master?.normalizedScore ?? master?.score ?? 0,
             action: master?.action || master?.recommendation?.action || 'WAIT',
             vol: signalsObj.volatility?.volatilityRegime?.metadata?.regime || signalsObj.volatility?.volatilityRegime?.regime || data.analytics?.volatility?.volatilityRegime || 'NORMAL',
-            intensity: getSigVal(micro?.vpin) || micro?.zPress?.zPress || micro?.intensity || 0
+            intensity: getSigVal(micro?.vpin) ?? micro?.zPress?.zPress ?? micro?.intensity ?? 0
         };
     });
 

@@ -645,12 +645,12 @@ function checkSignal(strategy, data, rule = {}) {
 
     // Helper to safely extract any signal value
     const getSigVal = (sigObj, metaKey) => {
-        if (!sigObj) return 0;
+        if (!sigObj) return null;
         if (typeof sigObj === 'number') return sigObj;
         if (metaKey && sigObj.metadata && sigObj.metadata[metaKey] !== undefined) return sigObj.metadata[metaKey];
         if (sigObj.rawValue !== undefined) return sigObj.rawValue;
         if (sigObj.normalizedScore !== undefined) return sigObj.normalizedScore;
-        return 0;
+        return null;
     };
 
     // === DYNAMIC TIMEFRAME & PROFILE BASED ON STRATEGY ===
@@ -758,7 +758,7 @@ function checkSignal(strategy, data, rule = {}) {
         }
 
         case 'SCALP': {
-            const vpin = getSigVal(micro.vpin) || getSigVal(micro.vpinBvc);
+            const vpin = getSigVal(micro.vpin) ?? getSigVal(micro.vpinBvc);
             const efficiency = syn.efficiency?.character_15MENIT || syn.efficiency?.character_5MENIT || '';
             const cvd = getSigVal(enhanced.cvd);
             const pressureAccel = getSigVal(enhanced.pressureAcceleration);
@@ -966,7 +966,7 @@ function checkSignal(strategy, data, rule = {}) {
         case 'TAPE': {
             const aggr1m = syn.momentum?.aggression_level_1MENIT || 'RETAIL';
             const aggr5m = syn.momentum?.aggression_level_5MENIT || 'RETAIL';
-            const ofi = micro.ofi?.normalizedScore || getSigVal(micro.ofi) || 50;
+            const ofi = micro.ofi?.normalizedScore ?? getSigVal(micro.ofi) ?? 50;
             const cvd = getSigVal(enhanced.cvd);
 
             const isInstitutional = aggr1m === 'INSTITUTIONAL' || aggr5m === 'INSTITUTIONAL';

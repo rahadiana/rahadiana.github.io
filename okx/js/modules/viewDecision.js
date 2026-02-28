@@ -1,7 +1,7 @@
+import { computeData } from '../data_helpers.js';
 import * as Utils from '../utils.js';
-import * as ViewSignalComposer from './viewSignalComposer.js';
 
-let currentDecDetailTab = 'MAIN';
+// let currentDecDetailTab = 'MAIN';
 
 export function render(container) {
     container.innerHTML = `
@@ -13,6 +13,7 @@ export function render(container) {
                     <span id="dec-meta-guard-badge" class="hidden text-[7px] px-1.5 py-0.5 border rounded-sm font-black uppercase tracking-tighter">🛡️ ALLOW</span>
                     <span id="dec-liq-badge" class="hidden text-[7px] px-1 py-0.5 border rounded-sm font-bold uppercase tracking-tighter">Liq: Premium</span>
                     <span id="dec-hft-badge" class="hidden text-[7px] px-1 py-0.5 bg-bb-red/20 text-bb-red border border-bb-red/30 rounded-sm font-black animate-pulse uppercase tracking-tighter">Toxic HFT Flow</span>
+                    <span id="dec-hawkes-badge" class="hidden text-[7px] px-1 py-0.5 bg-bb-gold/20 text-bb-gold border border-bb-gold/30 rounded-sm font-black uppercase tracking-tighter">HAWKES</span>
                     <span class="text-[9px] text-bb-muted uppercase tracking-[0.2em] font-bold">Action Engine v2.1</span>
                 </div>
                 
@@ -36,6 +37,27 @@ export function render(container) {
                     <div class="flex flex-col items-center">
                         <span class="text-[9px] text-bb-muted uppercase font-bold">META-GUARD</span>
                         <span class="text-lg font-mono font-black" id="dec-guard-status">--</span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4 mt-3">
+                    <div class="flex flex-col items-center">
+                        <span class="text-[8px] text-bb-muted uppercase font-bold">MTF</span>
+                        <span id="dec-mtf-score" class="dec-metric-badge text-[12px] font-mono font-black text-white">--</span>
+                    </div>
+                    <div class="w-px h-6 bg-bb-border opacity-50"></div>
+                    <div class="flex flex-col items-center">
+                        <span class="text-[8px] text-bb-muted uppercase font-bold">TAKER</span>
+                        <span id="dec-taker-buy" class="dec-metric-badge text-[12px] font-mono font-black text-white">--</span>
+                    </div>
+                    <div class="w-px h-6 bg-bb-border opacity-50"></div>
+                    <div class="flex flex-col items-center">
+                        <span class="text-[8px] text-bb-muted uppercase font-bold">SPRD</span>
+                        <span id="dec-spread-bps" class="dec-metric-badge text-[12px] font-mono font-black text-white">--</span>
+                    </div>
+                    <div class="w-px h-6 bg-bb-border opacity-50"></div>
+                    <div class="flex flex-col items-center">
+                        <span class="text-[8px] text-bb-muted uppercase font-bold">HAWK</span>
+                        <span id="dec-hawkes-val" class="dec-metric-badge text-[12px] font-mono font-black text-white">--</span>
                     </div>
                 </div>
             </div>
@@ -182,14 +204,21 @@ export function render(container) {
     `;
 }
 
-export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENIT') {
-    const raw = data.raw || {};
-    const signals = data.signals?.profiles?.[profile]?.timeframes?.[timeframe] || {};
-    const master = signals.masterSignal || {};
-    const attribution = signals.attribution || {};
-    const marketRegime = signals.marketRegime || data.signals?.marketRegime || {};
-    const volRegime = data.signals?.volatilityRegime || {};
-    const syn = data.synthesis || {};
+export function update(rawData, profile = 'INSTITUTIONAL_BASE', timeframe = '15m') {
+    // Normalize timeframe key for computeData (computeData expects keys like '1MENIT','5MENIT','15MENIT','1JAM')
+    let tfKey = String(timeframe || '').toUpperCase();
+    if (tfKey.endsWith('M') && !tfKey.includes('MENIT')) tfKey = tfKey.replace(/M$/, 'MENIT');
+    if (tfKey.endsWith('H') && !tfKey.includes('JAM')) tfKey = tfKey.replace(/H$/, 'JAM');
+    // If input was '15m' or '1h' this converts to '15MENIT'/'1JAM'
+    const data = computeData(rawData, profile, tfKey);
+    if (!data) return;
+
+        const raw = data.raw || {};
+        const sig = data.signals || {};
+        const master = sig.masterSignal || {};
+        const syn = data.synthesis || {};
+
+    const micro = sig.micro || {};
 
     // 0. HFT Detection & Liquidity Quality
     const elHFT = document.getElementById('dec-hft-badge');
@@ -208,9 +237,26 @@ export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENI
         }
     }
 
+    // Hawkes / Trade Clustering Badge (extreme excitation detection)
+    const elHawkes = document.getElementById('dec-hawkes-badge');
+    if (elHawkes) {
+        const hawkesVal = (sig.hawkes !== undefined ? sig.hawkes : (data.signals?.hawkes ?? null));
+        if (hawkesVal !== null && hawkesVal !== undefined && !isNaN(Number(hawkesVal)) && Number(hawkesVal) > 80) {
+            elHawkes.classList.remove('hidden');
+            if (Number(hawkesVal) > 100) {
+                elHawkes.innerText = `HAWKES λ=${Utils.formatNumber(hawkesVal,0)}`;
+                elHawkes.className = 'text-[7px] px-1 py-0.5 bg-bb-gold/20 text-bb-gold border border-bb-gold/30 rounded-sm font-black animate-pulse uppercase tracking-tighter';
+            } else {
+                elHawkes.innerText = `HAWKES ${Math.round(hawkesVal)}%`;
+                elHawkes.className = 'text-[7px] px-1 py-0.5 bg-bb-gold/10 text-bb-gold border border-bb-gold/30 rounded-sm font-black uppercase tracking-tighter';
+            }
+        } else {
+            elHawkes.classList.add('hidden');
+        }
+    }
+
     if (elLiq) {
-        const se = data.analytics?.spreadEstimates || {};
-        const bps = se.combinedBps || 0;
+        const bps = micro.spread?.rawValue || 0;
         if (bps > 0) {
             elLiq.classList.remove('hidden');
             const status = bps < 5 ? 'PREMIUM' : bps < 15 ? 'STABLE' : 'THIN';
@@ -227,15 +273,14 @@ export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENI
     const elCard = document.getElementById('decision-main-card');
     if (elAction && elCard) {
         const action = master.action || 'WAIT';
-        const displayAction = action === 'BUY' ? 'LONG' : action === 'SELL' ? 'SHORT' : action;
-        elAction.innerText = displayAction;
+        elAction.innerText = action;
 
         // Dynamic styling based on action
         elCard.classList.remove('border-bb-border', 'border-bb-green', 'border-bb-red', 'border-bb-gold');
-        if (action === 'BUY') {
+        if (action === 'LONG') {
             elAction.className = 'text-6xl font-black italic tracking-tighter text-bb-green';
             elCard.classList.add('border-bb-green');
-        } else if (action === 'SELL') {
+        } else if (action === 'SHORT') {
             elAction.className = 'text-6xl font-black italic tracking-tighter text-bb-red';
             elCard.classList.add('border-bb-red');
         } else {
@@ -248,7 +293,7 @@ export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENI
     // if (typeof ViewSignalComposer.attachComposerTableEvents === 'function') ...
 
     // 1.5 Pillar Bias & Divergence Guard
-    const pillars = calculatePillars(data, signals, master, syn);
+    const pillars = calculatePillars(data, sig, master, syn);
     const hasDivergence = detectDivergence(pillars);
 
     const elDiv = document.getElementById('dec-divergence-badge');
@@ -260,11 +305,73 @@ export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENI
     // 2. Metrics
     const elConf = document.getElementById('dec-confidence');
     const elConfirm = document.getElementById('dec-confirmations');
-    if (elConf) elConf.innerText = `${Math.round(master.confidence || 0)}%`;
-    if (elConfirm) elConfirm.innerText = `${master.confirmations || 0}/${master.requiredConfirmations || 0}`;
+    // Only update UI when we have meaningful master values to avoid transient overwrite with zeros
+    const confVal = (typeof master.normalizedScore === 'number' && !isNaN(master.normalizedScore)) ? master.normalizedScore : ((typeof master.confidence === 'number' && !isNaN(master.confidence)) ? master.confidence : null);
+    if (elConf && confVal !== null) elConf.innerText = `${Math.round(confVal)}%`;
+    if (elConfirm && typeof master.confirmations === 'number') elConfirm.innerText = `${master.confirmations}/5`; // Standard 5 confirmations
+
+    // Fill dedicated metric cells
+    const elMtf = document.getElementById('dec-mtf-score');
+    const elTaker = document.getElementById('dec-taker-buy');
+    const elSpr = document.getElementById('dec-spread-bps');
+    const elHkVal = document.getElementById('dec-hawkes-val');
+
+    try {
+        const mtf = sig.mtfAnalysis || data.signals?.mtfAnalysis || data.analytics?.mtfAnalysis || {};
+        const of = data.analytics?.orderFlow || sig.orderFlow || data.signals?.orderFlow || {};
+        const se = data.analytics?.spreadEstimates || sig.spreadEstimates || data.signals?.spreadEstimates || {};
+        const hk = sig.hawkes ?? data.signals?.hawkes ?? data.analytics?.sorterMetrics?.toxicFlow?.hawkes ?? null;
+
+        // MTF score with visual state
+        if (elMtf) {
+            const v = (mtf?.confluence?.weightedScore !== undefined && mtf.confluence.weightedScore !== null) ? mtf.confluence.weightedScore : null;
+            elMtf.innerText = v != null ? `${Math.round(v)}` : '--';
+            if (v != null) {
+                if (v >= 75) elMtf.className = 'dec-metric-badge dec-metric-green';
+                else if (v >= 50) elMtf.className = 'dec-metric-badge dec-metric-gold';
+                else elMtf.className = 'dec-metric-badge dec-metric-muted';
+            } else elMtf.className = 'dec-metric-badge dec-metric-muted';
+        }
+
+        // Taker buy ratio
+        if (elTaker) {
+            const t = (of?.takerBuyRatio !== undefined && of.takerBuyRatio !== null) ? (of.takerBuyRatio * 100) : null;
+            elTaker.innerText = t != null ? `${Math.round(t)}%` : '--';
+            if (t != null) {
+                if (t >= 60) elTaker.className = 'dec-metric-badge dec-metric-green';
+                else if (t >= 50) elTaker.className = 'dec-metric-badge dec-metric-gold';
+                else if (t < 40) elTaker.className = 'dec-metric-badge dec-metric-red';
+                else elTaker.className = 'dec-metric-badge dec-metric-muted';
+            } else elTaker.className = 'dec-metric-badge dec-metric-muted';
+        }
+
+        // Spread estimates
+        if (elSpr) {
+            const s = (se?.combinedBps !== undefined && se.combinedBps !== null) ? se.combinedBps : (se?.corwinSchultz?.spreadBps !== undefined ? se.corwinSchultz.spreadBps : null);
+            elSpr.innerText = s != null ? `${Math.round(s)} bps` : '--';
+            if (s != null) {
+                if (Math.abs(s) >= 100) elSpr.className = 'dec-metric-badge dec-metric-red';
+                else if (Math.abs(s) >= 40) elSpr.className = 'dec-metric-badge dec-metric-gold';
+                else elSpr.className = 'dec-metric-badge dec-metric-muted';
+            } else elSpr.className = 'dec-metric-badge dec-metric-muted';
+        }
+
+        // Hawkes value
+        if (elHkVal) {
+            const h = (hk !== null && hk !== undefined && !isNaN(Number(hk))) ? Number(hk) : null;
+            elHkVal.innerText = h != null ? (h > 100 ? `${Utils.formatNumber(h,0)}` : `${Math.round(h)}%`) : '--';
+            if (h != null) {
+                if (h > 100) elHkVal.className = 'dec-metric-badge dec-metric-gold dec-metric-pulse';
+                else if (h >= 0.8) elHkVal.className = 'dec-metric-badge dec-metric-gold';
+                else elHkVal.className = 'dec-metric-badge dec-metric-muted';
+            } else elHkVal.className = 'dec-metric-badge dec-metric-muted';
+        }
+    } catch (e) {
+        // ignore
+    }
 
     // 2.5 Meta-Guard Status
-    const metaGuard = data.signals?.institutional_guard || data.institutional_guard || {};
+    const metaGuard = sig.institutional_guard || {};
     const elGuardStatus = document.getElementById('dec-guard-status');
     const elGuardBadge = document.getElementById('dec-meta-guard-badge');
 
@@ -312,20 +419,49 @@ export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENI
     const elTP = document.getElementById('dec-tp');
     const elVel = document.getElementById('dec-velocity');
     const elVelBadge = document.getElementById('dec-velocity-badge');
-    const of = data.analytics?.orderFlow || {};
 
-    if (elSize) elSize.innerText = `$${Utils.formatNumber(master.positionSizing?.recommendedSize || 0)}`;
-    if (elSL) elSL.innerText = `x${master.riskManagement?.stopLossMultiplier || 1.0}`;
-    if (elTP) elTP.innerText = `x${master.riskManagement?.takeProfitMultiplier || 1.0}`;
+    // Format recommended size with k/M suffixes and sensible defaults
+    if (elSize) {
+        const rawSize = Number(master.positionSizing?.recommendedSize ?? 0);
+        let sizeText = '$0';
+        if (rawSize === 0) sizeText = '$0';
+        else if (Math.abs(rawSize) < 1000) sizeText = `$${Utils.formatNumber(rawSize, 0)}`;
+        else if (Math.abs(rawSize) < 1000000) sizeText = `$${(rawSize / 1000).toFixed(1)}k`;
+        else sizeText = `$${(rawSize / 1000000).toFixed(2)}M`;
+        elSize.innerText = sizeText;
+    }
+
+    // Leverage (try multiple possible keys)
+    const elLev = document.getElementById('dec-lev');
+    if (elLev) {
+        const lev = Number(master.positionSizing?.leverage ?? master.positionSizing?.effectiveLeverage ?? master.positionSizing?.suggestedLeverage ?? 1.0);
+        elLev.innerText = `${isNaN(lev) ? '1.0' : lev.toFixed(1)}x`;
+    }
+
+    if (elSL) {
+        const sl = Number(master.riskManagement?.stopLossMultiplier ?? 1.0);
+        elSL.innerText = `${isNaN(sl) ? '1.00' : sl.toFixed(2)}x`;
+    }
+    if (elTP) {
+        const tp = Number(master.riskManagement?.takeProfitMultiplier ?? 1.0);
+        elTP.innerText = `${isNaN(tp) ? '1.00' : tp.toFixed(2)}x`;
+    }
 
     if (elVel) {
-        const synMom = syn.momentum || {};
-        const vel = synMom.velocity_15MENIT || 0;
-        elVel.innerText = `$${Utils.formatNumber(vel, 0)}`;
+        const vel = syn.momentum?.velocity_15MENIT ?? 0;
+        let velStr;
+        if (!vel) {
+            velStr = '$0';
+        } else if (Math.abs(vel) < 1000) {
+            velStr = `$${Utils.formatNumber(vel, 0)}`;
+        } else {
+            velStr = `$${(vel / 1000).toFixed(1)}k`;
+        }
+        elVel.innerText = velStr;
 
         if (elVelBadge) {
-            const status = synMom.aggression_level_15MENIT || 'RETAIL';
-            const color = status === 'INSTITUTIONAL' ? 'bg-bb-gold text-black font-black' : status === 'ACTIVE' ? 'bg-bb-green/20 text-bb-green' : 'bg-bb-blue/20 text-bb-blue';
+            const status = syn.momentum?.aggression_level_15MENIT || 'RETAIL';
+            const color = status === 'INSTITUTIONAL' || status === 'WHALE' ? 'bg-bb-gold text-black font-black' : status === 'ACTIVE' ? 'bg-bb-green/20 text-bb-green' : 'bg-bb-blue/20 text-bb-blue';
             elVelBadge.innerText = status;
             elVelBadge.className = `text-[6px] px-1 rounded uppercase ${color}`;
         }
@@ -335,16 +471,39 @@ export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENI
     const elDrivers = document.getElementById('dec-drivers');
     if (elDrivers && Array.isArray(master.contributingSignals)) {
         elDrivers.innerHTML = '';
-        const categories = signals.signals || {};
+        // const categories = raw.signals || {}; // Use raw signals for attribution details
         const items = master.contributingSignals.slice(0, 6);
         items.forEach(s => {
-            // Find detail in categories
+            // Find detail in categories in the raw schema structure
             let detail = null;
-            for (const cat in categories) {
-                if (categories[cat] && categories[cat][s.key]) {
-                    detail = categories[cat][s.key];
-                    break;
+            // Support multiple timeframe key formats (e.g., '15m', '15MENIT', '15MENIT')
+            const tfCandidates = [];
+            try {
+                const rawTfUpper = String(timeframe).toUpperCase();
+                tfCandidates.push(timeframe);
+                tfCandidates.push(rawTfUpper);
+                // normalized short form (e.g. 15m -> 15MENIT, 1h -> 1JAM)
+                if (rawTfUpper.endsWith('M')) tfCandidates.push(rawTfUpper.replace(/M$/, 'MENIT'));
+                if (rawTfUpper.endsWith('H')) tfCandidates.push(rawTfUpper.replace(/H$/, 'JAM'));
+                // also try the tfKey used for computeData (e.g. '15m')
+                const tfKey = timeframe.replace('MENIT', 'm').replace('JAM', 'h');
+                tfCandidates.push(tfKey);
+            } catch (e) {
+                tfCandidates.push(timeframe);
+            }
+
+            for (const tfc of tfCandidates) {
+                if (!tfc) continue;
+                const cats = rawData.signals?.profiles?.[profile]?.timeframes?.[tfc]?.signals;
+                if (cats) {
+                    for (const cat in cats) {
+                        if (cats[cat] && cats[cat][s.key]) {
+                            detail = cats[cat][s.key];
+                            break;
+                        }
+                    }
                 }
+                if (detail) break;
             }
 
             const factors = detail?.adjustmentFactors || [];
@@ -365,16 +524,17 @@ export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENI
             let factorText = 'Neutral';
             if (topFactor) {
                 const factorName = formatFactorName(topFactor.factor);
-                const multiplierStr = Utils.formatNumber(Number(topFactor.multiplier) || 1, 2);
+                const multiplierStr = (Number(topFactor.multiplier) || 1).toFixed(2);
                 if (topFactor.factor === 'agreement' && topFactor.agreements !== undefined) {
                     factorText = `${topFactor.agreements}/${topFactor.total} AGREE: ${multiplierStr}X`;
                 } else {
                     factorText = `${factorName}: ${multiplierStr}X`;
                 }
             }
-            const factorColor = (Number(topFactor?.multiplier) || 1) > 1 ? 'text-bb-green' : (Number(topFactor?.multiplier) || 1) < 1 ? 'text-bb-red' : 'text-bb-muted';
+            const factorMultiplier = Number(topFactor?.multiplier) || 1;
+            const factorColor = factorMultiplier > 1 ? 'text-bb-green' : factorMultiplier < 1 ? 'text-bb-red' : 'text-bb-muted';
 
-            const formattedName = String(s.key || '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Z])([A-Z][a-z])/g, '$1 $2').toUpperCase().trim();
+            const formattedName = String(s.key || '').replace(/([a-z])([A-Z])/g, '$1 $2').toUpperCase().trim();
 
             const row = document.createElement('div');
             row.className = 'flex justify-between items-center py-1 px-2 bg-white/5 border border-white/5 rounded group hover:bg-white/10 transition-all';
@@ -385,8 +545,9 @@ export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENI
 
             const right = document.createElement('div'); right.className = 'flex flex-col items-end';
             const topRow = document.createElement('div'); topRow.className = 'flex items-center gap-1.5';
-            const scoreEl = document.createElement('span'); scoreEl.className = `text-[8px] font-bold ${s.direction === 'BUY' ? 'text-bb-green' : s.direction === 'SELL' ? 'text-bb-red' : 'text-bb-muted'}`; scoreEl.textContent = String(Math.round(Number(s.score) || 0));
-            const weightEl = document.createElement('span'); weightEl.className = 'text-[9px] font-black text-bb-gold'; weightEl.textContent = `${Utils.formatNumber(weight, 2)}w`;
+            const scoreVal = Math.round(Number(s.score) || 0);
+            const scoreEl = document.createElement('span'); scoreEl.className = `text-[8px] font-bold ${s.direction === 'BUY' || s.direction === 'LONG' ? 'text-bb-green' : s.direction === 'SELL' || s.direction === 'SHORT' ? 'text-bb-red' : 'text-bb-muted'}`; scoreEl.textContent = scoreVal;
+            const weightEl = document.createElement('span'); weightEl.className = 'text-[9px] font-black text-bb-gold'; weightEl.textContent = `${weight.toFixed(2)}w`;
             topRow.appendChild(scoreEl); topRow.appendChild(weightEl);
             const factorEl = document.createElement('span'); factorEl.className = `text-[7px] font-bold ${factorColor} uppercase tracking-tight`; factorEl.textContent = factorText;
             right.appendChild(topRow); right.appendChild(factorEl);
@@ -397,23 +558,24 @@ export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENI
     }
 
     // 5. MTF Convergence Matrix update
-    const profileData = data.signals?.profiles?.[profile] || {};
+    const profileData = rawData.signals?.profiles?.[profile] || {};
     const tfs = ['1MENIT', '5MENIT', '15MENIT', '1JAM'];
     let buyCount = 0;
     let sellCount = 0;
 
     tfs.forEach(tf => {
-        const tfMaster = profileData.timeframes?.[tf]?.masterSignal || {};
+        const tfData = profileData.timeframes?.[tf];
+        const tfMaster = tfData?.recommendation || tfData?.masterSignal || {};
         const elIcon = document.getElementById(`mtf-icon-${tf}`);
         const elConf = document.getElementById(`mtf-conf-${tf}`);
         const elBar = document.getElementById(`mtf-bar-${tf}`);
 
         if (elIcon) {
             const action = tfMaster.action || 'WAIT';
-            if (action === 'BUY') {
+            if (action === 'BUY' || action === 'LONG') {
                 elIcon.className = 'w-2 h-2 rounded-full bg-bb-green shadow-[0_0_8px_rgba(34,197,94,0.4)]';
                 buyCount++;
-            } else if (action === 'SELL') {
+            } else if (action === 'SELL' || action === 'SHORT') {
                 elIcon.className = 'w-2 h-2 rounded-full bg-bb-red shadow-[0_0_8px_rgba(239,68,68,0.4)]';
                 sellCount++;
             } else {
@@ -422,14 +584,15 @@ export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENI
         }
 
         if (elConf) {
-            const conf = Math.round(tfMaster.confidence || 0);
+            const conf = Math.round(tfMaster.confidence || tfMaster.normalizedScore || 0);
             elConf.innerText = `${conf}%`;
             elConf.className = `text-[8px] font-mono mt-2 ${conf > 70 ? 'text-white' : 'text-white/40'}`;
         }
 
         if (elBar) {
-            elBar.style.width = `${tfMaster.confidence || 0}%`;
-            elBar.className = `absolute bottom-0 left-0 h-px transition-all duration-1000 ${tfMaster.action === 'BUY' ? 'bg-bb-green' : tfMaster.action === 'SELL' ? 'bg-bb-red' : 'bg-bb-blue'}`;
+            const conf = tfMaster.confidence || tfMaster.normalizedScore || 0;
+            elBar.style.width = `${conf}%`;
+            elBar.className = `absolute bottom-0 left-0 h-px transition-all duration-1000 ${tfMaster.action === 'BUY' || tfMaster.action === 'LONG' ? 'bg-bb-green' : tfMaster.action === 'SELL' || tfMaster.action === 'SHORT' ? 'bg-bb-red' : 'bg-bb-blue'}`;
         }
     });
 
@@ -456,22 +619,22 @@ export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENI
     // 6. Alpha Intelligence Update
     const elAlphaVal = document.getElementById('dec-alpha-val');
     const elAlphaBadge = document.getElementById('dec-alpha-badge');
-    const corr = data.analytics?.correlation || { correlation: 0.8 };
+    const corr = data.analytics?.correlation?.correlation || 0.8;
 
     if (elAlphaVal && elAlphaBadge) {
-        const confidence = master.confidence || 0;
-        const correlation = corr.correlation || 0.8;
+        const confidence = master.normalizedScore || master.confidence || 0;
+        const correlation = corr;
         const alpha = confidence * (1 - correlation);
 
-        elAlphaVal.innerText = Utils.safeFixed(alpha, 1);
+        elAlphaVal.innerText = alpha.toFixed(1);
 
-        if (correlation > 0.8) { // Changed from 0.85 to 0.8 as per instruction
+        if (correlation > 0.8) {
             elAlphaBadge.innerText = 'MARKET META';
             elAlphaBadge.className = 'mt-2 text-[7px] px-1.5 py-0.5 bg-white/5 text-bb-muted border border-white/10 rounded font-black uppercase tracking-widest';
         } else if (alpha > 30) {
             elAlphaBadge.innerText = 'PURE ALPHA BREAKOUT';
             elAlphaBadge.className = 'mt-2 text-[7px] px-1.5 py-0.5 bg-bb-gold text-black rounded font-black uppercase tracking-widest animate-pulse';
-        } else if (correlation < 0.5) { // Changed from 0.6 to 0.5 as per instruction, and text to 'DECORRELATED'
+        } else if (correlation < 0.5) {
             elAlphaBadge.innerText = 'DECORRELATED';
             elAlphaBadge.className = 'mt-2 text-[7px] px-1.5 py-0.5 bg-bb-blue/20 text-bb-blue border border-bb-blue/30 rounded font-black uppercase tracking-widest';
         } else {
@@ -484,16 +647,16 @@ export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENI
     const execution = data.analytics?.execution || {};
     const elVwap = document.getElementById('dec-vwap');
     const elVwapDelta = document.getElementById('dec-vwap-delta');
-    const lastPx = data.raw?.PRICE?.last || 0;
+    const lastPx = raw.PRICE?.last || 0;
 
     if (elVwap) {
-        const vwapVal = execution.vwap || 0;
-        elVwap.innerText = vwapVal > 0 ? Utils.formatPrice(vwapVal) : '--';
+        const vwapVal = execution.vwap || raw.AVG?.vwap || 0;
+        elVwap.innerText = vwapVal > 0 ? vwapVal.toLocaleString() : '--';
 
         if (elVwapDelta && vwapVal > 0 && lastPx > 0) {
             const deltaPct = ((lastPx - vwapVal) / vwapVal) * 100;
             const isPremium = deltaPct > 0;
-            elVwapDelta.innerText = `${isPremium ? '+' : ''}${Utils.safeFixed(deltaPct, 2)}%`;
+            elVwapDelta.innerText = `${isPremium ? '+' : ''}${deltaPct.toFixed(2)}%`;
             elVwapDelta.className = `text-[8px] font-black px-1 rounded-sm ${isPremium ? 'bg-bb-red/20 text-bb-red' : 'bg-bb-green/20 text-bb-green'}`;
         }
     }
@@ -501,14 +664,14 @@ export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENI
     // 8. Context
     const elRegime = document.getElementById('dec-regime');
     const elVolRegime = document.getElementById('dec-vol-regime');
-    if (elRegime) elRegime.innerText = marketRegime.currentRegime || 'RANGING';
-    if (elVolRegime) elVolRegime.innerText = volRegime.regime || 'NORMAL';
+    if (elRegime) elRegime.innerText = sig.marketRegime?.currentRegime || 'RANGING';
+    if (elVolRegime) elVolRegime.innerText = sig.marketRegime?.volRegime || 'NORMAL';
 
     // 9. Market Narrative Brief
-    updateNarrative(data, signals, master, marketRegime, volRegime, syn, pillars, hasDivergence);
+    updateNarrative(data, sig, master, syn, pillars, hasDivergence);
 }
 
-function updateNarrative(data, signals, master, regime, vol, syn = {}, pillars = {}, hasDivergence = false) {
+function updateNarrative(data, sig, master, syn = {}, pillars = {}, hasDivergence = false) {
     const elNarrative = document.getElementById('dec-narrative');
     const elTags = document.getElementById('dec-narrative-tags');
     if (!elNarrative || !elTags) return;
@@ -562,15 +725,15 @@ function updateNarrative(data, signals, master, regime, vol, syn = {}, pillars =
         brief += `Technical indicators are split: **${bullPillars.join(', ')}** are showing strength, while **${bearPillars.join(', ')}** signal caution or reversal. `;
         brief += `Standard institutional protocol: **Reduce position size** or wait for one side to capitulate. `;
         tags.push({ text: 'DIVERGENCE', color: 'bg-bb-red/30 text-white animate-pulse' });
-    } else if (action === 'BUY') {
+    } else if (action === 'LONG') {
         if (char === 'ABSORPTION') {
-            brief += `**Caution Recommended.** While a BUY signal is present, the current Absorption state suggests a potential Liquidity Trap. Wait for a breakout confirmation.`;
+            brief += `**Caution Recommended.** While a LONG signal is present, the current Absorption state suggests a potential Liquidity Trap. Wait for a breakout confirmation.`;
             tags.push({ text: 'LIQUIDITY TRAP!', color: 'bg-bb-red/20 text-bb-red border-bb-red/30 animate-pulse' });
         } else {
             brief += `**Deploy Capital.** Institutional flow and market character are perfectly aligned for a high-probability Long entry.`;
             tags.push({ text: 'ALPHA SETUP', color: 'bg-bb-green/20 text-bb-green border-bb-green/30' });
         }
-    } else if (action === 'SELL') {
+    } else if (action === 'SHORT') {
         brief += `**Short Bias.** Combined indicators suggest institutional sell-side pressure is mounting. Risk management is advised.`;
         tags.push({ text: 'SHORT BIAS', color: 'bg-bb-red/20 text-bb-red border-bb-red/30' });
     } else {
@@ -580,6 +743,29 @@ function updateNarrative(data, signals, master, regime, vol, syn = {}, pillars =
 
     // Extra badges
     if (Math.abs(netFlow) > 50000) tags.push({ text: 'WHALE CLUSTER', color: 'bg-bb-gold/40 text-white' });
+
+    // Add analytics quick-tags: MTF confluence, Taker Buy ratio, Spread combinedBps
+    try {
+        const mtf = sig.mtfAnalysis || data.signals?.mtfAnalysis || data.analytics?.mtfAnalysis || {};
+        const of = sig.orderFlow || data.signals?.orderFlow || data.analytics?.orderFlow || {};
+        const se = sig.spreadEstimates || data.signals?.spreadEstimates || data.analytics?.spreadEstimates || {};
+
+        if (mtf && mtf.confluence && typeof mtf.confluence.weightedScore === 'number') {
+            tags.push({ text: `MTF ${Math.round(mtf.confluence.weightedScore)}`, color: 'bg-bb-blue/10 text-bb-blue border-bb-blue/30' });
+        }
+
+        if (of && of.takerBuyRatio !== undefined && of.takerBuyRatio !== null) {
+            const pct = Math.round((Number(of.takerBuyRatio) || 0) * 100);
+            tags.push({ text: `TAKER ${pct}%`, color: pct > 60 ? 'bg-bb-green/20 text-bb-green' : 'bg-bb-muted/20 text-bb-muted' });
+        }
+
+        if (se && (se.combinedBps !== undefined || se.spreadBps !== undefined)) {
+            const bps = se.combinedBps ?? se.spreadBps ?? null;
+            if (bps !== null) tags.push({ text: `SPRD ${Math.round(bps)}bps`, color: 'bg-bb-gold/10 text-bb-gold' });
+        }
+    } catch (e) {
+        // non-fatal
+    }
 
     // Render brief with simple **bold** markers safely
     elNarrative.textContent = '';
@@ -604,9 +790,8 @@ function updateNarrative(data, signals, master, regime, vol, syn = {}, pillars =
     });
 }
 
-function calculatePillars(data, signals, master, syn) {
+function calculatePillars(data, sig, master, syn) {
     const flow = syn.flow || {};
-    const of = data.analytics?.orderFlow || {};
     const lsr = data.raw?.LSR?.timeframes_15min?.longShortRatio || 1.0;
     const bidD = data.raw?.OB?.bidDepth || 0;
     const askD = data.raw?.OB?.askDepth || 1; // Prevent div by zero
@@ -615,7 +800,7 @@ function calculatePillars(data, signals, master, syn) {
         FLOW: flow.net_flow_15MENIT > 10000 ? 'BULL' : flow.net_flow_15MENIT < -10000 ? 'BEAR' : 'NEUT',
         SENTIMENT: lsr > 1.5 ? 'BEAR' : lsr < 0.7 ? 'BULL' : 'NEUT', // Contrarian
         LIQUIDITY: (bidD / askD) > 1.5 ? 'BULL' : (askD / (bidD || 1)) > 1.5 ? 'BEAR' : 'NEUT',
-        TECHNICAL: master.action === 'BUY' ? 'BULL' : master.action === 'SELL' ? 'BEAR' : 'NEUT'
+        TECHNICAL: master.action === 'LONG' ? 'BULL' : master.action === 'SHORT' ? 'BEAR' : 'NEUT'
     };
 }
 

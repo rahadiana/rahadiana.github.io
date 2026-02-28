@@ -71,8 +71,20 @@ export function render(container) {
 
             </div>
 
-            <!-- ROW 3: VOLUME & FREQUENCY (Section 1.3 & 1.4) -->
-            <div class="grid grid-cols-2 gap-2 h-48">
+            <!-- ROW 3: ADVANCED DASHBOARD METRICS -->
+            <div class="panel h-auto min-h-[160px] pb-2">
+                <div class="panel-header border-b border-bb-border flex justify-between">
+                    <span class="text-bb-gold">ADVANCED METRICS GRID</span>
+                    <span class="text-[9px] text-bb-muted">13-FACTOR MODEL</span>
+                </div>
+                <div class="panel-content grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 p-3" id="advanced-metrics-grid">
+                    <!-- Injected by JS -->
+                    <span class="text-bb-muted text-[10px] italic col-span-full">Gathering models...</span>
+                </div>
+            </div>
+
+            <!-- ROW 4: VOLUME & FREQUENCY (Section 1.3 & 1.4) -->
+            <div class="grid grid-cols-2 gap-2 h-48 mt-2">
                  
                  <!-- 1.3 VOLUME BREAKDOWN -->
                  <div class="panel">
@@ -113,11 +125,86 @@ export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENI
     // 15.1 Alerts
     updateAlerts(data.analytics?.customMetrics, master);
 
+    // ROW 3: Advanced Dashboard Metrics
+    updateDashboardMetrics(data.dashboard);
+
     // 16.1 Regime
     updateRegime(data.signals?.marketRegime, data.analytics?.volatility);
 
     // 1.3 & 1.4 Volume/Freq
     updateVolumeFreq(data.raw?.VOL, data.raw?.FREQ, data.analytics?.customMetrics, timeframe);
+}
+
+function updateDashboardMetrics(dash) {
+    const el = document.getElementById('advanced-metrics-grid');
+    if (!el || !dash) return;
+
+    // Helper for rendering a single metric card
+    const renderCard = (title, value, colorClass, subtitle = '') => `
+        <div class="bg-bb-dark border border-bb-border p-2 rounded flex flex-col justify-between hover:border-bb-gold/30 transition-colors">
+            <span class="text-[9px] text-bb-muted uppercase font-bold tracking-tighter">${title}</span>
+            <div class="mt-1 flex items-end justify-between">
+                <span class="text-lg font-black font-mono tracking-tighter ${colorClass}">${value}</span>
+                ${subtitle ? `<span class="text-[8px] text-bb-muted mb-1">${subtitle}</span>` : ''}
+            </div>
+        </div>
+    `;
+
+    // Extract metrics carefully
+    const cvd = dash.cvd;
+    const accel = dash.pressureAcceleration;
+    const resilience = dash.bookResilience;
+    const momQual = dash.momentumQuality;
+    const amihud = dash.amihudIlliquidity;
+    const footprint = dash.institutionalFootprint;
+
+    // Format new metrics
+    const cvdVal = (cvd?.rawValue !== undefined && cvd?.rawValue !== null) ? Utils.safeFixed(cvd.rawValue * 100, 1) + '%' : '--';
+    const cvdColor = cvd?.direction === 'BULLISH' ? 'text-bb-green' : cvd?.direction === 'BEARISH' ? 'text-bb-red' : 'text-bb-muted';
+
+    const accelVal = (accel?.rawValue !== undefined && accel?.rawValue !== null) ? Utils.safeFixed(accel.rawValue, 2) : '--';
+    const accelColor = accel?.rawValue > 1.2 ? 'text-bb-green' : accel?.rawValue < 0.8 ? 'text-bb-red' : 'text-bb-muted';
+
+    const resilVal = (resilience?.rawValue !== undefined && resilience?.rawValue !== null) ? Utils.safeFixed(resilience.rawValue, 1) : '--';
+    const resilColor = resilience?.rawValue > 2 ? 'text-bb-green' : resilience?.rawValue < 0.5 ? 'text-bb-red' : 'text-bb-gold';
+
+    const momVal = (momQual?.rawValue !== undefined && momQual?.rawValue !== null) ? Utils.safeFixed(momQual.rawValue * 100, 1) : '--';
+    const momColor = momQual?.rawValue > 0.6 ? 'text-bb-green' : momQual?.rawValue < 0.3 ? 'text-bb-red' : 'text-bb-gold';
+
+    const amihudVal = (amihud?.rawValue !== undefined && amihud?.rawValue !== null) ? Utils.safeFixed(amihud.rawValue * 1000000, 2) : '--'; // Scaled for readability
+    const amihudColor = amihud?.rawValue < 0.000001 ? 'text-bb-green' : 'text-bb-red'; // Lower is better liquidity
+
+    const instVal = (footprint?.rawValue !== undefined && footprint?.rawValue !== null) ? Utils.safeFixed(footprint.rawValue, 0) : '--';
+    const instColor = footprint?.rawValue > 70 ? 'text-bb-green text-shadow-glow' : footprint?.rawValue < 30 ? 'text-bb-red' : 'text-bb-gold';
+
+    // Format legacy metrics
+    const accScore = (dash.accumScore !== undefined && dash.accumScore !== null) ? Utils.safeFixed(dash.accumScore, 0) : '--';
+    const accColor = dash.accumScore > 60 ? 'text-bb-green' : dash.accumScore < 40 ? 'text-bb-red' : 'text-bb-muted';
+
+    const brkProb = (dash.breakoutProb !== undefined && dash.breakoutProb !== null) ? Utils.safeFixed(dash.breakoutProb, 0) + '%' : '--';
+    const brkColor = dash.breakoutProb > 70 ? 'text-bb-gold animate-pulse' : 'text-bb-muted';
+
+    const intVal = (dash.intensity !== undefined && dash.intensity !== null) ? Utils.safeFixed(dash.intensity, 1) + 'x' : '--';
+    const intColor = dash.intensity > 2 ? 'text-bb-blue' : 'text-white';
+
+    const riVal = (dash.riRatio !== undefined && dash.riRatio !== null) ? Utils.safeFixed(dash.riRatio, 1) : '--';
+    const riColor = dash.riRatio < 0.5 ? 'text-bb-gold' : dash.riRatio > 2 ? 'text-bb-red' : 'text-white';
+
+    el.innerHTML = `
+        ${renderCard('CVD Divergence', cvdVal, cvdColor, cvd?.divergenceType?.replace('_DIVERGENCE', '') || 'None')}
+        ${renderCard('Inst. Footprint', instVal, instColor, 'Score 0-100')}
+        ${renderCard('Pressure Accel', accelVal, accelColor, accel?.accelerationStatus?.replace('ACCELERATING_', 'ACC_') || '')}
+        ${renderCard('Mom. Quality', momVal, momColor, momQual?.qualityLevel || '')}
+        ${renderCard('Book Resilience', resilVal, resilColor, resilience?.resilienceLevel || '')}
+        ${renderCard('Amihud (x10⁶)', amihudVal, amihudColor, amihud?.liquidityQuality || '')}
+
+        ${renderCard('Accumulation', accScore, accColor, 'Institutional')}
+        ${renderCard('Breakout Prob', brkProb, brkColor, 'Volatility')}
+        ${renderCard('Vol Intensity', intVal, intColor, 'vs Baseline')}
+        ${renderCard('R/I Ratio', riVal, riColor, '<1 is Inst flow')}
+        ${renderCard('Tech Score', dash.technicalScore ? Utils.safeFixed(dash.technicalScore, 0) : '--', 'text-white', '0-100')}
+        ${renderCard('Sentiment', dash.sentimentScore ? Utils.safeFixed(dash.sentimentScore, 0) : '--', 'text-white', '0-100')}
+    `;
 }
 
 function updateExecutionTerminal(data, profile, timeframe) {

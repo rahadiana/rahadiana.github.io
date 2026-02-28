@@ -17,8 +17,13 @@
 
 body {
     -webkit-font-smoothing: antialiased;
-    background: radial-gradient(circle at 50% -20%, #1a1a2e 0%, #050505 80%);
+    background: radial-gradient(circle at 50% -20%, #151622 0%, #0a0b10 80%);
     color: #e5e5e5;
+}
+
+/* Glow Utilities */
+.text-shadow-glow {
+    text-shadow: 0 0 12px currentColor;
 }
 
 /* Scrollbar - Minimalist Institutional */
@@ -73,15 +78,15 @@ body {
 /* Glassmorphism Panels */
 .panel {
     background: var(--bb-panel);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     border: 1px solid var(--bb-border);
-    border-radius: 4px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    border-radius: 6px;
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    transition: border-color 0.3s ease;
+    transition: all 0.3s ease;
 }
 
 .panel:hover {
@@ -674,4 +679,48 @@ input:focus {
         grid-row: 3 / 4;
         /* Move below middle on smaller screens if needed, or keep side-by-side */
     }
+}
+
+/* DECISION metric badge utilities */
+.dec-metric-badge {
+    display: inline-block;
+    min-width: 56px;
+    text-align: center;
+    padding: 6px 8px;
+    border-radius: 8px;
+    font-weight: 800;
+    font-size: 12px;
+    line-height: 1;
+    background: rgba(255,255,255,0.02);
+    color: #e5e5e5;
+    border: 1px solid rgba(255,255,255,0.03);
+}
+.dec-metric-muted {
+    background: rgba(255,255,255,0.02);
+    color: #b9b9bf;
+}
+.dec-metric-green {
+    background: rgba(34,197,94,0.12);
+    color: var(--bb-green);
+    border-color: rgba(34,197,94,0.18);
+    box-shadow: 0 6px 18px rgba(34,197,94,0.03);
+}
+.dec-metric-gold {
+    background: rgba(251,191,36,0.08);
+    color: var(--bb-gold);
+    border-color: rgba(251,191,36,0.12);
+    text-shadow: 0 0 6px rgba(251,191,36,0.06);
+}
+.dec-metric-red {
+    background: rgba(239,68,64,0.08);
+    color: var(--bb-red);
+    border-color: rgba(239,68,64,0.12);
+}
+.dec-metric-pulse {
+    animation: decPulse 1.6s infinite;
+}
+@keyframes decPulse {
+    0% { box-shadow: 0 0 0 0 rgba(251,191,36,0.12); }
+    70% { box-shadow: 0 0 0 8px rgba(251,191,36,0); }
+    100% { box-shadow: 0 0 0 0 rgba(251,191,36,0); }
 }
