@@ -143,5 +143,17 @@ export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENI
     const divColor = dirTxt === 'BULLISH' ? 'text-bb-green' : dirTxt === 'BEARISH' ? 'text-bb-red' : 'text-bb-muted';
     cards.push(renderCard('CVD DIVERGE', dirTxt, divColor, null, cvdDiv.divergenceStrength, 'Signal Match'));
 
+    // 13. VOLUME PROFILE (NEW)
+    const vprof = micro.volumeProfile || { signal: 'NEUTRAL', value: 0 };
+    const vpSignal = vprof.signal || 'NEUTRAL';
+    const vpSigColor = vpSignal === 'DISCOUNT' || vpSignal === 'UNDERVALUED' ? 'text-bb-green' : vpSignal === 'PREMIUM' || vpSignal === 'OVERVALUED' ? 'text-bb-red' : 'text-bb-gold';
+    cards.push(renderCard('VOL PROFILE', vpSignal, vpSigColor, null, vprof.metadata?.positionStr || '', 'Value Area'));
+
+    // 14. KYLE LAMBDA (NEW)
+    const kyle = micro.kyleLambda || { rawValue: 0, direction: 'NEUTRAL' };
+    const klVal = kyle.rawValue || 0;
+    const klColor = klVal > 0.1 ? 'text-bb-gold' : 'text-bb-muted';
+    cards.push(renderCard('KYLE LAMBDA', Utils.safeFixed(klVal, 3), klColor, Math.min(100, klVal * 100), kyle.direction, 'Price Impact'));
+
     gridEl.innerHTML = cards.join('');
 }

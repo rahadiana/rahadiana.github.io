@@ -1008,3 +1008,37 @@ try {
 } catch (e) {
     console.warn('[AUTO-RESUME] OKX auto-connect failed', e);
 }
+
+/**
+ * 🛠️ SCHEMA SIMULATION MODE
+ * Loads mock data from exsample.json to verify new schema integration.
+ * Usage: Run `window.simulateSchemaData()` in Browser Console.
+ */
+window.simulateSchemaData = async () => {
+    console.log('[DEBUG] Loading Schema Simulation Data...');
+    try {
+        const response = await fetch('DATA_SCHEMA/exsample.json');
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const data = await response.json();
+        const coin = data.coin || 'MOCK-COIN';
+
+        window.marketState = window.marketState || {};
+        window.marketState[coin] = data;
+
+        console.log(`[DEBUG] Successfully loaded simulation data for ${coin}`);
+        console.log('[DEBUG] Triggering UI view switch...');
+
+        if (typeof window.app?.selectCoin === 'function') {
+            window.app.selectCoin(coin);
+        } else {
+            // Fallback: manually trigger update if selectCoin helper isn't ready
+            window.marketState.selectedCoin = coin;
+            window.dispatchEvent(new CustomEvent('coin-selected', { detail: { coin } }));
+        }
+
+        return { success: true, coin, data };
+    } catch (e) {
+        console.error('[DEBUG] Schema Simulation Error:', e);
+        return { success: false, error: e.message };
+    }
+};

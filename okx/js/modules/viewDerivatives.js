@@ -116,10 +116,10 @@ export function render(container) {
 export function update(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENIT') {
     const rawOi = data.raw?.OI || {};
     const signalsObj = data.signals?.profiles?.[profile]?.timeframes?.[timeframe]?.signals || {};
-    const flat = flattenSignals(signalsObj);
+    // const flat = flattenSignals(signalsObj);
     const deri = signalsObj.derivatives || {};
     const sent = signalsObj.sentiment || {};
-    const price = data.raw?.PRICE || {};
+    // const price = data.raw?.PRICE || {};
 
     // 1. OI Update
     const oiDiv = deri.oiDivergence || { metadata: {} };

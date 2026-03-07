@@ -12,7 +12,6 @@ import { showToast } from './toast.js';
 import { computeData, getSignals, getMasterSignal, getMicrostructure } from '../data_helpers.js';
 import TradeSafety from './tradeSafety.js';
 import { StrategyAllocator } from './strategyAllocator.js';
-import GENERATED_COMPONENTS from './generated_signal_components.js';
 import PRICE_COMPONENTS from './signal_components/raw/price__components.js';
 import VOLUME_COMPONENTS from './signal_components/raw/volume__components.js';
 import OB_COMPONENTS from './signal_components/raw/ob__components.js';
@@ -20,9 +19,30 @@ import OI_COMPONENTS from './signal_components/raw/oi__components.js';
 import LSR_COMPONENTS from './signal_components/raw/lsr__components.js';
 import FUNDING_COMPONENTS from './signal_components/raw/funding__components.js';
 import FLOW_COMPONENTS from './signal_components/synthesis/flow__components.js';
+import EFFICIENCY_COMPONENTS from './signal_components/synthesis/efficiency__components.js';
+import MOMENTUM_COMPONENTS from './signal_components/synthesis/momentum__components.js';
+import MICROSTRUCTURE_COMPONENTS from './signal_components/profiles/signals/microstructure/microstructure__components.js';
+import DERIVATIVES_COMPONENTS from './signal_components/profiles/signals/derivatives/derivatives.js';
+import VOLATILITY_COMPONENTS from './signal_components/profiles/signals/volatility/volatility.js';
+import SENTIMENT_COMPONENTS from './signal_components/profiles/signals/sentiment/sentiment.js';
+import INSTITUTIONAL_COMPONENTS from './signal_components/profiles/signals/institutional/institutional.js';
+import COMPOSITE_COMPONENTS from './signal_components/profiles/signals/composite/composite.js';
+import SUMMARY_COMPONENTS from './signal_components/profiles/signals/summary/summary.js';
+import CONFLUENCE_COMPONENTS from './signal_components/profiles/signals/confluence/confluence.js';
+import ORDERBOOK_COMPONENTS from './signal_components/profiles/signals/orderbook/orderbook.js';
+import MASTER_SIGNAL_COMPONENTS from './signal_components/masterSignals/masterSignals.js';
+import DASHBOARD_COMPONENTS from './signal_components/dashboard/dashboard.js';
+import MICROSTRUCTURESUMMARY_COMPONENTS from './signal_components/microstructure/microstructure.js';
+import ANALYTICS_COMPONENTS from './signal_components/analytics/analytics_components.js';
+import BTC_BENCHMARK from './signal_components/BTC_Benchmark/btc_benchmark.js';
+import META_GUARDS from './signal_components/Meta_Guards/meta_guards.js';
 
-// import PRESET_TEMPLATES
+
 import PRESET_TEMPLATES from './signal_components/templates/signal_templates.js';
+// import { AUTO_GENERATED_COMPONENTS } from './signal_components/auto_generated.js';
+
+
+import SIGNAL_CATEGORY from './signal_components/signal_category/signal_category.js';
 
 const STORAGE_KEY = 'bb_signal_composer';
 
@@ -65,164 +85,238 @@ const DETAIL_TABS = {
 };
 
 // ======================== COMPLETE SIGNAL COMPONENTS ========================
-export let SIGNAL_COMPONENTS = {
+export let SIGNAL_COMPONENTSXXXX = {
     // ═══════════════════ MICROSTRUCTURE ═══════════════════
     MICRO_VPIN: { category: 'MICRO', name: 'VPIN (Toxic)', icon: '☣️', path: 'signals.micro.vpin.rawValue', operators: ['>', '<'], defaultThreshold: 0.2, description: 'Toxic Flow (VPIN)' },
-    MICRO_VPIN_DIR: { category: 'MICRO', name: 'VPIN Direction', icon: '🧭', path: 'signals.micro.vpin.direction', operators: ['==', '!='], defaultThreshold: 'BULLISH', valueType: 'select', options: ['BULLISH', 'BEARISH', 'NEUTRAL'], description: 'VPIN flow direction' },
-    MICRO_OFI: { category: 'MICRO', name: 'OFI Score', icon: '📊', path: 'signals.micro.ofi.normalizedScore', operators: ['>', '<', '>=', '<='], defaultThreshold: 50, description: 'Order Flow Imbalance (0-100)' },
-    MICRO_TFI: { category: 'MICRO', name: 'Toxic Flow Index', icon: '📉', path: 'signals.micro.toxicity.rawValue', operators: ['>', '<', 'ABS>'], defaultThreshold: 5, description: 'Vol/Freq Divergence Index' },
-    MICRO_SPREAD: { category: 'MICRO', name: 'Spread %', icon: '↔️', path: 'signals.micro.spread.rawValue', operators: ['>', '<'], defaultThreshold: 0.05, description: 'Bid-ask spread' },
+    // MICRO_VPIN_DIR: { category: 'MICRO', name: 'VPIN Direction', icon: '🧭', path: 'signals.micro.vpin.direction', operators: ['==', '!='], defaultThreshold: 'BULLISH', valueType: 'select', options: ['BULLISH', 'BEARISH', 'NEUTRAL'], description: 'VPIN flow direction' },
+    // MICRO_VPIN_B_VOL: { category: 'MICRO', name: 'VPIN Buy Vol', icon: '📈', path: 'signals.micro.vpin.metadata.buyVolume', operators: ['>'], defaultThreshold: 1000, description: 'Buy volume in VPIN window' },
+    // MICRO_VPIN_S_VOL: { category: 'MICRO', name: 'VPIN Sell Vol', icon: '📉', path: 'signals.micro.vpin.metadata.sellVolume', operators: ['>'], defaultThreshold: 1000, description: 'Sell volume in VPIN window' },
+    // MICRO_VPIN_IMB: { category: 'MICRO', name: 'VPIN Imbalance', icon: '⚖️', path: 'signals.micro.vpin.metadata.flowDirection', operators: ['==', '!='], defaultThreshold: 'BULLISH', valueType: 'select', options: ['BULLISH', 'BEARISH', 'NEUTRAL'], description: 'VPIN volume imbalance direction' },
+    // MICRO_VPIN_INF: { category: 'MICRO', name: 'Informed Trad', icon: '🧠', path: 'signals.micro.vpin.metadata.informedTrading', operators: ['=='], defaultThreshold: 'HIGH', valueType: 'select', options: ['HIGH', 'MODERATE', 'LOW'], description: 'Informed trading level' },
+    // MICRO_VPIN_RELIABILITY: { category: 'MICRO', name: 'Vol Reliability', icon: '🛡️', path: 'signals.micro.vpin.metadata.volumeReliability', operators: ['==', '!='], defaultThreshold: 'HIGH', valueType: 'select', options: ['HIGH', 'MODERATE', 'LOW', 'LOW_VOLUME'], description: 'Volume reliability assessment' },
 
-    // NEW ADVANCED MICROSTRUCTURE (INSTITUTIONAL_BASE)
-    MICRO_COHESION: { category: 'MICRO', name: 'Signal Cohesion', icon: '🔗', path: 'signals.micro.cohesion.cohesion', operators: ['>', '<', '>=', '<='], defaultThreshold: 70, displayDigits: 0, description: 'Signal agreement (0-100)' },
-    MICRO_FBI: { category: 'MICRO', name: 'Funding Basis Idx', icon: '⚖️', path: 'signals.micro.fbi.fbi', operators: ['>', '<', 'ABS>'], defaultThreshold: 80, displayDigits: 0, description: 'Funding extreme indicator' },
-    MICRO_OFSI: { category: 'MICRO', name: 'Order Flow Str', icon: '🌊', path: 'signals.micro.ofsi.ofsi', operators: ['>', '<'], defaultThreshold: 60, displayDigits: 0, description: 'Order Flow Strength Index' },
-    MICRO_FSI: { category: 'MICRO', name: 'Funding Sentiment', icon: '🎭', path: 'signals.micro.fsi.fsi', operators: ['>', '<'], defaultThreshold: 60, displayDigits: 0, description: 'Funding Sentiment Index' },
-    MICRO_ZPRESS: { category: 'MICRO', name: 'Z-Score Pressure', icon: '🚀', path: 'signals.micro.zPress.zPress', operators: ['>', '<', 'ABS>'], defaultThreshold: 2.0, description: 'Price pressure vs ATR' },
-    MICRO_TIM: { category: 'MICRO', name: 'Trade Imbalance', icon: '⚖️', path: 'signals.micro.tim.tim', operators: ['>', '<'], defaultThreshold: 60, displayDigits: 0, description: 'Trade Imbalance Metric' },
-    MICRO_SQUEEZE: { category: 'MICRO', name: 'Range Squeeze', icon: '💥', path: 'signals.micro.rangeComp.rangeComp', operators: ['>', '<'], defaultThreshold: 80, displayDigits: 0, description: 'Bollinger squeeze/compression' },
-    MICRO_PFCI: { category: 'MICRO', name: 'Price-Fund Corr', icon: '🔀', path: 'signals.micro.pfci.pfci', operators: ['>', '<'], defaultThreshold: 70, displayDigits: 0, description: 'Price-Funding Correlation' },
-    MICRO_LSI: { category: 'MICRO', name: 'Liq Stress Index', icon: '💧', path: 'signals.micro.lsi.lsi', operators: ['>', '<'], defaultThreshold: 70, displayDigits: 0, description: 'Liquidity Stress Index' },
-    MICRO_VOL_PROF: { category: 'MICRO', name: 'Vol Profile Signal', icon: '📊', path: 'signals.micro.volumeProfile.signal', operators: ['==', '!='], defaultThreshold: 'DISCOUNT', valueType: 'select', options: ['OVERVALUED', 'UNDERVALUED', 'PREMIUM', 'DISCOUNT', 'NEUTRAL'], description: 'Volume Profile valuation' },
+    // MICRO_OFI: { category: 'MICRO', name: 'OFI Score', icon: '📊', path: 'signals.micro.ofi.normalizedScore', operators: ['>', '<', '>=', '<='], defaultThreshold: 50, description: 'Order Flow Imbalance (0-100)' },
+    // MICRO_TFI: { category: 'MICRO', name: 'Toxic Flow Index', icon: '📉', path: 'signals.micro.toxicity.rawValue', operators: ['>', '<', 'ABS>'], defaultThreshold: 5, description: 'Vol/Freq Divergence Index' },
+    // MICRO_SPREAD: { category: 'MICRO', name: 'Spread %', icon: '↔️', path: 'signals.micro.spread.rawValue', operators: ['>', '<'], defaultThreshold: 0.05, description: 'Bid-ask spread' },
 
+    // MICRO_ACC_VOL: { category: 'MICRO', name: 'Accum Vol', icon: '📈', path: 'signals.micro.accVol.accumulatedVolume', operators: ['>', '<', 'ABS>'], defaultThreshold: 100000, description: 'Accumulated Microstructure Vol' },
+    // MICRO_ACC_DIV: { category: 'MICRO', name: 'Accum Vol Div', icon: '⚠️', path: 'signals.micro.accVol.divergence', operators: ['=='], defaultThreshold: true, valueType: 'boolean', description: 'Vol/Price divergence' },
 
-    // ═══════════════════ ENHANCED ═══════════════════
-    ENH_CVD: { category: 'ENHANCED', name: 'CVD Score', icon: '📊', path: 'signals.enhanced.cvd.rawValue', operators: ['>', '<'], defaultThreshold: 0, description: 'Cumulative Volume Delta Score' },
-    ENH_CVD_DIV: { category: 'ENHANCED', name: 'CVD Divergence', icon: '⚠️', path: 'signals.enhanced.cvd.divergence', operators: ['=='], defaultThreshold: true, valueType: 'boolean', description: 'Price/CVD divergence' },
-    ENH_INST: { category: 'ENHANCED', name: 'Inst. Footprint', icon: '👣', path: 'signals.enhanced.institutionalFootprint.rawValue', operators: ['>', '<'], defaultThreshold: 0.6, description: 'Institutional Activity (0-1)' },
-    ENH_MOM_QUAL: { category: 'ENHANCED', name: 'Mom. Quality', icon: '✨', path: 'signals.enhanced.momentumQuality.rawValue', operators: ['>', '<'], defaultThreshold: 0.5, description: 'Quality of Momentum' },
-    ENH_BOOK_RES: { category: 'ENHANCED', name: 'Book Resilience', icon: '🛡️', path: 'signals.enhanced.bookResilience.rawValue', operators: ['>', '<'], defaultThreshold: 0.5, description: 'Orderbook Resilience Score' },
-    ENH_PRESS_ACC: { category: 'ENHANCED', name: 'Pressure Accel', icon: '🚀', path: 'signals.enhanced.pressureAcceleration.rawValue', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.1, description: 'Buying/Selling Pressure Acceleration' },
-    ENH_AMIHUD: { category: 'ENHANCED', name: 'Amihud Illiq', icon: '💧', path: 'signals.enhanced.amihudIlliquidity.rawValue', operators: ['>', '<'], defaultThreshold: 0.5, description: 'Illiquidity Ratio (Higher = Illiquid)' },
+    // MICRO_CVD_DIV_ST: { category: 'MICRO', name: 'Micro CVD Str', icon: '⚡', path: 'signals.micro.cvdDivergence.divergenceStrength', operators: ['=='], defaultThreshold: 'STRONG', valueType: 'select', options: ['STRONG', 'MODERATE', 'WEAK', 'NONE'], description: 'Micro CVD divergence strength' },
 
-    // ═══════════════════ MASTER SIGNAL ═══════════════════
-    MASTER_SCORE: { category: 'MASTER', name: 'Master Score', icon: '🎯', path: 'signals.masterSignal.normalizedScore', operators: ['>', '<', '>=', '<='], defaultThreshold: 65, description: 'Composite score 0-100' },
-    MASTER_CONFIDENCE: { category: 'MASTER', name: 'Confidence', icon: '💪', path: 'signals.masterSignal.confidence', operators: ['>', '>='], defaultThreshold: 70, description: 'Confidence level' },
-    MASTER_ACTION: { category: 'MASTER', name: 'Action', icon: '🚦', path: 'signals.masterSignal.action', operators: ['==', '!='], defaultThreshold: 'BUY', valueType: 'select', options: ['BUY', 'SELL', 'WAIT'], description: 'Signal direction' },
-    MASTER_CONFIRMS: { category: 'MASTER', name: 'Confirmations', icon: '✅', path: 'signals.masterSignal.confirmations', operators: ['>=', '>', '=='], defaultThreshold: 3, description: 'Confirming signals' },
-    MASTER_MTF: { category: 'MASTER', name: 'MTF Aligned', icon: '🔗', path: 'signals.masterSignal.mtfAligned', operators: ['=='], defaultThreshold: true, valueType: 'boolean', description: 'Multi-timeframe aligned' },
-    MASTER_MTF_WEIGHT: { category: 'MASTER', name: 'MTF Weighted', icon: '🔢', path: 'signals.mtfAnalysis.confluence.weightedScore', operators: ['>', '<', '>=', '<='], defaultThreshold: 50, description: 'Weighted MTF confluence score (0-100)' },
-
-    // ═══════════════════ DASHBOARD ═══════════════════
-
-    DASH_TOTAL: { category: 'DASH', name: 'Dashboard Score', icon: '📊', path: 'dashboard.totalScore', operators: ['>', '<', '>=', '<='], defaultThreshold: 60, description: 'Combined score' },
-    DASH_REC: { category: 'DASH', name: 'Recommendation', icon: '💡', path: 'dashboard.recommendation', operators: ['==', '!='], defaultThreshold: 'STRONG_BUY', valueType: 'select', options: ['STRONG_BUY', 'BUY', 'HOLD', 'SELL', 'STRONG_SELL'], description: 'Dashboard rec' },
-    DASH_SENTIMENT: { category: 'DASH', name: 'Sentiment Score', icon: '😊', path: 'dashboard.sentimentScore', operators: ['>', '<', '>=', '<='], defaultThreshold: 60, description: 'Bullish/Bearish alignment' },
-    DASH_ACCUM: { category: 'DASH', name: 'Accumulation Score', icon: '🧺', path: 'dashboard.accumScore', operators: ['>', '<', '>=', '<='], defaultThreshold: 50, description: 'Buying accumulation intensity' },
-    DASH_INTENSITY: { category: 'DASH', name: 'Trade Intensity', icon: '🔥', path: 'dashboard.intensity', operators: ['>', '<', '>=', '<='], defaultThreshold: 7, description: 'Algo trading velocity (0-10)' },
-    DASH_BREAKOUT: { category: 'DASH', name: 'Breakout Prob', icon: '💥', path: 'dashboard.breakoutProb', operators: ['>', '<', '>=', '<='], defaultThreshold: 60, description: 'Breakout probability %' },
-    DASH_TECH: { category: 'DASH', name: 'Technical Score', icon: '📈', path: 'dashboard.technicalScore', operators: ['>', '<', '>=', '<='], defaultThreshold: 60, description: 'Technical strength score' },
-    DASH_RI_RATIO: { category: 'DASH', name: 'RI Ratio', icon: '⚖️', path: 'dashboard.riRatio', operators: ['>', '<'], defaultThreshold: 1.0, description: 'Retail/Institutional Ratio' },
-    DASH_VOL_QUAL: { category: 'DASH', name: 'Vol Quality', icon: '💎', path: 'dashboard.volQuality.normalizedScore', operators: ['>', '<'], defaultThreshold: 60, description: 'Volume Consistency/Quality' },
-    DASH_LIQ_QUAL: { category: 'DASH', name: 'Liq Quality', icon: '💧', path: 'dashboard.liqQuality.normalizedScore', operators: ['>', '<'], defaultThreshold: 60, description: 'Liquidity Depth/Quality' },
-
-    // 1. VOLUME SPIKES (Consolidated below)
-
-    // 2. META-GUARD (Risk)
+    // // NEW ADVANCED MICROSTRUCTURE (INSTITUTIONAL_BASE)
+    // MICRO_COHESION: { category: 'MICRO', name: 'Signal Cohesion', icon: '🔗', path: 'signals.micro.cohesion.cohesion', operators: ['>', '<', '>=', '<='], defaultThreshold: 70, displayDigits: 0, description: 'Signal agreement (0-100)' },
+    // MICRO_FBI: { category: 'MICRO', name: 'Funding Basis Idx', icon: '⚖️', path: 'signals.micro.fbi.fbi', operators: ['>', '<', 'ABS>'], defaultThreshold: 80, displayDigits: 0, description: 'Funding extreme indicator' },
+    // MICRO_OFSI: { category: 'MICRO', name: 'Order Flow Str', icon: '🌊', path: 'signals.micro.ofsi.ofsi', operators: ['>', '<'], defaultThreshold: 60, displayDigits: 0, description: 'Order Flow Strength Index' },
+    // MICRO_FSI: { category: 'MICRO', name: 'Funding Sentiment', icon: '🎭', path: 'signals.micro.fsi.fsi', operators: ['>', '<'], defaultThreshold: 60, displayDigits: 0, description: 'Funding Sentiment Index' },
+    // MICRO_ZPRESS: { category: 'MICRO', name: 'Z-Score Pressure', icon: '🚀', path: 'signals.micro.zPress.zPress', operators: ['>', '<', 'ABS>'], defaultThreshold: 2.0, description: 'Price pressure vs ATR' },
+    // MICRO_TIM: { category: 'MICRO', name: 'Trade Imbalance', icon: '⚖️', path: 'signals.micro.tim.tim', operators: ['>', '<'], defaultThreshold: 60, displayDigits: 0, description: 'Trade Imbalance Metric' },
+    // MICRO_SQUEEZE: { category: 'MICRO', name: 'Range Squeeze', icon: '💥', path: 'signals.micro.rangeComp.rangeComp', operators: ['>', '<'], defaultThreshold: 80, displayDigits: 0, description: 'Bollinger squeeze/compression' },
+    // MICRO_PFCI: { category: 'MICRO', name: 'Price-Fund Corr', icon: '🔀', path: 'signals.micro.pfci.pfci', operators: ['>', '<'], defaultThreshold: 70, displayDigits: 0, description: 'Price-Funding Correlation' },
+    // MICRO_LSI: { category: 'MICRO', name: 'Liq Stress Index', icon: '💧', path: 'signals.micro.lsi.lsi', operators: ['>', '<'], defaultThreshold: 70, displayDigits: 0, description: 'Liquidity Stress Index' },
+    // MICRO_VOL_PROF: { category: 'MICRO', name: 'Vol Profile Signal', icon: '📊', path: 'signals.micro.volumeProfile.signal', operators: ['==', '!='], defaultThreshold: 'DISCOUNT', valueType: 'select', options: ['OVERVALUED', 'UNDERVALUED', 'PREMIUM', 'DISCOUNT', 'NEUTRAL'], description: 'Volume Profile valuation' },
 
 
-    // 4. ARBITRAGE & AGGRESSION
-    HAS_ARB_OPP: { category: 'FUNDING', name: 'Arb Opportunity', icon: '🥪', path: '_computed.hasArbOpp', operators: ['=='], defaultThreshold: true, valueType: 'boolean', description: 'High funding diff detected' },
+    // // ═══════════════════ ENHANCED ═══════════════════
+    // ENH_CVD_NORM: { category: 'ENHANCED', name: 'CVD Norm Score', icon: '📊', path: 'signals.enhanced.cvd.normalizedScore', operators: ['>', '<'], defaultThreshold: 50, description: 'Normalized CVD score' },
+    // ENH_CVD_CONF: { category: 'ENHANCED', name: 'CVD Confidence', icon: '💪', path: 'signals.enhanced.cvd.confidence', operators: ['>', '<'], defaultThreshold: 70, description: 'CVD signal confidence' },
+    // ENH_CVD_DIV: { category: 'ENHANCED', name: 'CVD Divergence', icon: '⚠️', path: 'signals.enhanced.cvd.divergence', operators: ['=='], defaultThreshold: true, valueType: 'boolean', description: 'Price/CVD divergence' },
 
-    // ═══════════════════ STRATEGY FILTERS (NEW) ═══════════════════
+    // ENH_INST: { category: 'ENHANCED', name: 'Inst. Footprint', icon: '👣', path: 'signals.enhanced.institutionalFootprint.rawValue', operators: ['>', '<'], defaultThreshold: 0.6, description: 'Institutional Activity (0-1)' },
 
-    // 5. MARKET REGIME & CHARACTER
-    REGIME_CURRENT: { category: 'REGIME', name: 'Market Regime', icon: '🌍', path: 'signals.marketRegime.currentRegime', operators: ['==', '!='], defaultThreshold: 'TRENDING', valueType: 'select', options: ['TRENDING', 'RANGING', 'BREAKOUT', 'CORRECTION'], description: 'Current market phase' },
-    VOL_REGIME: { category: 'REGIME', name: 'Vol Regime', icon: '🌋', path: 'signals.marketRegime.volRegime', operators: ['==', '!='], defaultThreshold: 'HIGH_VOL', valueType: 'select', options: ['LOW_VOL', 'NORMAL_VOL', 'HIGH_VOL', 'EXTREME_VOL'], description: 'Volatility environment' },
-    MKT_CHARACTER: { category: 'REGIME', name: 'Mkt Character', icon: '🎭', path: 'synthesis.efficiency.character_15MENIT', operators: ['==', '!='], defaultThreshold: 'EFFORTLESS_MOVE', valueType: 'select', options: ['EFFORTLESS_MOVE', 'CHOPPY', 'ABSORPTION', 'GRINDING', 'NORMAL'], description: 'Price movement character' },
+    // ENH_MOM_QUAL: { category: 'ENHANCED', name: 'Mom. Quality', icon: '✨', path: 'signals.enhanced.momentumQuality.rawValue', operators: ['>', '<'], defaultThreshold: 0.5, description: 'Quality of Momentum' },
+    // ENH_MOM_SCORE: { category: 'ENHANCED', name: 'Mom. Qual Score', icon: '🎯', path: 'signals.enhanced.momentumQuality.normalizedScore', operators: ['>', '<'], defaultThreshold: 50, description: 'Normalized Momentum Quality score' },
 
-    // 6. LIQUIDITY & HEALTH
-    BOOK_HEALTH: { category: 'STRAT', name: 'Book Health', icon: '🏥', path: 'raw.ORDERBOOK.bookHealth', operators: ['==', '!='], defaultThreshold: 'HEALTHY', valueType: 'select', options: ['HEALTHY', 'THIN', 'FRAGILE', 'CRITICAL'], description: 'Order book integrity' },
-    OFI_SCORE: { category: 'STRAT', name: 'OFI Score', icon: '⚖️', path: 'signals.micro.ofi.normalizedScore', operators: ['>', '<'], defaultThreshold: 60, description: 'Order Flow Imbalance (0-100)' },
-    SLIPPAGE_100K: { category: 'STRAT', name: 'Slippage 100k', icon: '💧', path: 'raw.ORDERBOOK.slippage100k', operators: ['<', '>'], defaultThreshold: 0.5, description: 'Slippage % for $100k order' },
+    // ENH_BOOK_RES: { category: 'ENHANCED', name: 'Book Resilience', icon: '🛡️', path: 'signals.enhanced.bookResilience.rawValue', operators: ['>', '<'], defaultThreshold: 0.5, description: 'Orderbook Resilience Score' },
+    // ENH_BOOK_SCORE: { category: 'ENHANCED', name: 'Book Res Score', icon: '🎯', path: 'signals.enhanced.bookResilience.normalizedScore', operators: ['>', '<'], defaultThreshold: 50, description: 'Normalized Book Resilience score' },
 
-    // ═══════════════════ BTC CORRELATION ═══════════════════
-    BTC_BETA: { category: 'BTC', name: 'BTC Beta', icon: '🔗', path: '_computed.btcBeta', operators: ['>', '<'], defaultThreshold: 1.0, computed: true, description: 'Volatility vs BTC' },
-    BTC_DIVERGENCE: { category: 'BTC', name: 'BTC Divergence', icon: '🔀', path: '_computed.btcDiverges', operators: ['=='], defaultThreshold: true, valueType: 'boolean', computed: true, description: 'Moving opposite to BTC' },
-    BTC_OUTPERFORM: { category: 'BTC', name: 'Outperforming', icon: '🚀', path: '_computed.btcOutperform', operators: ['=='], defaultThreshold: true, valueType: 'boolean', computed: true, description: 'Stronger move than BTC' },
+    // ENH_PRESS_ACC: { category: 'ENHANCED', name: 'Pressure Accel', icon: '🚀', path: 'signals.enhanced.pressureAcceleration.rawValue', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.1, description: 'Buying/Selling Pressure Acceleration' },
+    // ENH_PRESS_SCORE: { category: 'ENHANCED', name: 'Press Acc Score', icon: '🎯', path: 'signals.enhanced.pressureAcceleration.normalizedScore', operators: ['>', '<'], defaultThreshold: 50, description: 'Normalized Pressure Accel score' },
 
-    // ═══════════════════ REGIME (Moved to STRAT) ═══════════════════
-    REGIME_TREND: { category: 'REGIME', name: 'Trend Strength', icon: '💪', path: 'signals.marketRegime.trendStrength', operators: ['>', '<'], defaultThreshold: 0.6, description: 'Trend strength 0-1' },
+    // ENH_AMIHUD: { category: 'ENHANCED', name: 'Amihud Illiq', icon: '💧', path: 'signals.enhanced.amihudIlliquidity.rawValue', operators: ['>', '<'], defaultThreshold: 0.5, description: 'Illiquidity Ratio (Higher = Illiquid)' },
+    // ENH_AMIHUD_SCORE: { category: 'ENHANCED', name: 'Amihud Score', icon: '🎯', path: 'signals.enhanced.amihudIlliquidity.normalizedScore', operators: ['>', '<'], defaultThreshold: 50, description: 'Normalized Amihud score' },
 
-    // ═══════════════════ NEW METRICS ═══════════════════
-    // FUNDING_NEXT: { category: 'FUNDING', name: 'Next Funding', icon: '🔮', path: 'raw.FUNDING.nextFundingRate', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.0001, description: 'Predicted next rate' },
+    // // ═══════════════════ MASTER SIGNAL ═══════════════════
+    // MASTER_SCORE: { category: 'MASTER', name: 'Master Score', icon: '🎯', path: 'signals.masterSignal.normalizedScore', operators: ['>', '<', '>=', '<='], defaultThreshold: 65, description: 'Composite score 0-100' },
+    // MASTER_CONFIDENCE: { category: 'MASTER', name: 'Confidence', icon: '💪', path: 'signals.masterSignal.confidence', operators: ['>', '>='], defaultThreshold: 70, description: 'Confidence level' },
+    // MASTER_ACTION: { category: 'MASTER', name: 'Action', icon: '🚦', path: 'signals.masterSignal.action', operators: ['==', '!='], defaultThreshold: 'BUY', valueType: 'select', options: ['BUY', 'SELL', 'WAIT'], description: 'Signal direction' },
+    // MASTER_CONFIRMS: { category: 'MASTER', name: 'Confirmations', icon: '✅', path: 'signals.masterSignal.confirmations', operators: ['>=', '>', '=='], defaultThreshold: 3, description: 'Confirming signals' },
+    // MASTER_MTF: { category: 'MASTER', name: 'MTF Aligned', icon: '🔗', path: 'signals.masterSignal.mtfAligned', operators: ['=='], defaultThreshold: true, valueType: 'boolean', description: 'Multi-timeframe aligned' },
+    // MASTER_MTF_WEIGHT: { category: 'MASTER', name: 'MTF Weighted', icon: '🔢', path: 'signals.mtfAnalysis.confluence.weightedScore', operators: ['>', '<', '>=', '<='], defaultThreshold: 50, description: 'Weighted MTF confluence score (0-100)' },
 
-    // ═══════════════════ BTC CORRELATION / BENCHMARK ═══════════════════
-    BTC_CHANGE_1M: { category: 'BTC', name: 'BTC Δ 1m', icon: '₿', path: '_computed.btcChange1m', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.1, computed: true, description: 'BTC price change 1m' },
-    BTC_CHANGE_5M: { category: 'BTC', name: 'BTC Δ 5m', icon: '₿', path: '_computed.btcChange5m', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.3, computed: true, description: 'BTC price change 5m' },
-    BTC_CHANGE_15M: { category: 'BTC', name: 'BTC Δ 15m', icon: '₿', path: '_computed.btcChange15m', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.5, computed: true, description: 'BTC price change 15m' },
-    BTC_CHANGE_1H: { category: 'BTC', name: 'BTC Δ 1h', icon: '₿', path: '_computed.btcChange1h', operators: ['>', '<', 'ABS>'], defaultThreshold: 1.0, computed: true, description: 'BTC price change 1h' },
-    BTC_DIRECTION: { category: 'BTC', name: 'BTC Direction', icon: '🧭', path: '_computed.btcDirection', operators: ['==', '!='], defaultThreshold: 'UP', valueType: 'select', options: ['UP', 'DOWN', 'FLAT'], computed: true, description: 'BTC current direction' },
-    BTC_FOLLOWS: { category: 'BTC', name: 'Follows BTC', icon: '🔗', path: '_computed.btcFollows', operators: ['=='], defaultThreshold: true, valueType: 'boolean', computed: true, description: 'Coin following BTC move' },
-    BTC_DIVERGES: { category: 'BTC', name: 'Diverges BTC', icon: '↔️', path: '_computed.btcDiverges', operators: ['=='], defaultThreshold: true, valueType: 'boolean', computed: true, description: 'Coin diverging from BTC' },
-    BTC_BETA: { category: 'BTC', name: 'BTC Beta', icon: '📊', path: '_computed.btcBeta', operators: ['>', '<'], defaultThreshold: 1.0, computed: true, description: 'Move ratio vs BTC (>1 = outperform)' },
-    BTC_OUTPERFORM: { category: 'BTC', name: 'Outperforms BTC', icon: '🚀', path: '_computed.btcOutperform', operators: ['=='], defaultThreshold: true, valueType: 'boolean', computed: true, description: 'Coin outperforming BTC' },
+    // // ═══════════════════ DASHBOARD ═══════════════════
 
-    // ═══════════════════ SMART ALERTS ═══════════════════
-    ALERT_CONV: { category: 'ALERT', name: 'Convergence', icon: '🎯', path: '_computed.hasConvergence', operators: ['=='], defaultThreshold: true, valueType: 'boolean', computed: true, description: 'Multiple signals align' },
-    ALERT_WHALE: { category: 'ALERT', name: 'Whale Active', icon: '🐋', path: '_computed.isWhaleActive', operators: ['=='], defaultThreshold: true, valueType: 'boolean', computed: true, description: 'Institutional activity' },
-    ALERT_DISCOUNT: { category: 'ALERT', name: 'Discount', icon: '🏷️', path: '_computed.isDiscount', operators: ['=='], defaultThreshold: true, valueType: 'boolean', computed: true, description: 'Trading at discount' },
-    ALERT_ARB: { category: 'ALERT', name: 'Arb Opp', icon: '💱', path: '_computed.hasArbOpp', operators: ['=='], defaultThreshold: true, valueType: 'boolean', computed: true, description: 'Arbitrage opportunity' },
+    // DASH_TOTAL: { category: 'DASH', name: 'Dashboard Score', icon: '📊', path: 'dashboard.totalScore', operators: ['>', '<', '>=', '<='], defaultThreshold: 60, description: 'Combined score' },
+    // DASH_REC: { category: 'DASH', name: 'Recommendation', icon: '💡', path: 'dashboard.recommendation', operators: ['==', '!='], defaultThreshold: 'STRONG_BUY', valueType: 'select', options: ['STRONG_BUY', 'BUY', 'HOLD', 'SELL', 'STRONG_SELL'], description: 'Dashboard rec' },
+    // DASH_SENTIMENT: { category: 'DASH', name: 'Sentiment Score', icon: '😊', path: 'dashboard.sentimentScore', operators: ['>', '<', '>=', '<='], defaultThreshold: 60, description: 'Bullish/Bearish alignment' },
+    // DASH_TECH: { category: 'DASH', name: 'Technical Score', icon: '📈', path: 'dashboard.technicalScore', operators: ['>', '<', '>=', '<='], defaultThreshold: 60, description: 'Technical strength score' },
 
-    // ═══════════════════ META-GUARD ═══════════════════
-    GUARD_STATUS: { category: 'GUARD', name: 'Guard Status', icon: '🛡️', path: 'signals.institutional_guard.meta_guard_status', operators: ['==', '!='], defaultThreshold: 'ALLOW', valueType: 'select', options: ['ALLOW', 'DOWNGRADE', 'BLOCK', 'SCANNING'], description: 'Meta-Guard execution status' },
-    GUARD_ALLOWED: { category: 'GUARD', name: 'Execution Allowed', icon: '✅', path: 'signals.institutional_guard.execution_allowed', operators: ['=='], defaultThreshold: true, valueType: 'boolean', description: 'Is execution allowed?' },
-    GUARD_CONF_ADJ: { category: 'GUARD', name: 'Confidence Adjustment', icon: '📉', path: 'signals.institutional_guard.confidence_adjustment', operators: ['>', '<', '>=', '<='], defaultThreshold: 0, description: 'Guard confidence modifier' },
-    GUARD_NOISE: { category: 'GUARD', name: 'Noise Level', icon: '📢', path: 'signals.institutional_guard.noise_level', operators: ['==', '!='], defaultThreshold: 'CLEAN', valueType: 'select', options: ['CLEAN', 'NOISY', 'EXTREME'], description: 'Signal noise assessment' },
-    GUARD_IVS: { category: 'GUARD', name: 'Institutional Validity', icon: '🏛️', path: 'signals.institutional_guard.ivs_score', operators: ['>', '<', '>='], defaultThreshold: 50, description: 'Institutional Validity Score' },
-    GUARD_BLOCK_REASON: { category: 'GUARD', name: 'Block Reason', icon: '🚫', path: 'signals.institutional_guard.block_reason', operators: ['==', '!=', 'CONTAINS'], defaultThreshold: null, valueType: 'select', options: ['NO_POSITIONING', 'HIGH_VOL', 'CAUSALITY_BROKEN', 'CROWD_CONTAMINATION', 'NO_LIQUIDITY', 'SANITY_CHECK_FAILED'], description: 'Reason for blocking execution' },
+    // // --- ACCUMULATION ---
+    // DASH_ACCUM: { category: 'DASH', name: 'Accum Score', icon: '🧺', path: 'dashboard.accumScore.accumScore', operators: ['>', '<', '>=', '<='], defaultThreshold: 50, description: 'Buying accumulation intensity' },
+    // DASH_ACCUM_PHASE: { category: 'DASH', name: 'Accum Phase', icon: '⏳', path: 'dashboard.accumScore.phase', operators: ['==', '!='], defaultThreshold: 'ACCUMULATION', valueType: 'select', options: ['ACCUMULATION', 'DISTRIBUTION', 'MARKUP', 'MARKDOWN'], description: 'Market phase' },
+    // DASH_ACCUM_VOL: { category: 'DASH', name: 'Accum Vol Score', icon: '📊', path: 'dashboard.accumScore.volScore', operators: ['>', '<'], defaultThreshold: 0, description: 'Volume score for accum' },
+    // DASH_ACCUM_OI: { category: 'DASH', name: 'Accum OI Conf', icon: '📈', path: 'dashboard.accumScore.oiConfirmation', operators: ['==', '!='], defaultThreshold: 'RISING', valueType: 'select', options: ['RISING', 'FALLING', 'FLAT'], description: 'OI confirmation for accum' },
 
-    // ═══════════════════ NEW INSTITUTIONAL METRICS ═══════════════════
-    MICRO_KYLE: { category: 'MICRO', name: 'Kyle Lambda', icon: '📉', path: 'signals.micro.kyleLambda.rawValue', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.1, description: 'Price impact per volume' },
-    MICRO_VWAP_DIST: { category: 'PRICE', name: 'VWAP Dist %', icon: '📍', path: '_computed.vwapDistance', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.5, description: '% distance to VWAP' },
-    LIQ_SWEEP: { category: 'LIQ', name: 'Liq Sweep', icon: '🧹', path: 'signals.micro.liqSweep.rawValue', operators: ['>', '<', '!=', '=='], defaultThreshold: 1, description: 'Liquidity sweep detection' },
-    VOL_FREQ_DIV: { category: 'VOLUME', name: 'Whale Freq Div', icon: '🐋', path: 'signals.micro.toxicity.rawValue', operators: ['>', '<'], defaultThreshold: 1.5, description: 'Volume vs Frequency anomaly' },
-    STRAT_CORWIN: { category: 'STRAT', name: 'CS Spread', icon: '📐', path: 'analytics.spreadEstimates.combinedBps', operators: ['>', '<'], defaultThreshold: 10, description: 'Combined spread estimate (bps)' },
-    BTC_CORR: { category: 'BTC', name: 'Pearson Correlation', icon: '📊', path: 'analytics.correlation.correlation', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.8, description: 'Correlation to BTC (-1 to 1)' },
-    CIS_SCORE: { category: 'MASTER', name: 'CIS Score', icon: '🎖️', path: '_computed.cisScore', operators: ['>', '<'], defaultThreshold: 60, displayDigits: 0, description: 'Composite Microstructure Index' },
+    // // --- INTENSITY ---
+    // DASH_INTENSITY: { category: 'DASH', name: 'Trade Intensity', icon: '🔥', path: 'dashboard.intensity.intensity', operators: ['>', '<', '>=', '<='], defaultThreshold: 7, description: 'Algo trading velocity (0-10)' },
+    // DASH_INTENSITY_PCT: { category: 'DASH', name: 'Intensity %', icon: '⚡', path: 'dashboard.intensity.intensityPct', operators: ['>', '<'], defaultThreshold: 70, description: 'Intensity percentile' },
+    // DASH_INTENSITY_LEVEL: { category: 'DASH', name: 'Intensity Level', icon: '🚦', path: 'dashboard.intensity.level', operators: ['==', '!='], defaultThreshold: 'MODERATE', valueType: 'select', options: ['CRITICAL', 'STRONG', 'MODERATE', 'WEAK', 'DEAD'], description: 'Intensity level' },
 
-    // ═══════════════════ ANALYTICS ═══════════════════
-    ANALYTICS_TAKER_RATIO: { category: 'ANALYTICS', name: 'Taker Buy Ratio', icon: '🎯', path: 'analytics.orderFlow.takerBuyRatio', operators: ['>', '<'], defaultThreshold: 0.5, description: 'Aggressive Buy Ratio (0-1)' },
-    ANALYTICS_CVD_MOM: { category: 'ANALYTICS', name: 'CVD Momentum', icon: '🚀', path: 'analytics.orderFlow.cvd_momentum', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.1, description: 'CVD Acceleration' },
-    ANALYTICS_AVG_TRADE: { category: 'ANALYTICS', name: 'Avg Trade Sz', icon: '💰', path: 'analytics.orderFlow.avgTradeSize', operators: ['>', '<'], defaultThreshold: 1000, description: 'Average trade size in USD' },
-    ANALYTICS_SPREAD_COMBINED: { category: 'ANALYTICS', name: 'Spread Combined (bps)', icon: '📐', path: 'analytics.spreadEstimates.combinedBps', operators: ['>', '<', 'ABS>'], defaultThreshold: 40, description: 'Combined spread estimate in basis points' },
-    ANALYTICS_HAWKES: { category: 'ANALYTICS', name: 'Hawkes λ', icon: '🐝', path: 'signals.hawkes', operators: ['>', '<'], defaultThreshold: 1.0, description: 'Hawkes process excitation (λ). >1 indicates clustering' },
-    ANALYTICS_MACRO_PREMIUM: { category: 'ANALYTICS', name: 'Macro Premium', icon: '🌍', path: 'signals.macroPremium', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.01, displayDigits: 3, description: 'Macro premium signal (relative)' },
-    ANALYTICS_FUNDING_EXTREME: { category: 'ANALYTICS', name: 'Funding Extreme', icon: '💥', path: 'signals.fundingExtreme', operators: ['>', '<', 'ABS>'], defaultThreshold: 1.0, displayDigits: 2, description: 'Funding rate extremity metric (normalized)' },
+    // // --- BREAKOUT ---
+    // DASH_BREAKOUT: { category: 'DASH', name: 'Breakout Prob', icon: '💥', path: 'dashboard.breakoutPct.breakoutPct', operators: ['>', '<', '>=', '<='], defaultThreshold: 60, description: 'Breakout probability %' },
+    // DASH_BREAKOUT_DIR: { category: 'DASH', name: 'Breakout Dir', icon: '🧭', path: 'dashboard.breakoutPct.direction', operators: ['==', '!='], defaultThreshold: 'UP', valueType: 'select', options: ['UP', 'DOWN', 'NEUTRAL'], description: 'Breakout direction' },
+    // DASH_BREAKOUT_ST: { category: 'DASH', name: 'Breakout Status', icon: '📊', path: 'dashboard.breakoutPct.status', operators: ['==', '!='], defaultThreshold: 'SQUEEZE', valueType: 'select', options: ['SQUEEZE', 'EXPANDING', 'MODERATE', 'NORMAL'], description: 'Breakout status' },
 
-    // ═══════════════════ MICROSTRUCTURE EXTENDED ═══════════════════
-    MICRO_ACC_VOL: { category: 'MICRO', name: 'Accum Vol', icon: '📈', path: 'signals.micro.accVol.accumulatedVolume', operators: ['>', '<', 'ABS>'], defaultThreshold: 100000, description: 'Accumulated Microstructure Vol' },
-    MICRO_CVD_DIV: { category: 'MICRO', name: 'Micro CVD Div', icon: '⚠️', path: 'signals.micro.cvdDivergence.isDivergent', operators: ['=='], defaultThreshold: true, valueType: 'boolean', description: 'Micro-level price/CVD divergence' }
+    // // --- RI RATIO ---
+    // DASH_RI_RATIO: { category: 'DASH', name: 'RI Ratio', icon: '⚖️', path: 'dashboard.riRatio.riRatio', operators: ['>', '<'], defaultThreshold: 1.0, description: 'Retail/Institutional Ratio' },
+    // DASH_RI_TYPE: { category: 'DASH', name: 'Flow Target', icon: '🎯', path: 'dashboard.riRatio.flowType', operators: ['==', '!='], defaultThreshold: 'INSTITUTIONAL', valueType: 'select', options: ['RETAIL', 'INSTITUTIONAL', 'WHALE'], description: 'Dominant flow target' },
+
+    // // --- QUALITY ---
+    // DASH_VOL_QUAL: { category: 'DASH', name: 'Vol Quality', icon: '💎', path: 'dashboard.volQuality.qualityScore', operators: ['>', '<'], defaultThreshold: 60, description: 'Volume Consistency/Quality' },
+    // DASH_LIQ_QUAL: { category: 'DASH', name: 'Liq Quality', icon: '💧', path: 'dashboard.liqQuality.qualityScore', operators: ['>', '<'], defaultThreshold: 60, description: 'Liquidity Depth/Quality' },
+    // DASH_LIQ_TIER: { category: 'DASH', name: 'Liq Tier', icon: '🏆', path: 'dashboard.liqQuality.tier', operators: ['>', '<', '=='], defaultThreshold: 1, description: 'Liquidity tier (1-5)' },
+
+    // // --- SPIKE & CVD ---
+    // DASH_HIST_SPIKE: { category: 'DASH', name: 'Hist Spike', icon: '🚀', path: 'dashboard.historicalSpike.spike', operators: ['>', '<'], defaultThreshold: 2.0, description: 'Volume spike vs historical avg' },
+    // DASH_HIST_ST: { category: 'DASH', name: 'Hist Spike Status', icon: '📈', path: 'dashboard.historicalSpike.status', operators: ['==', '!='], defaultThreshold: 'EXTREME', valueType: 'select', options: ['EXTREME', 'HIGH', 'MODERATE', 'LOW'], description: 'Spike intensity status' },
+    // DASH_CVD_SCORE: { category: 'DASH', name: 'CVD Norm Score', icon: '📊', path: 'dashboard.cvd.normalizedScore', operators: ['>', '<'], defaultThreshold: 50, description: 'Normalized CVD score' },
+    // DASH_CVD_CONF: { category: 'DASH', name: 'CVD Confidence', icon: '💪', path: 'dashboard.cvd.confidence', operators: ['>', '<'], defaultThreshold: 70, description: 'CVD signal confidence' },
+    // DASH_CVD_DIR: { category: 'DASH', name: 'CVD Direction', icon: '🧭', path: 'dashboard.cvd.direction', operators: ['==', '!='], defaultThreshold: 'BUY', valueType: 'select', options: ['BUY', 'SELL', 'NEUTRAL'], description: 'CVD flow direction' },
+
+    // // 1. VOLUME SPIKES (Consolidated below)
+
+    // // 2. META-GUARD (Risk)
+
+
+    // // 4. ARBITRAGE & AGGRESSION
+    // HAS_ARB_OPP: { category: 'FUNDING', name: 'Arb Opportunity', icon: '🥪', path: '_computed.hasArbOpp', operators: ['=='], defaultThreshold: true, valueType: 'boolean', description: 'High funding diff detected' },
+
+    // // ═══════════════════ STRATEGY FILTERS (NEW) ═══════════════════
+
+    // // 5. MARKET REGIME & CHARACTER
+    // REGIME_CURRENT: { category: 'REGIME', name: 'Market Regime', icon: '🌍', path: 'signals.marketRegime.currentRegime', operators: ['==', '!='], defaultThreshold: 'TRENDING', valueType: 'select', options: ['TRENDING', 'RANGING', 'BREAKOUT', 'CORRECTION'], description: 'Current market phase' },
+    // VOL_REGIME: { category: 'REGIME', name: 'Vol Regime', icon: '🌋', path: 'signals.marketRegime.volRegime', operators: ['==', '!='], defaultThreshold: 'HIGH_VOL', valueType: 'select', options: ['LOW_VOL', 'NORMAL_VOL', 'HIGH_VOL', 'EXTREME_VOL'], description: 'Volatility environment' },
+    // MKT_CHARACTER: { category: 'REGIME', name: 'Mkt Character', icon: '🎭', path: 'synthesis.efficiency.character_15MENIT', operators: ['==', '!='], defaultThreshold: 'EFFORTLESS_MOVE', valueType: 'select', options: ['EFFORTLESS_MOVE', 'CHOPPY', 'ABSORPTION', 'GRINDING', 'NORMAL'], description: 'Price movement character' },
+
+    // // 6. LIQUIDITY & HEALTH
+    // BOOK_HEALTH: { category: 'STRAT', name: 'Book Health', icon: '🏥', path: 'raw.ORDERBOOK.bookHealth', operators: ['==', '!='], defaultThreshold: 'HEALTHY', valueType: 'select', options: ['HEALTHY', 'THIN', 'FRAGILE', 'CRITICAL'], description: 'Order book integrity' },
+    // OFI_SCORE: { category: 'STRAT', name: 'OFI Score', icon: '⚖️', path: 'signals.micro.ofi.normalizedScore', operators: ['>', '<'], defaultThreshold: 60, description: 'Order Flow Imbalance (0-100)' },
+    // SLIPPAGE_100K: { category: 'STRAT', name: 'Slippage 100k', icon: '💧', path: 'raw.ORDERBOOK.slippage100k', operators: ['<', '>'], defaultThreshold: 0.5, description: 'Slippage % for $100k order' },
+
+
+    // // ═══════════════════ REGIME (Moved to STRAT) ═══════════════════
+    // REGIME_TREND: { category: 'REGIME', name: 'Trend Strength', icon: '💪', path: 'signals.marketRegime.trendStrength', operators: ['>', '<'], defaultThreshold: 0.6, description: 'Trend strength 0-1' },
+
+    // // ═══════════════════ NEW METRICS ═══════════════════
+    // // FUNDING_NEXT: { category: 'FUNDING', name: 'Next Funding', icon: '🔮', path: 'raw.FUNDING.nextFundingRate', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.0001, description: 'Predicted next rate' },
+
+    // // ═══════════════════ SMART ALERTS ═══════════════════
+    // ALERT_CONV: { category: 'ALERT', name: 'Convergence', icon: '🎯', path: '_computed.hasConvergence', operators: ['=='], defaultThreshold: true, valueType: 'boolean', computed: true, description: 'Multiple signals align' },
+    // ALERT_WHALE: { category: 'ALERT', name: 'Whale Active', icon: '🐋', path: '_computed.isWhaleActive', operators: ['=='], defaultThreshold: true, valueType: 'boolean', computed: true, description: 'Institutional activity' },
+    // ALERT_DISCOUNT: { category: 'ALERT', name: 'Discount', icon: '🏷️', path: '_computed.isDiscount', operators: ['=='], defaultThreshold: true, valueType: 'boolean', computed: true, description: 'Trading at discount' },
+    // ALERT_ARB: { category: 'ALERT', name: 'Arb Opp', icon: '💱', path: '_computed.hasArbOpp', operators: ['=='], defaultThreshold: true, valueType: 'boolean', computed: true, description: 'Arbitrage opportunity' },
+
+
+    // // ═══════════════════ NEW INSTITUTIONAL METRICS ═══════════════════
+    // MICRO_KYLE: { category: 'MICRO', name: 'Kyle Lambda', icon: '📉', path: 'signals.micro.kyleLambda.rawValue', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.1, description: 'Price impact per volume' },
+    // MICRO_VWAP_DIST: { category: 'PRICE', name: 'VWAP Dist %', icon: '📍', path: '_computed.vwapDistance', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.5, description: '% distance to VWAP' },
+    // LIQ_SWEEP: { category: 'LIQ', name: 'Liq Sweep', icon: '🧹', path: 'signals.micro.liqSweep.rawValue', operators: ['>', '<', '!=', '=='], defaultThreshold: 1, description: 'Liquidity sweep detection' },
+    // VOL_FREQ_DIV: { category: 'VOLUME', name: 'Whale Freq Div', icon: '🐋', path: 'signals.micro.toxicity.rawValue', operators: ['>', '<'], defaultThreshold: 1.5, description: 'Volume vs Frequency anomaly' },
+    // STRAT_CORWIN: { category: 'STRAT', name: 'CS Spread', icon: '📐', path: 'analytics.spreadEstimates.combinedBps', operators: ['>', '<'], defaultThreshold: 10, description: 'Combined spread estimate (bps)' },
+    // CIS_SCORE: { category: 'MASTER', name: 'CIS Score', icon: '🎖️', path: '_computed.cisScore', operators: ['>', '<'], defaultThreshold: 60, displayDigits: 0, description: 'Composite Microstructure Index' },
+
+    // // ═══════════════════ ANALYTICS ═══════════════════
+    // ANALYTICS_TAKER_RATIO: { category: 'ANALYTICS', name: 'Taker Buy Ratio', icon: '🎯', path: 'analytics.orderFlow.takerBuyRatio', operators: ['>', '<'], defaultThreshold: 0.5, description: 'Aggressive Buy Ratio (0-1)' },
+    // ANALYTICS_CVD_MOM: { category: 'ANALYTICS', name: 'CVD Momentum', icon: '🚀', path: 'analytics.orderFlow.cvd_momentum', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.1, description: 'CVD Acceleration' },
+    // ANALYTICS_AVG_TRADE: { category: 'ANALYTICS', name: 'Avg Trade Sz', icon: '💰', path: 'analytics.orderFlow.avgTradeSize', operators: ['>', '<'], defaultThreshold: 1000, description: 'Average trade size in USD' },
+    // ANALYTICS_SPREAD_COMBINED: { category: 'ANALYTICS', name: 'Spread Combined (bps)', icon: '📐', path: 'analytics.spreadEstimates.combinedBps', operators: ['>', '<', 'ABS>'], defaultThreshold: 40, description: 'Combined spread estimate in basis points' },
+    // ANALYTICS_HAWKES: { category: 'ANALYTICS', name: 'Hawkes λ', icon: '🐝', path: 'signals.hawkes', operators: ['>', '<'], defaultThreshold: 1.0, description: 'Hawkes process excitation (λ). >1 indicates clustering' },
+    // ANALYTICS_MACRO_PREMIUM: { category: 'ANALYTICS', name: 'Macro Premium', icon: '🌍', path: 'signals.macroPremium', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.01, displayDigits: 3, description: 'Macro premium signal (relative)' },
+    // ANALYTICS_FUNDING_EXTREME: { category: 'ANALYTICS', name: 'Funding Extreme', icon: '💥', path: 'signals.fundingExtreme', operators: ['>', '<', 'ABS>'], defaultThreshold: 1.0, displayDigits: 2, description: 'Funding rate extremity metric (normalized)' },
+
+    // // ═══════════════════ MICROSTRUCTURE EXTENDED ═══════════════════
+    // // ═══════════════════ SYNTHESIS (NEW) ═══════════════════
+    // SYNT_FLOW_CAPITAL: { category: 'SYNT', name: 'Capital Flow', icon: '💸', path: 'synthesis.flow.capital_flow_15MENIT', operators: ['>', '<', 'ABS>'], defaultThreshold: 1000, description: 'Capital Flow (15m)' },
+    // SYNT_FLOW_TYPE: { category: 'SYNT', name: 'Flow Type', icon: '🌊', path: 'synthesis.flow.flow_type_15MENIT', operators: ['==', '!='], defaultThreshold: 'ACCUMULATION', valueType: 'select', options: ['ACCUMULATION', 'DISTRIBUTION', 'MARKUP', 'MARKDOWN', 'NEUTRAL'], description: 'Primary flow classification' },
+    // SYNT_EFF_RATIO: { category: 'SYNT', name: 'Efficiency Ratio', icon: '⚙️', path: 'synthesis.efficiency.efficiency_ratio_15MENIT', operators: ['>', '<'], defaultThreshold: 0.5, description: 'Price vs Volume efficiency' },
+    // SYNT_CHAR: { category: 'SYNT', name: 'Mkt Character', icon: '🎭', path: 'synthesis.efficiency.character_15MENIT', operators: ['==', '!='], defaultThreshold: 'EFFORTLESS_MOVE', valueType: 'select', options: ['EFFORTLESS_MOVE', 'CHOPPY', 'ABSORPTION', 'GRINDING', 'NORMAL'], description: 'Price movement character' },
+    // SYNT_MOM_AGGR: { category: 'SYNT', name: 'Momentum Aggr', icon: '🔥', path: 'synthesis.momentum.aggression_level_15MENIT', operators: ['==', '!='], defaultThreshold: 'INSTITUTIONAL', valueType: 'select', options: ['WHALE', 'INSTITUTIONAL', 'MODERATE', 'WEAK', 'PASSIVE', 'RETAIL'], description: 'Momentum aggression level' },
+
+    // // ═══════════════════ MICROSTRUCTURE (DEEP) ═══════════════════
+    // MICRO_ACC_VOL: { category: 'MICRO', name: 'Accum Vol', icon: '📈', path: 'signals.micro.accVol.accumulatedVolume', operators: ['>', '<', 'ABS>'], defaultThreshold: 100000, description: 'Accumulated Microstructure Vol' },
+    // MICRO_ACC_DIV: { category: 'MICRO', name: 'Accum Vol Div', icon: '⚠️', path: 'signals.micro.accVol.divergence', operators: ['=='], defaultThreshold: true, valueType: 'boolean', description: 'Vol/Price divergence' },
+    // MICRO_VWAP_DIST: { category: 'MICRO', name: 'VWAP Dist %', icon: '📍', path: '_computed.vwapDistance', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.5, description: '% distance to VWAP' },
+    // MICRO_KYLE: { category: 'MICRO', name: 'Kyle Lambda', icon: '📉', path: 'signals.micro.kyleLambda.rawValue', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.1, description: 'Price impact per volume' },
+    // MICRO_CVD_DIV: { category: 'MICRO', name: 'Micro CVD Div', icon: '⚠️', path: 'signals.micro.cvdDivergence.isDivergent', operators: ['=='], defaultThreshold: true, valueType: 'boolean', description: 'Micro-level price/CVD divergence' },
+    // MICRO_CVD_DIV_ST: { category: 'MICRO', name: 'Micro CVD Str', icon: '⚡', path: 'signals.micro.cvdDivergence.divergenceStrength', operators: ['=='], defaultThreshold: 'STRONG', valueType: 'select', options: ['STRONG', 'MODERATE', 'WEAK', 'NONE'], description: 'Micro CVD divergence strength' },
+
+    // // ═══════════════════ DERIVATIVES (NEW) ═══════════════════
+    // DERIV_LIQ_SWEEP: { category: 'DERIV', name: 'Liq Sweep', icon: '🧹', path: 'signals.micro.liqSweep.rawValue', operators: ['>', '<', '!=', '=='], defaultThreshold: 1, description: 'Liquidity sweep detection' },
+    // // Re-use existing LIQ category fields here conceptually if needed, but these are new structural homes
+
+    // // ═══════════════════ INSTITUTIONAL (NEW) ═══════════════════
+    // INST_COHESION: { category: 'INST', name: 'Signal Cohesion', icon: '🔗', path: 'signals.micro.cohesion.cohesion', operators: ['>', '<', '>=', '<='], defaultThreshold: 70, displayDigits: 0, description: 'Signal agreement (0-100)' },
+    // INST_FBI: { category: 'INST', name: 'Funding Basis Idx', icon: '⚖️', path: 'signals.micro.fbi.fbi', operators: ['>', '<', 'ABS>'], defaultThreshold: 80, displayDigits: 0, description: 'Funding extreme indicator' },
+    // INST_OFSI: { category: 'INST', name: 'Order Flow Str', icon: '🌊', path: 'signals.micro.ofsi.ofsi', operators: ['>', '<'], defaultThreshold: 60, displayDigits: 0, description: 'Order Flow Strength Index' },
+    // INST_FSI: { category: 'INST', name: 'Funding Sentiment', icon: '🎭', path: 'signals.micro.fsi.fsi', operators: ['>', '<'], defaultThreshold: 60, displayDigits: 0, description: 'Funding Sentiment Index' },
+    // INST_ZPRESS: { category: 'INST', name: 'Z-Score Pressure', icon: '🚀', path: 'signals.micro.zPress.zPress', operators: ['>', '<', 'ABS>'], defaultThreshold: 2.0, description: 'Price pressure vs ATR' },
+    // INST_TIM: { category: 'INST', name: 'Trade Imbalance', icon: '⚖️', path: 'signals.micro.tim.tim', operators: ['>', '<'], defaultThreshold: 60, displayDigits: 0, description: 'Trade Imbalance Metric' },
+    // INST_SQUEEZE: { category: 'INST', name: 'Range Squeeze', icon: '💥', path: 'signals.micro.rangeComp.rangeComp', operators: ['>', '<'], defaultThreshold: 80, displayDigits: 0, description: 'Bollinger squeeze/compression' },
+    // INST_PFCI: { category: 'INST', name: 'Price-Fund Corr', icon: '🔀', path: 'signals.micro.pfci.pfci', operators: ['>', '<'], defaultThreshold: 70, displayDigits: 0, description: 'Price-Funding Correlation' },
+    // INST_LSI: { category: 'INST', name: 'Liq Stress Index', icon: '💧', path: 'signals.micro.lsi.lsi', operators: ['>', '<'], defaultThreshold: 70, displayDigits: 0, description: 'Liquidity Stress Index' },
+    // INST_VOL_PROF: { category: 'INST', name: 'Vol Profile Signal', icon: '📊', path: 'signals.micro.volumeProfile.signal', operators: ['==', '!='], defaultThreshold: 'DISCOUNT', valueType: 'select', options: ['OVERVALUED', 'UNDERVALUED', 'PREMIUM', 'DISCOUNT', 'NEUTRAL'], description: 'Volume Profile valuation' },
+    // INST_FOOTPRINT: { category: 'INST', name: 'Inst. Footprint', icon: '👣', path: 'signals.enhanced.institutionalFootprint.rawValue', operators: ['>', '<'], defaultThreshold: 0.6, description: 'Institutional Activity (0-1)' },
+
+    // // ═══════════════════ ANALYTICS / ORDER FLOW (DEEP) ═══════════════════
+    // ANA_TAKER_RATIO: { category: 'ANA', name: 'Taker Buy Ratio', icon: '🎯', path: 'analytics.orderFlow.takerBuyRatio', operators: ['>', '<'], defaultThreshold: 0.5, description: 'Aggressive Buy Ratio (0-1)' },
+    // ANA_AGGR_BUY_PCT: { category: 'ANA', name: 'Aggr Buy %', icon: '💥', path: 'analytics.orderFlow.aggressiveBuyPct', operators: ['>', '<'], defaultThreshold: 50, description: 'Percentage of aggressive buys' },
+    // ANA_CVD_MOM: { category: 'ANA', name: 'CVD Momentum', icon: '🚀', path: 'analytics.orderFlow.cvd_momentum', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.1, description: 'CVD Acceleration' },
+    // ANA_CVD_DIR: { category: 'ANA', name: 'CVD Direction', icon: '🧭', path: 'analytics.orderFlow.flowDirection', operators: ['==', '!='], defaultThreshold: 'BULLISH', valueType: 'select', options: ['BULLISH', 'BEARISH', 'NEUTRAL'], description: 'Cumulative volume delta direction' },
+    // ANA_AVG_TRADE: { category: 'ANA', name: 'Avg Trade Sz', icon: '💰', path: 'analytics.orderFlow.avgTradeSize', operators: ['>', '<'], defaultThreshold: 1000, description: 'Average trade size in USD' },
+    // ANA_TRADE_IMB: { category: 'ANA', name: 'Trade Sz Imb', icon: '⚖️', path: 'analytics.orderFlow.tradeSizeImbalance', operators: ['>', '<', 'ABS>'], defaultThreshold: 1.5, description: 'Buy Avg / Sell Avg size imbalance' },
+    // ANA_SPREAD_COMBINED: { category: 'ANA', name: 'Spread (bps)', icon: '📐', path: 'analytics.spreadEstimates.combinedBps', operators: ['>', '<', 'ABS>'], defaultThreshold: 40, description: 'Combined spread estimate in basis points' },
+    // ANA_HAWKES: { category: 'ANA', name: 'Hawkes λ', icon: '🐝', path: 'signals.hawkes', operators: ['>', '<'], defaultThreshold: 1.0, description: 'Hawkes process excitation (λ). >1 = clustering' },
+    // ANA_MACRO_PREMIUM: { category: 'ANA', name: 'Macro Premium', icon: '🌍', path: 'signals.macroPremium', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.01, displayDigits: 3, description: 'Macro premium signal (relative)' },
+
+    // // ═══════════════════ MULTI-TIMEFRAME CONFLUENCE ═══════════════════
+    // MTF_ALIGNED: { category: 'MTF', name: 'MTF Aligned', icon: '🔗', path: 'mtfConfluence.INSTITUTIONAL_BASE.aligned', operators: ['=='], defaultThreshold: true, valueType: 'boolean', description: 'Multi-timeframe aligned' },
+    // MTF_SCORE: { category: 'MTF', name: 'MTF Score', icon: '🔢', path: 'mtfConfluence.INSTITUTIONAL_BASE.confluenceScore', operators: ['>', '<', '>=', '<='], defaultThreshold: 50, description: 'Weighted MTF confluence score (0-100)' },
+    // MTF_QUAL: { category: 'MTF', name: 'MTF Quality', icon: '💎', path: 'mtfConfluence.INSTITUTIONAL_BASE.quality', operators: ['==', '!='], defaultThreshold: 'HIGH', valueType: 'select', options: ['HIGH', 'MEDIUM', 'LOW', 'CONFLICTING'], description: 'MTF signal quality' },
+    // MTF_BULL_CNT: { category: 'MTF', name: 'Bullish TFs', icon: '📈', path: 'analytics.mtfAnalysis.confluence.breakdown.bullishCount', operators: ['>', '<', '=='], defaultThreshold: 3, description: 'Number of bullish timeframes' },
+    // MTF_BEAR_CNT: { category: 'MTF', name: 'Bearish TFs', icon: '📉', path: 'analytics.mtfAnalysis.confluence.breakdown.bearishCount', operators: ['>', '<', '=='], defaultThreshold: 3, description: 'Number of bearish timeframes' },
+    // MTF_MOM_SHIFT: { category: 'MTF', name: 'Mom. Shift', icon: '🔄', path: 'analytics.mtfAnalysis.momentumShift.detected', operators: ['=='], defaultThreshold: true, valueType: 'boolean', description: 'Momentum shift detected' },
+    // MTF_ABSORB: { category: 'MTF', name: 'Absorption', icon: '🧽', path: 'analytics.mtfAnalysis.absorption.detected', operators: ['=='], defaultThreshold: true, valueType: 'boolean', description: 'Absorption detected across TF' },
+    // MTF_EXHAUST: { category: 'MTF', name: 'Exhaustion', icon: '🥵', path: 'analytics.mtfAnalysis.exhaustion.detected', operators: ['=='], defaultThreshold: true, valueType: 'boolean', description: 'Trend exhaustion detected' },
+    // MTF_REC: { category: 'MTF', name: 'MTF Entry Rec', icon: '🚦', path: 'mtfConfluence.INSTITUTIONAL_BASE.entryRecommendation', operators: ['==', '!='], defaultThreshold: 'WAIT', valueType: 'select', options: ['WAIT', 'AVOID', 'ENTER'], description: 'MTF Entry Recommendation' },
+
+    // // ═══════════════════ FUNDING DETAILS ═══════════════════
+    // FUND_CURR: { category: 'FUNDING', name: 'Current Rate', icon: '💸', path: 'analytics.funding.currentRate', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.0001, description: 'Current funding rate' },
+    // FUND_NEXT: { category: 'FUNDING', name: 'Next Rate', icon: '🔮', path: 'analytics.funding.nextRate', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.0001, description: 'Predicted next funding rate' },
+    // FUND_APR: { category: 'FUNDING', name: 'Funding APR', icon: '📈', path: 'analytics.funding.fundingAPR', operators: ['>', '<', 'ABS>'], defaultThreshold: 10, description: 'Annualized funding rate %' },
+    // FUND_ZSCORE: { category: 'FUNDING', name: 'Funding Z-Score', icon: '📊', path: 'analytics.funding.zScore', operators: ['>', '<', 'ABS>'], defaultThreshold: 2.0, description: 'Z-Score of funding rate' },
+    // FUND_PRESS: { category: 'FUNDING', name: 'Funding Pressure', icon: '🏋️', path: 'analytics.funding.fundingPressure', operators: ['>', '<', 'ABS>'], defaultThreshold: 0.5, description: 'Funding pressure on price' },
+    // FUND_IS_EXT: { category: 'FUNDING', name: 'Extreme Fund', icon: '🚨', path: 'analytics.funding.isExtremeFunding', operators: ['=='], defaultThreshold: true, valueType: 'boolean', description: 'Funding rate at historical extremes' },
+    // FUND_DIV: { category: 'FUNDING', name: 'Funding Diverge', icon: '⚠️', path: 'analytics.funding.hasDivergence', operators: ['=='], defaultThreshold: true, valueType: 'boolean', description: 'Funding diverging from price' },
+
+    // // ═══════════════════ MARKET VITALITY & REGIME ═══════════════════
+    // VITAL_REGIME: { category: 'VITAL', name: 'Market Regime', icon: '🌍', path: 'signals.marketRegime.currentRegime', operators: ['==', '!='], defaultThreshold: 'TRENDING', valueType: 'select', options: ['TRENDING', 'RANGING', 'BREAKOUT', 'CORRECTION'], description: 'Current market phase' },
+    // VITAL_VOL_REGIME: { category: 'VITAL', name: 'Vol Regime', icon: '🌋', path: 'signals.marketRegime.volRegime', operators: ['==', '!='], defaultThreshold: 'HIGH_VOL', valueType: 'select', options: ['LOW_VOL', 'NORMAL_VOL', 'HIGH_VOL', 'EXTREME_VOL'], description: 'Volatility environment' },
+    // VITAL_TREND: { category: 'VITAL', name: 'Trend Strength', icon: '💪', path: 'signals.marketRegime.trendStrength', operators: ['>', '<'], defaultThreshold: 0.6, description: 'Trend strength 0-1' },
+    // VITAL_FUND_EXT: { category: 'VITAL', name: 'Funding Extreme', icon: '💥', path: 'signals.fundingExtreme', operators: ['>', '<', 'ABS>'], defaultThreshold: 1.0, displayDigits: 2, description: 'Funding rate extremity metric (normalized)' },
+    // VITAL_SMART_MONEY: { category: 'VITAL', name: 'Smart Money Idx', icon: '🧠', path: 'signals.micro.smartMoney.rawValue', operators: ['>', '<'], defaultThreshold: 0.5, description: 'Smart Money Index' }
 };
-
+export let SIGNAL_COMPONENTS = {}
 // Merge auto-generated components (if any) so new analytics appear in Composer automatically
 try {
-    SIGNAL_COMPONENTS = Object.assign({}, SIGNAL_COMPONENTS, FLOW_COMPONENTS, FUNDING_COMPONENTS,LSR_COMPONENTS, OI_COMPONENTS,OB_COMPONENTS,VOLUME_COMPONENTS,PRICE_COMPONENTS,GENERATED_COMPONENTS || {});
+    SIGNAL_COMPONENTS = Object.assign({}, META_GUARDS, BTC_BENCHMARK, ANALYTICS_COMPONENTS, MICROSTRUCTURESUMMARY_COMPONENTS, DASHBOARD_COMPONENTS, MASTER_SIGNAL_COMPONENTS, ORDERBOOK_COMPONENTS, CONFLUENCE_COMPONENTS, SUMMARY_COMPONENTS, COMPOSITE_COMPONENTS, INSTITUTIONAL_COMPONENTS, SENTIMENT_COMPONENTS, VOLATILITY_COMPONENTS, DERIVATIVES_COMPONENTS, MICROSTRUCTURE_COMPONENTS
+        , MOMENTUM_COMPONENTS, EFFICIENCY_COMPONENTS, FLOW_COMPONENTS, FUNDING_COMPONENTS, LSR_COMPONENTS, OI_COMPONENTS, OB_COMPONENTS, VOLUME_COMPONENTS, PRICE_COMPONENTS
+        // , AUTO_GENERATED_COMPONENTS
+    );
 } catch (e) {
     console.warn('Failed to merge GENERATED_COMPONENTS into SIGNAL_COMPONENTS', e);
 }
 
-export const CATEGORIES = {
-    PRICE: { name: 'Price', icon: '💲' },
-    VOLUME: { name: 'Volume', icon: '📊' },
-    FREQ: { name: 'Frequency', icon: '⚡' },
-    OI: { name: 'Open Interest', icon: '📈' },
-    FUNDING: { name: 'Funding', icon: '💰' },
-    LSR: { name: 'Long/Short', icon: '⚖️' },
-    LIQ: { name: 'Liquidation', icon: '💥' },
-    MICRO: { name: 'Microstructure', icon: '🔬' },
-    OB: { name: 'Orderbook', icon: '🧱' },
-    SYNTHESIS: { name: 'Synthesis', icon: '🌊' },
-    ENHANCED: { name: 'Enhanced', icon: '✨' },
-    MASTER: { name: 'Master Signal', icon: '🎯' },
-    DASH: { name: 'Dashboard', icon: '🖥️' },
-    REGIME: { name: 'Regime', color: 'rose-400', icon: '🌡️' },
-    BTC: { name: 'BTC Benchmark', color: 'yellow-500', icon: '₿' },
-    ALERT: { name: 'Alerts', color: 'red-500', icon: '🚨' },
-    GUARD: { name: 'META-GUARD', color: 'emerald-500', icon: '🛡️' },
-    STRAT: { name: 'Strategy Filters', color: 'indigo-500', icon: '♟️' },
-    ANALYTICS: { name: 'Analytics', color: 'blue-400', icon: '📈' }
-};
+export const CATEGORIES = SIGNAL_CATEGORY;
 
 // Generate MATRIX_VIEWS from CATEGORIES (replacing hardcoded views)
 const MATRIX_VIEWS = Object.fromEntries(
@@ -296,7 +390,6 @@ export function render(container) {
                         <button id="btn-presets" class="px-2 py-1 bg-purple-500/10 border border-purple-500/30 text-purple-400 text-[9px] font-black hover:bg-purple-500/20 rounded">📋 PRESETS</button>
                         <button id="btn-import" class="px-2 py-1 bg-blue-500/10 border border-blue-500/30 text-blue-400 text-[9px] font-black hover:bg-blue-500/20 rounded">📥 IMPORT</button>
                         <button id="btn-export-all" class="px-2 py-1 bg-green-500/10 border border-green-500/30 text-green-400 text-[9px] font-black hover:bg-green-500/20 rounded">📤 EXPORT ALL</button>
-                        <a id="btn-chat-ai" href="https://chatgpt.com/g/g-69944e77eb0881919d85b78a182fc7b0-signal-composer" target="_blank" rel="noopener noreferrer" class="px-2 py-1 bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 text-[9px] font-black hover:bg-indigo-500/20 rounded">🤖 CHAT AI</a>
                         <button id="btn-new" class="px-2 py-1 bg-bb-gold/10 border border-bb-gold/30 text-bb-gold text-[9px] font-black hover:bg-bb-gold/20 rounded">+ NEW</button>
                         <button id="btn-chat-ai" class="px-2 py-1 bg-indigo-600/10 border border-indigo-600/30 text-indigo-400 text-[9px] font-black hover:bg-indigo-600/20 rounded">🤖 CHAT TO AI</button>
                     </div>
@@ -962,7 +1055,7 @@ function renderSignalAnalysis(coin, data) {
 
         return `
                             <div class="flex items-center gap-2 p-1.5 rounded bg-black/20 border ${r.passed ? 'border-bb-green/10' : 'border-bb-red/10'} text-[8px]">
-                                <span class="text-xs shrink-0">${comp?.icon || '❓'}</span>
+                                <span class="text-xs shrink-0">${comp?.icon || 'z'}</span>
                                 <div class="flex-1 min-w-0">
                                     <div class="flex justify-between items-center mb-0.5">
                                         <span class="font-bold text-white truncate">${comp?.name || 'Unknown'}</span>

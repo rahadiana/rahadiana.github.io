@@ -134,18 +134,24 @@ export function calculateTechnicalScore(price, vol, lsr, funding) {
 
 // === COMPUTED VALUES ===
 // Normalizes the data structure to match expected paths
-export function computeData(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15MENIT') {
+export function computeData(data, profile = 'INSTITUTIONAL_BASE', timeframe = '15m') {
   if (!data) return null;
-
+  // console.log(data)
   // Extract nested structures like viewGlobal.js does
   const raw = data.raw || {};
-  const dash = data.dashboard || {};
+  const dash = data.dashboard || data.synthesis?.dashboard || data.synthesis?.flow || {};
+
   const sigRoot = data.signals || {};
   const profileObj = sigRoot.profiles?.[profile] || {};
+  const confluenceObj = profileObj.confluence || {};
   const tfObj = profileObj.timeframes?.[timeframe] || {};
   const tfSignalsRaw = tfObj.signals || {};
+  const SignalSummary = tfObj.summary || {};
+  const MasterSignal = getMasterSignal(data, profile, timeframe);
   // Flatten grouped signals for backward compatibility
   const tfSignals = flattenSignals(tfSignalsRaw);
+  const microstructureSignals = data.microstructure?.[profile] || {};
+  const analyticsSummary = data?.analytics || {};
   // New schema: merge masterSignal + recommendation so both confirmations and action survive
   const tfMaster = {
     ...(tfObj.masterSignal || {}),
@@ -174,8 +180,8 @@ export function computeData(data, profile = 'INSTITUTIONAL_BASE', timeframe = '1
 
   // Synthesis
   const syn = data.synthesis || {};
-  const flow = syn.flow || {};
-  const eff = syn.efficiency || {};
+  // const flow = syn.flow || {};
+  // const eff = syn.efficiency || {};
   const mom = syn.momentum || {};
 
   // Funding analytics
@@ -257,7 +263,7 @@ export function computeData(data, profile = 'INSTITUTIONAL_BASE', timeframe = '1
 
   const btcData = getBtcData();
   const coinChange5m = price.percent_change_5MENIT || 0;
-  const coinChange15m = price.percent_change_15MENIT || 0;
+  // const coinChange15m = price.percent_change_15MENIT || 0;
 
   // BTC correlation calculations
   const btcDirection = btcData.change5m > 0.1 ? 'UP' : btcData.change5m < -0.1 ? 'DOWN' : 'FLAT';
@@ -485,15 +491,239 @@ export function computeData(data, profile = 'INSTITUTIONAL_BASE', timeframe = '1
         ...avgRaw
       }
     },
+    // profile_signals: profile,
     _computed: computed,
+    raw: data.raw || {},
+    masterSignals: data.masterSignals?.[timeframe]?.[profile] || {},
     synthesis: syn,
+    mtfConfluence: data.mtfConfluence || {},
     microstructure: data.microstructure || {},
     analytics: ({
       ...analytics,
       candleSpread: candleSpreadRoot
     }),
-    signals: sigRoot,
-    institutional: sigRoot.institutional || {},
+    dashboardSummary: (function () {
+      const src = data.dashboard || {};
+      const accumScore = src.accumScore || {};
+      const breakoutPct = src.breakoutPct || {};
+      const intensity = src.intensity || {};
+      const riRatio = src.riRatio || {};
+      const volQuality = src.volQuality || {};
+      const liqQuality = src.liqQuality || {};
+      const historicalSpike = src.historicalSpike || {};
+      const cvd = src.cvd || {};
+      const amihudIlliquidity = src.amihudIlliquidity || {};
+      const bookResilience = src.bookResilience || {};
+      const momentumQuality = src.momentumQuality || {};
+      const pressureAcceleration = src.pressureAcceleration || {};
+      const institutionalFootprint = src.institutionalFootprint || {};
+
+      const res = {
+        // accumScore
+        accumScore_score: accumScore.accumScore ?? null,
+        accumScore_phase: accumScore.phase ?? null,
+        accumScore_volScore: accumScore.volScore ?? null,
+        accumScore_oiConfirmation: accumScore.oiConfirmation ?? null,
+        accumScore_isConsolidating: accumScore.isConsolidating ?? null,
+
+        // breakoutPct
+        breakoutPct_breakoutPct: breakoutPct.breakoutPct ?? null,
+        breakoutPct_direction: breakoutPct.direction ?? null,
+        breakoutPct_status: breakoutPct.status ?? null,
+
+        //intensity
+        intensity_intensity: intensity.intensity ?? null,
+        intensity_intensityPct: intensity.intensityPct ?? null,
+        intensity_level: intensity.level ?? null,
+        intensity_volIntensity: intensity.volIntensity ?? null,
+        intensity_freqIntensity: intensity.freqIntensity ?? null,
+
+        //riRatio
+        riRatio: riRatio.riRatio ?? null,
+        flowType: riRatio.flowType ?? null,
+        avgTradeSize: riRatio.avgTradeSize ?? null,
+        histAvgSize: riRatio.histAvgSize ?? null,
+
+        //volQuality
+        qualityScore: volQuality.qualityScore ?? null,
+        quality: volQuality.quality ?? null,
+
+        //liqQuality
+        liqQuality_tier: liqQuality.tier ?? null,
+        liqQuality_tierLabel: liqQuality.tierLabel ?? null,
+        liqQuality_qualityScore: liqQuality.qualityScore ?? null,
+
+        //historicalSpike
+        historicalSpike_spike: historicalSpike.spike ?? null,
+        historicalSpike_status: historicalSpike.status ?? null,
+
+        //cvd
+        cvd_normalizedScore: cvd.normalizedScore ?? null,
+        cvd_direction: (cvd.direction === 'BUY') ? 'LONG' : (cvd.direction === 'SELL') ? 'SHORT' : (cvd.direction ?? 'NEUTRAL'),
+        cvd_confidence: cvd.confidence ?? null,
+
+        //amihudIlliquidity
+        amihudIlliquidity_normalizedScore: amihudIlliquidity.normalizedScore ?? null,
+        amihudIlliquidity_direction: (amihudIlliquidity.direction === 'BUY') ? 'LONG' : (amihudIlliquidity.direction === 'SELL') ? 'SHORT' : (amihudIlliquidity.direction ?? 'NEUTRAL'),
+        amihudIlliquidity_confidence: amihudIlliquidity.confidence ?? null,
+
+        //bookResilience
+        bookResilience_normalizedScore: bookResilience.normalizedScore ?? null,
+        bookResilience_direction: (bookResilience.direction === 'BUY') ? 'LONG' : (bookResilience.direction === 'SELL') ? 'SHORT' : (bookResilience.direction ?? 'NEUTRAL'),
+        bookResilience_confidence: bookResilience.confidence ?? null,
+
+        //momentumQuality
+        momentumQuality_normalizedScore: momentumQuality.normalizedScore ?? null,
+        momentumQuality_direction: (momentumQuality.direction === 'BUY') ? 'LONG' : (momentumQuality.direction === 'SELL') ? 'SHORT' : (momentumQuality.direction ?? 'NEUTRAL'),
+        momentumQuality_confidence: momentumQuality.confidence ?? null,
+
+        //pressureAcceleration
+        pressureAcceleration_normalizedScore: pressureAcceleration.normalizedScore ?? null,
+        pressureAcceleration_direction: (pressureAcceleration.direction === 'BUY') ? 'LONG' : (pressureAcceleration.direction === 'SELL') ? 'SHORT' : (pressureAcceleration.direction ?? 'NEUTRAL'),
+        pressureAcceleration_confidence: pressureAcceleration.confidence ?? null,
+
+        //institutionalFootprint
+        institutionalFootprint_normalizedScore: institutionalFootprint.normalizedScore ?? null,
+        institutionalFootprint_direction: (institutionalFootprint.direction === 'BUY') ? 'LONG' : (institutionalFootprint.direction === 'SELL') ? 'SHORT' : (institutionalFootprint.direction ?? 'NEUTRAL'),
+        institutionalFootprint_confidence: institutionalFootprint.confidence ?? null,
+      }
+      return res;
+    })(),
+
+    microstructureSummary: (function () {
+      const src = microstructureSignals || {};
+      const cohesion = src.cohesion || {};
+      const accVol = src.accVol || {};
+      const fbi = src.fbi || {};
+      const ofsi = src.ofsi || {};
+      const fsi = src.fsi || {};
+      const zPress = src.zPress || {};
+      const tim = src.tim || {};
+      const rangeComp = src.rangeComp || {};
+      const pfci = src.pfci || {};
+      const lsi = src.lsi || {};
+      const volumeProfile = src.volumeProfile || {};
+      const cvdDivergence = src.cvdDivergence || {};
+      const cis = src.cis || {};
+
+      const res = {
+        // cohesion
+        cohesion_level: cohesion?.level ?? null,
+        cohesion_dominantDirection: (cohesion?.dominantDirection === 'BUY') ? 'LONG' : (cohesion?.dominantDirection === 'SELL') ? 'SHORT' : (cohesion?.dominantDirection ?? 'NEUTRAL'),
+
+        //accVol
+        accVol_trend: accVol?.trend ?? null,
+        accVol_direction: (accVol?.direction === 'BUY') ? 'LONG' : (accVol?.direction === 'SELL') ? 'SHORT' : (accVol?.direction ?? 'NEUTRAL'),
+
+        //fbi
+        fbi_direction: fbi?.direction ?? null,
+        fbi_extreme: fbi?.extreme ?? null, //LONGS_PAY, SHORTS_PAY, NEUTRAL
+        //ofsi
+        ofsi_strength: ofsi?.strength ?? null,
+        ofsi_direction: (ofsi?.direction === 'BUY') ? 'LONG' : (ofsi?.direction === 'SELL') ? 'SHORT' : (ofsi?.direction ?? 'NEUTRAL'),
+
+        //fsi
+        fsi_sentiment: fsi?.sentiment ?? null,
+        //zPress
+        zPress_pressure: zPress?.pressure ?? null,
+        zPress_direction: zPress?.direction ?? null,
+        //tim
+        tim_imbalance: tim?.imbalance ?? null,
+        //rangeComp
+        rangeComp_status: rangeComp?.status ?? null,
+        //pfci
+        pfci_signal: pfci?.signal ?? null,
+        pfci_priceDirection: pfci?.priceDirection ?? null,
+        pfci_fundingDirection: pfci?.fundingDirection ?? null,
+        //lsi
+        lsi_level: lsi?.level ?? null,
+        //volumeProfile
+        volumeProfile_signal: volumeProfile?.signal ?? null,
+        volumeProfile_interpretation: volumeProfile?.interpretation ?? null,
+        //cvdDivergence
+        cvdDivergence_signal: cvdDivergence?.cvdSignal ?? null,
+        cvdDivergence_divergenceStrength: cvdDivergence?.divergenceStrength ?? null,
+        //cis
+        cis_bias: cis?.bias ?? null,
+
+
+      }
+      // console.log("microstructureSummary", res);
+      return res;
+    })(),
+
+    analyticsSummary: (function () {
+      const src = analyticsSummary || {};
+      const orderFlow = src.orderFlow || {};
+      const mtfAnalysis = src.mtfAnalysis || {};
+      // const spreadEstimates = src.spreadEstimates || {};
+      const volatility = src.volatility || {};
+      const priceAction = src.priceAction || {};
+      const funding = src.funding || {};
+      // const customMetrics = src.customMetrics || {};
+      const correlation = src.correlation || {};
+      const execution = src.execution || {};
+      const sorterMetrics = src.sorterMetrics || {};
+
+      const res = {
+        //orderFlow
+        orderFlow_flowDirection: (orderFlow?.flowDirection === 'BUY') ? 'LONG' : (orderFlow?.flowDirection === 'SELL') ? 'SHORT' : (orderFlow?.flowDirection ?? 'NEUTRAL'),
+        //mtfAnalysis
+        mtfAnalysis_confluenceStrength: mtfAnalysis?.confluence?.confluenceStrength ?? null,
+        mtfAnalysis_confluenceDirection: mtfAnalysis?.confluence?.confluenceDirection ?? null,
+        mtfAnalysis_momentumShift: mtfAnalysis?.momentumShift?.detected ?? null,
+        mtfAnalysis_absorption: mtfAnalysis?.absorption?.detected ?? null,
+        mtfAnalysis_exhaustion: mtfAnalysis?.exhaustion?.detected ?? null,
+        mtfAnalysis_multiTFSignal: (mtfAnalysis?.multiTFSignal === 'BUY') ? 'LONG' : (mtfAnalysis?.multiTFSignal === 'SELL') ? 'SHORT' : (mtfAnalysis?.multiTFSignal ?? 'NEUTRAL'),
+        mtfAnalysis_multiTFConfidence: mtfAnalysis?.multiTFConfidence ?? null,
+        //volatility
+        volatility_volatilityRegime: volatility?.volatilityRegime ?? null,
+        volatility_volTrend: volatility?.volTrend ?? null,
+        //priceAction
+        priceAction_nearestResistance: priceAction?.supportResistance?.nearestResistance ?? null,
+        priceAction_nearestSupport: priceAction?.supportResistance?.nearestSupport ?? null,
+        //funding
+        funding_fundingDirection: funding?.fundingDirection ?? null,
+        funding_fundingLevel: funding?.fundingLevel ?? null,
+        funding_fundingPressure: funding?.fundingPressure ?? null,
+        funding_trend: funding?.historicalFunding.trend ?? null,
+        //correlation
+        correlation_classification: correlation?.correlation?.classification ?? null,
+        correlation_betaReliability: correlation?.correlation?.betaReliability ?? null,
+        //vwap
+        vwap_vwap: execution?.vwap ?? null,
+        //sorterMetrics
+        sorterMetrics_maxPain_direction: (sorterMetrics?.options?.maxPain?.direction === 'BUY') ? 'LONG' : (sorterMetrics?.options?.maxPain?.direction === 'SELL') ? 'SHORT' : (sorterMetrics?.options?.maxPain?.direction ?? 'NEUTRAL'),
+        sorterMetrics_pcr_direction: (sorterMetrics?.options?.pcr?.direction === 'BUY') ? 'LONG' : (sorterMetrics?.options?.pcr?.direction === 'SELL') ? 'SHORT' : (sorterMetrics?.options?.pcr?.direction ?? 'NEUTRAL'),
+
+        sorterMetrics_macroPremium_direction: (sorterMetrics?.macroPremium?.direction === 'BUY') ? 'LONG' : (sorterMetrics?.macroPremium?.direction === 'SELL') ? 'SHORT' : (sorterMetrics?.macroPremium?.direction ?? 'NEUTRAL'),
+        sorterMetrics_macroPremium_flowOrigin: sorterMetrics?.macroPremium?.direction ?? null,
+        sorterMetrics_macroPremium_sentiment: sorterMetrics?.macroPremium?.direction ?? null,
+
+        sorterMetrics_pairs_divergence_normalizedScore: sorterMetrics?.pairs?.divergence?.normalizedScore ?? null,
+        sorterMetrics_pairs_divergence_direction: (sorterMetrics?.pairs?.divergence?.direction === 'BUY') ? 'LONG' : (sorterMetrics?.pairs?.divergence?.direction === 'SELL') ? 'SHORT' : (sorterMetrics?.pairs?.divergence?.direction ?? 'NEUTRAL'),
+        toxicFlow_pairs_confidence: sorterMetrics?.pairs?.divergence?.confidence ?? null,
+
+        //vpin
+        toxicFlow_vpin_normalizedScore: sorterMetrics?.toxicFlow?.vpin?.normalizedScore ?? null,
+        toxicFlow_vpin_direction: (sorterMetrics?.toxicFlow?.vpin?.direction === 'BUY') ? 'LONG' : (sorterMetrics?.toxicFlow?.vpin?.direction === 'SELL') ? 'SHORT' : (sorterMetrics?.toxicFlow?.vpin?.direction ?? 'NEUTRAL'),
+        toxicFlow_vpin_confidence: sorterMetrics?.toxicFlow?.vpin?.confidence ?? null,
+        toxicFlow_vpin_riskLevel: sorterMetrics?.toxicFlow?.vpin?.metadata?.riskLevel ?? null,
+        toxicFlow_vpin_toxicity: sorterMetrics?.toxicFlow?.vpin?.metadata?.toxicity ?? null,
+        toxicFlow_vpin_toxicity_direction: sorterMetrics?.toxicFlow?.vpin?.metadata?.direction ?? null,
+        toxicFlow_vpin_bucketImbalance: sorterMetrics?.toxicFlow?.vpin?.metadata?.bucketImbalance ?? null,
+
+        //hawkes
+        toxicFlow_hawkes_normalizedScore: sorterMetrics?.toxicFlow?.hawkes?.normalizedScore ?? null,
+        toxicFlow_hawkes_direction: (sorterMetrics?.toxicFlow?.hawkes?.direction === 'BUY') ? 'LONG' : (sorterMetrics?.toxicFlow?.hawkes?.direction === 'SELL') ? 'SHORT' : (sorterMetrics?.toxicFlow?.hawkes?.direction ?? 'NEUTRAL'),
+        toxicFlow_hawkes_confidence: sorterMetrics?.toxicFlow?.hawkes?.confidence ?? null,
+        toxicFlow_hawkes_lambda: sorterMetrics?.toxicFlow?.hawkes?.metadata?.lambda ?? null,
+        toxicFlow_hawkes_clusteringState: sorterMetrics?.toxicFlow?.hawkes?.metadata?.clusteringState ?? null,
+
+      }
+      // console.log("microstructureSummary", res);
+      return res;
+    })(),
     dashboard: {
       ...dash,
       totalScore: tfMaster.score ?? tfMaster.normalizedScore ?? null,
@@ -507,30 +737,26 @@ export function computeData(data, profile = 'INSTITUTIONAL_BASE', timeframe = '1
         return 'HOLD';
       })(),
       sentimentScore: tfSignals.sentimentAlignment?.normalizedScore ?? tfSignalsRaw.sentiment?.sentimentAlignment?.normalizedScore ?? data.signals?.sentiment?.sentimentAlignment?.normalizedScore,
-      accumScore: dash.accumScore?.accumScore,
-      intensity: dash.intensity?.intensity,
-      breakoutProb: dash.breakoutPct?.breakoutPct,
-      riRatio: dash.riRatio?.riRatio,
       technicalScore: dash.technicalScore?.technicalScore ?? calculateTechnicalScore(price, vol, lsrRaw, fundingRaw),
-      // Volume Quality & Liquidity Quality normalization for UI
       volQuality: {
+        ...(dash.volQuality || {}),
         normalizedScore: (dash.volQuality?.qualityScore !== undefined && dash.volQuality?.qualityScore !== null)
           ? dash.volQuality.qualityScore
           : Math.round((computed.volDurability || 0) * 100)
       },
       liqQuality: {
+        ...(dash.liqQuality || {}),
         normalizedScore: (dash.liqQuality?.qualityScore !== undefined && dash.liqQuality?.qualityScore !== null)
           ? dash.liqQuality.qualityScore
           : (sigRoot.derivatives?.liquidationCascade?.normalizedScore ?? 0)
-      }
+      },
+      liqTier: dash.liqQuality?.tier ?? dash.liqTier ?? 2
     },
     signals: {
       ...sigRoot, // KEEP RAW SIGNALS
+      tf: tfSignals, // FLATTENED TF SIGNALS
       masterSignal: {
-        // Include the full timeframe master/recommendation object so all example fields
-        // (including shouldTrade, adjustmentFactors, metadata, etc.) are directly available.
         ...tfMaster,
-        // Maintain normalized, stable top-level accessors used by UI modules
         normalizedScore: tfMaster.score ?? tfMaster.normalizedScore,
         action: (tfMaster.action === 'BUY') ? 'LONG' : (tfMaster.action === 'SELL') ? 'SHORT' : (tfMaster.action ?? 'WAIT'),
         confidence: tfMaster.confidence ?? 0,
@@ -538,15 +764,233 @@ export function computeData(data, profile = 'INSTITUTIONAL_BASE', timeframe = '1
         mtfAligned: data.signals?.mtfConfluence?.[profile]?.aligned ?? tfMaster.mtfAligned ?? false,
         tier: tfMaster.tier ?? 5,
         contributingSignals: tfMaster.contributingSignals || [],
-        // Propagate position sizing and risk management from timeframe master/recommendation
         positionSizing: tfMaster.positionSizing ?? tfObj.positionSizing ?? tfObj.recommendation?.positionSizing ?? null,
         riskManagement: tfMaster.riskManagement ?? tfObj.riskManagement ?? tfObj.recommendation?.riskManagement ?? null
       },
+
+      confluenceSignals: (function () {
+        const src = confluenceObj || {};
+        // console.log(src.direction15m)
+        return {
+          aligned: src.aligned ?? null,
+          conflicting: src.conflicting ?? null,
+          confluenceScore: src.confluenceScore ?? null,
+          quality: src.quality ?? null,
+          entryRecommendation: src.entryRecommendation ?? null,
+          direction5m: src.direction5m ?? null,
+          direction15m: src.direction15m ?? null,
+          score5m: src.score5m ?? null,
+          score15m: src.score15m ?? null,
+          confidence5m: src.confidence5m ?? null,
+          confidence15m: src.confidence15m ?? null,
+        };
+      })(),
+
+      orderbook: (function () {
+        const src = sigRoot.orderBook || {};
+        const ofi = src.ofi || {};
+        const depthImbalance = src.depthImbalance || {};
+        const liquidityStress = src.liquidityStress || {};
+        const slippageScore = src.slippageScore || {};
+        const spoofingRisk = src.spoofingRisk || {};
+
+        const res = {
+          // OFI
+          ofi_raw: ofi.rawValue ?? null,
+          ofi_score: ofi.normalizedScore ?? null,
+          ofi_direction: (ofi.direction === 'BUY') ? 'LONG' : (ofi.direction === 'SELL') ? 'SHORT' : (ofi.direction ?? 'NEUTRAL'),
+          ofi_confidence: ofi.confidence ?? null,
+
+          // Depth Imbalance
+          depthImbalance_raw: depthImbalance.rawValue ?? null,
+          depthImbalance_score: depthImbalance.normalizedScore ?? null,
+          depthImbalance_direction: (depthImbalance.direction === 'BUY') ? 'LONG' : (depthImbalance.direction === 'SELL') ? 'SHORT' : (depthImbalance.direction ?? 'NEUTRAL'),
+          depthImbalance_confidence: depthImbalance.confidence ?? null,
+
+          // Liquidity Stress
+          liquidityStress_raw: liquidityStress.rawValue ?? null,
+          liquidityStress_score: liquidityStress.normalizedScore ?? null,
+          liquidityStress_direction: (liquidityStress.direction === 'BUY') ? 'LONG' : (liquidityStress.direction === 'SELL') ? 'SHORT' : (liquidityStress.direction ?? 'NEUTRAL'),
+          liquidityStress_confidence: liquidityStress.confidence ?? null,
+
+          // Slippage Score
+          slippageScore_raw: slippageScore.rawValue ?? null,
+          slippageScore_score: slippageScore.normalizedScore ?? null,
+          slippageScore_direction: (slippageScore.direction === 'BUY') ? 'LONG' : (slippageScore.direction === 'SELL') ? 'SHORT' : (slippageScore.direction ?? 'NEUTRAL'),
+          slippageScore_confidence: slippageScore.confidence ?? null,
+
+          // Spoofing Risk
+          spoofingRisk_raw: spoofingRisk.rawValue ?? null,
+          spoofingRisk_score: spoofingRisk.normalizedScore ?? null,
+          spoofingRisk_confidence: spoofingRisk.confidence ?? null,
+        }
+        return res;
+      })(),
+
       micro: {
-        vpin: {
-          rawValue: tfSignals.vpin?.rawValue ?? tfSignalsRaw.microstructure?.vpin?.rawValue ?? data.microstructure?.[profile]?.vpin?.rawValue ?? null,
-          direction: tfSignals.vpin?.direction ?? tfSignalsRaw.microstructure?.vpin?.direction ?? data.microstructure?.[profile]?.vpin?.direction ?? 'NEUTRAL'
-        },
+        vpin: (function () {
+          const src = tfSignals.vpin || tfSignalsRaw.microstructure?.vpin || data.microstructure?.[profile]?.vpin || {};
+          return {
+            ...src,
+            rawValue: src.rawValue ?? null,
+            direction: (src.direction === 'BUY') ? 'LONG' : (src.direction === 'SELL') ? 'SHORT' : (src.direction ?? 'NEUTRAL'),
+            confidence: src.confidence ?? null
+          };
+        })(),
+        kyleLambda: (function () {
+          const src = tfSignals.kyleLambda || tfSignalsRaw.microstructure?.kyleLambda || data.microstructure?.[profile]?.kyleLambda || {};
+          // alert(src.confidence)
+          return {
+            rawValue: src.rawValue ?? null,
+            direction: (src.direction === 'BUY') ? 'LONG' : (src.direction === 'SELL') ? 'SHORT' : (src.direction ?? 'NEUTRAL'),
+            confidence: src.confidence + 0 ?? null
+          };
+        })(),
+        vwoi: (function () {
+          const src = tfSignals.vwoi || tfSignalsRaw.microstructure?.vwoi || data.microstructure?.[profile]?.vwoi || {};
+          return {
+            rawValue: src.rawValue ?? null,
+            direction: (src.direction === 'BUY') ? 'LONG' : (src.direction === 'SELL') ? 'SHORT' : (src.direction ?? 'NEUTRAL'),
+            confidence: src.confidence ?? null
+          };
+        })(),
+        volumeFreqDivergence: (function () {
+          const src = tfSignals.volumeFreqDivergence || tfSignalsRaw.microstructure?.volumeFreqDivergence || data.microstructure?.[profile]?.volumeFreqDivergence || {};
+          return {
+            rawValue: src.rawValue ?? null,
+            direction: (src.direction === 'BUY') ? 'LONG' : (src.direction === 'SELL') ? 'SHORT' : (src.direction ?? 'NEUTRAL'),
+            confidence: src.confidence ?? null
+          };
+        })(),
+        accumScore: (function () {
+          const src = tfSignals.accumScore || tfSignalsRaw.microstructure?.accumScore || data.microstructure?.[profile]?.accumScore || {};
+          return {
+            rawValue: src.rawValue ?? null,
+            direction: (src.direction === 'BUY') ? 'LONG' : (src.direction === 'SELL') ? 'SHORT' : (src.direction ?? 'NEUTRAL'),
+            confidence: src.confidence ?? null
+          };
+        })(),
+
+        // derivatives
+        oiDivergence: (function () {
+          const src = tfSignals.oiDivergence || tfSignalsRaw.derivatives?.oiDivergence || data.derivatives?.[profile]?.oiDivergence || {};
+          return {
+            rawValue: src.rawValue ?? null,
+            direction: (src.direction === 'BUY') ? 'LONG' : (src.direction === 'SELL') ? 'SHORT' : (src.direction ?? 'NEUTRAL'),
+            confidence: src.confidence ?? null
+          };
+        })(),
+
+        liquidationCascadess: (function () {
+          const src = tfSignals.liquidationCascade || tfSignalsRaw.derivatives?.liquidationCascade || data.derivatives?.[profile]?.liquidationCascade || {};
+          return {
+            rawValue: src.rawValue ?? null,
+            direction: (src.direction === 'BUY') ? 'LONG' : (src.direction === 'SELL') ? 'SHORT' : (src.direction ?? 'NEUTRAL'),
+            confidence: src.confidence ?? null
+          };
+        })(),
+
+        //volatility
+        gkVolatility: (function () {
+          const src = tfSignals.gkVolatility || tfSignalsRaw.volatility?.gkVolatility || data.volatility?.[profile]?.gkVolatility || {};
+          return {
+            rawValue: src.rawValue ?? null,
+            direction: (src.direction === 'BUY') ? 'LONG' : (src.direction === 'SELL') ? 'SHORT' : (src.direction ?? 'NEUTRAL'),
+            confidence: src.confidence ?? null
+          };
+        })(),
+        atrMomentum: (function () {
+          const src = tfSignals.atrMomentum || tfSignalsRaw.volatility?.atrMomentum || data.volatility?.[profile]?.atrMomentum || {};
+          return {
+            rawValue: src.rawValue ?? null,
+            direction: (src.direction === 'BUY') ? 'LONG' : (src.direction === 'SELL') ? 'SHORT' : (src.direction ?? 'NEUTRAL'),
+            confidence: src.confidence ?? null
+          };
+        })(),
+        volatilityRegimesss: (function () {
+          const src = tfSignals.volatilityRegime || tfSignalsRaw.volatility?.volatilityRegime || data.volatility?.[profile]?.volatilityRegime || {};
+          return {
+            regime: src.regime ?? null,
+            regimeScore: src.regimeScore ?? null,
+            volTrend: src.volTrend ?? null,
+            volConsistency: src.volConsistency ?? null
+
+          };
+        })(),
+        // sentiment
+        lsrContrarian: (function () {
+          const src = tfSignals.lsrContrarian || tfSignalsRaw.sentiment?.lsrContrarian || data.sentiment?.[profile]?.lsrContrarian || {};
+          return {
+            rawValue: src.rawValue ?? null,
+            direction: (src.direction === 'BUY') ? 'LONG' : (src.direction === 'SELL') ? 'SHORT' : (src.direction ?? 'NEUTRAL'),
+            confidence: src.confidence ?? null
+
+          };
+        })(),
+        sentimentAlignmentsssss: (function () {
+          const src = tfSignals.sentimentAlignment || tfSignalsRaw.sentiment?.sentimentAlignment || data.sentiment?.[profile]?.sentimentAlignment || {};
+          return {
+            rawValue: src.rawValue ?? null,
+            direction: (src.direction === 'BUY') ? 'LONG' : (src.direction === 'SELL') ? 'SHORT' : (src.direction ?? 'NEUTRAL'),
+            confidence: src.confidence ?? null,
+          };
+        })(),
+        // institutional
+        liquiditySweeps: (function () {
+          const src = tfSignals.liquiditySweep || tfSignalsRaw.institutional?.liquiditySweep || data.institutional?.[profile]?.liquiditySweep || {};
+          return {
+            rawValue: src.rawValue ?? null,
+            direction: (src.direction === 'BUY') ? 'LONG' : (src.direction === 'SELL') ? 'SHORT' : (src.direction ?? 'NEUTRAL'),
+            confidence: src.confidence ?? null,
+          };
+        })(),
+        fvg: (function () {
+          const src = tfSignals.fvg || tfSignalsRaw.institutional?.fvg || data.institutional?.[profile]?.fvg || {};
+          return {
+            rawValue: src.rawValue ?? null,
+            direction: (src.direction === 'BUY') ? 'LONG' : (src.direction === 'SELL') ? 'SHORT' : (src.direction ?? 'NEUTRAL'),
+            confidence: src.confidence ?? null,
+          };
+        })(),
+        //composite
+        smartMoneyIndex: (function () {
+          const src = tfSignals.smartMoneyIndex || tfSignalsRaw.composite?.smartMoneyIndex || data.composite?.[profile]?.smartMoneyIndex || {};
+          return {
+            rawValue: src.rawValue ?? null,
+            direction: (src.direction === 'BUY') ? 'LONG' : (src.direction === 'SELL') ? 'SHORT' : (src.direction ?? 'NEUTRAL'),
+            confidence: src.confidence ?? null,
+          };
+        })(),
+        marketRegime: (function () {
+          const src = tfSignals.marketRegime || tfSignalsRaw.composite?.marketRegime || data.composite?.[profile]?.marketRegime || {};
+          return {
+            currentRegime: src.currentRegime ?? null,
+            regime: src.regime ?? null,
+            regimeScore: src.regimeScore ?? null,
+            volRegime: src.volRegime ?? null,
+            trendStrength: src.trendStrength ?? null,
+            trendDirection: src.trendDirection ?? null,
+            isHighVolume: src.isHighVolume ?? null,
+
+
+          };
+        })(),
+        //summary signals
+        summarys: (function () {
+          const src = SignalSummary || {};
+          return {
+            totalSignals: src.totalSignals ?? null,
+            buySignals: src.buySignals ?? null,
+            sellSignals: src.sellSignals ?? null,
+            neutralSignals: src.neutralSignals ?? null,
+            highConfidenceSignals: src.highConfidenceSignals ?? null,
+            masterAction: src.masterAction ?? null,
+            masterDirection: src.masterDirection ?? null,
+            masterConfidence: src.masterConfidence ?? null,
+            canTrade: src.canTrade ?? null,
+
+          };
+        })(),
         ofi: {
           normalizedScore: tfSignals.ofi?.normalizedScore
             ?? tfSignalsRaw.orderBook?.ofi?.normalizedScore
@@ -560,11 +1004,15 @@ export function computeData(data, profile = 'INSTITUTIONAL_BASE', timeframe = '1
         },
         spread: { rawValue: (obRaw.spreadBps != null) ? obRaw.spreadBps / 100 : (obRaw.spread ?? null) },
         toxicity: { rawValue: tfSignals.volumeFreqDivergence?.rawValue ?? tfSignalsRaw.microstructure?.volumeFreqDivergence?.rawValue ?? data.microstructure?.[profile]?.volumeFreqDivergence?.rawValue ?? null },
-        accVol: {
-          accumulatedVolume: tfSignals.accVol?.accumulatedVolume ?? tfSignalsRaw.microstructure?.accVol?.accumulatedVolume ?? data.microstructure?.[profile]?.accVol?.accumulatedVolume ?? data.microstructure?.[profile]?.accVol?.accVol ?? data.microstructure?.[profile]?.accVol?.rawValue ?? null,
-          rawValue: tfSignals.accVol?.rawValue ?? tfSignals.accVol?.accumulatedVolume ?? tfSignalsRaw.microstructure?.accVol?.rawValue ?? tfSignalsRaw.microstructure?.accVol?.accumulatedVolume ?? data.microstructure?.[profile]?.accVol?.rawValue ?? data.microstructure?.[profile]?.accVol?.accumulatedVolume ?? data.microstructure?.[profile]?.accVol?.accVol ?? null,
-          divergence: tfSignals.accVol?.divergence ?? tfSignalsRaw.microstructure?.accVol?.divergence ?? data.microstructure?.[profile]?.accVol?.divergence ?? null
-        },
+        accVol: (function () {
+          const src = tfSignals.accVol || tfSignalsRaw.microstructure?.accVol || data.microstructure?.[profile]?.accVol || {};
+          return {
+            ...src,
+            accumulatedVolume: src.accVol ?? src.accumulatedVolume ?? src.rawValue ?? null,
+            rawValue: src.rawValue ?? src.accumulatedVolume ?? src.accVol ?? null,
+            divergence: src.divergence ?? null
+          };
+        })(),
         // Advanced dynamic profile mapping
         cohesion: data.microstructure?.[profile]?.cohesion || {},
         fbi: data.microstructure?.[profile]?.fbi || {},
@@ -576,16 +1024,15 @@ export function computeData(data, profile = 'INSTITUTIONAL_BASE', timeframe = '1
         pfci: data.microstructure?.[profile]?.pfci || {},
         lsi: data.microstructure?.[profile]?.lsi || {},
         volumeProfile: data.microstructure?.[profile]?.volumeProfile || {},
-        kyleLambda: {
-          rawValue: tfSignals.kyleLambda?.rawValue ?? tfSignalsRaw.microstructure?.kyleLambda?.rawValue ?? data.microstructure?.[profile]?.kyleLambda?.rawValue ?? data.microstructure?.[profile]?.kyleLambda?.value ?? null,
-          direction: tfSignals.kyleLambda?.direction ?? tfSignalsRaw.microstructure?.kyleLambda?.direction ?? data.microstructure?.[profile]?.kyleLambda?.direction ?? null
-        },
-        cvdDivergence: (function(){
+
+
+        cvdDivergence: (function () {
           const src = data.microstructure?.[profile]?.cvdDivergence || tfSignals.cvdDivergence || tfSignalsRaw.microstructure?.cvdDivergence || null;
           if (!src) {
             return (dash.cvd ? { cvdSignal: dash.cvd?.signal || 'NONE', divergenceStrength: dash.cvd?.metadata?.divergenceType || 'NONE', isDivergent: (dash.cvd?.metadata?.divergenceType !== 'NONE') } : {});
           }
           return {
+            ...src,
             cvdSignal: src.cvdSignal ?? src.signal ?? null,
             divergenceStrength: src.divergenceStrength ?? src.metadata?.divergenceType ?? src.divergenceType ?? null,
             isDivergent: (src.isDivergent !== undefined) ? src.isDivergent : (src.divergenceStrength ? src.divergenceStrength !== 'NONE' : false)
@@ -597,49 +1044,31 @@ export function computeData(data, profile = 'INSTITUTIONAL_BASE', timeframe = '1
         smartMoney: tfObj.signals?.composite?.smartMoneyIndex || {}
       },
       enhanced: {
-        cvd: dash.cvd ? {
-          rawValue: dash.cvd.rawValue,
-          direction: dash.cvd.direction,
-          divergence: dash.cvd.metadata?.divergenceType !== 'NONE',
-          divergenceType: dash.cvd.metadata?.divergenceType
-        } : null,
-
-        institutionalFootprint: dash.institutionalFootprint ? {
-          rawValue: dash.institutionalFootprint.rawValue
-        } : null,
-
-        momentumQuality: dash.momentumQuality ? {
-          rawValue: dash.momentumQuality.rawValue
-        } : null,
-
-        bookResilience: dash.bookResilience ? {
-          rawValue: dash.bookResilience.rawValue
-        } : null,
-
-        pressureAcceleration: dash.pressureAcceleration ? {
-          rawValue: dash.pressureAcceleration.rawValue
-        } : null,
-
-        amihudIlliquidity: dash.amihudIlliquidity ? {
-          rawValue: dash.amihudIlliquidity.rawValue
-        } : null
-      },
-      marketRegime: {
-        currentRegime: tfSignals.marketRegime?.currentRegime ?? tfSignals.composite?.marketRegime?.currentRegime ?? tfSignalsRaw.composite?.marketRegime?.currentRegime ?? data.signals?.marketRegime?.currentRegime,
-        volRegime: tfSignals.volatilityRegime?.regime ?? tfSignals.composite?.marketRegime?.volRegime ?? tfSignalsRaw.volatility?.volatilityRegime?.regime ?? data.signals?.volatilityRegime?.regime,
-        trendStrength: tfSignals.marketRegime?.trendStrength ?? tfSignals.composite?.marketRegime?.trendStrength ?? tfSignalsRaw.composite?.marketRegime?.trendStrength ?? data.signals?.marketRegime?.trendStrength ?? data.signals?.trendStrength
+        cvd: dash.cvd || null,
+        institutionalFootprint: dash.institutionalFootprint || null,
+        momentumQuality: dash.momentumQuality || null,
+        bookResilience: dash.bookResilience || null,
+        pressureAcceleration: dash.pressureAcceleration || null,
+        amihudIlliquidity: dash.amihudIlliquidity || null
       },
       institutional_guard: data.signals?.institutional_guard || data.institutional_guard || {},
-      fundingExtreme: dash.fundingExtreme || data.fundingExtreme || data.signals?.fundingExtreme || null,
-      macroPremium: (function() {
+      fundingExtreme: (function () {
+        const src = data.signals?.fundingExtreme || {};
+        return {
+          rawValue: src.currentRegime ?? null,
+          normalizedScore: src.regime ?? null,
+          direction: src.regimeScore ?? null,
+          confidence: src.volRegime ?? null,
+        };
+      })(),
+      macroPremium: (function () {
         const mp = data.analytics?.sorterMetrics?.macroPremium || dash.macroPremium || data.sorterMetrics?.macroPremium || data.signals?.macroPremium || null;
         if (!mp) return null;
         if (mp.normalizedScore !== undefined) return mp.normalizedScore;
         if (mp.rawValue !== undefined) return mp.rawValue;
         return null;
-      })()
-      ,
-      hawkes: (function() {
+      })(),
+      hawkes: (function () {
         const h = data.analytics?.sorterMetrics?.toxicFlow?.hawkes || analytics.toxicFlow?.hawkes || data.sorterMetrics?.toxicFlow?.hawkes || data.signals?.toxicFlow?.hawkes || null;
         if (!h) return null;
         if (h.normalizedScore !== undefined) return h.normalizedScore;
@@ -666,6 +1095,5 @@ export function computeData(data, profile = 'INSTITUTIONAL_BASE', timeframe = '1
   normalized.analytics.sorterMetrics = analytics.sorterMetrics || data.analytics?.sorterMetrics || null;
   normalized.analytics.priceAction = analytics.priceAction || data.analytics?.priceAction || null;
   normalized.analytics.volatility = analytics.volatility || data.analytics?.volatility || null;
-
   return normalized;
 }

@@ -73,6 +73,17 @@ export function render(container) {
                  </div>
             </div>
 
+            <!-- MARKET HEALTH PULSE (NEW ADVANCED METRICS) -->
+            <div class="bg-bb-panel/20 border border-bb-border/30 rounded p-3 shrink-0">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="text-[9px] font-black text-bb-gold uppercase tracking-[0.2em]">Market Health Pulse</span>
+                    <div class="h-px flex-1 bg-gradient-to-r from-bb-gold/20 to-transparent"></div>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-6 gap-3" id="dec-health-grid">
+                    <!-- Metrics injected by update() -->
+                </div>
+            </div>
+
             <!-- MIDDLE GRID: STATS & SIZING -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3 min-h-[220px] shrink-0">
                 <!-- POSITION SIZING -->
@@ -213,10 +224,10 @@ export function update(rawData, profile = 'INSTITUTIONAL_BASE', timeframe = '15m
     const data = computeData(rawData, profile, tfKey);
     if (!data) return;
 
-        const raw = data.raw || {};
-        const sig = data.signals || {};
-        const master = sig.masterSignal || {};
-        const syn = data.synthesis || {};
+    const raw = data.raw || {};
+    const sig = data.signals || {};
+    const master = sig.masterSignal || {};
+    const syn = data.synthesis || {};
 
     const micro = sig.micro || {};
 
@@ -244,7 +255,7 @@ export function update(rawData, profile = 'INSTITUTIONAL_BASE', timeframe = '15m
         if (hawkesVal !== null && hawkesVal !== undefined && !isNaN(Number(hawkesVal)) && Number(hawkesVal) > 80) {
             elHawkes.classList.remove('hidden');
             if (Number(hawkesVal) > 100) {
-                elHawkes.innerText = `HAWKES λ=${Utils.formatNumber(hawkesVal,0)}`;
+                elHawkes.innerText = `HAWKES λ=${Utils.formatNumber(hawkesVal, 0)}`;
                 elHawkes.className = 'text-[7px] px-1 py-0.5 bg-bb-gold/20 text-bb-gold border border-bb-gold/30 rounded-sm font-black animate-pulse uppercase tracking-tighter';
             } else {
                 elHawkes.innerText = `HAWKES ${Math.round(hawkesVal)}%`;
@@ -359,7 +370,7 @@ export function update(rawData, profile = 'INSTITUTIONAL_BASE', timeframe = '15m
         // Hawkes value
         if (elHkVal) {
             const h = (hk !== null && hk !== undefined && !isNaN(Number(hk))) ? Number(hk) : null;
-            elHkVal.innerText = h != null ? (h > 100 ? `${Utils.formatNumber(h,0)}` : `${Math.round(h)}%`) : '--';
+            elHkVal.innerText = h != null ? (h > 100 ? `${Utils.formatNumber(h, 0)}` : `${Math.round(h)}%`) : '--';
             if (h != null) {
                 if (h > 100) elHkVal.className = 'dec-metric-badge dec-metric-gold dec-metric-pulse';
                 else if (h >= 0.8) elHkVal.className = 'dec-metric-badge dec-metric-gold';
@@ -669,6 +680,68 @@ export function update(rawData, profile = 'INSTITUTIONAL_BASE', timeframe = '15m
 
     // 9. Market Narrative Brief
     updateNarrative(data, sig, master, syn, pillars, hasDivergence);
+
+    // 10. Market Health Pulse (New Schema Metrics)
+    updateHealthPulse(data);
+}
+
+function updateHealthPulse(data) {
+    const grid = document.getElementById('dec-health-grid');
+    if (!grid) return;
+
+    const dash = data.dashboard || {};
+    const enh = data.signals?.enhanced || {};
+
+    const metrics = [
+        { label: 'Vol Quality', value: dash.volQuality?.qualityScore, icon: '💎', color: 'gold' },
+        { label: 'Liq Quality', value: dash.liqQuality?.qualityScore, icon: '💧', color: 'blue' },
+        { label: 'Inst. Footprint', value: dash.institutionalFootprint?.rawValue ?? enh.institutionalFootprint?.rawValue, icon: '👣', color: 'blue' },
+        { label: 'Mom. Quality', value: dash.momentumQuality?.rawValue ?? enh.momentumQuality?.rawValue, icon: '✨', color: 'green' },
+        { label: 'Book Resilience', value: dash.bookResilience?.rawValue ?? enh.bookResilience?.rawValue, icon: '🛡️', color: 'gold' },
+        { label: 'Pressure Accel', value: dash.pressureAcceleration?.rawValue ?? enh.pressureAcceleration?.rawValue, icon: '🚀', color: 'red', isDelta: true },
+        { label: 'Amihud Illiq', value: dash.amihudIlliquidity?.rawValue ?? enh.amihudIlliquidity?.rawValue, icon: '💧', color: 'blue' },
+        { label: 'Hist. Spike', value: dash.historicalSpike, icon: '📈', color: 'gold', isMultiplier: true }
+    ];
+
+    grid.innerHTML = metrics.map(m => {
+        const val = m.value;
+        let display = '--';
+        let barWidth = '0%';
+        let colorClass = `text-bb-${m.color}`;
+        let bgClass = `bg-bb-${m.color}/10`;
+
+        if (val !== undefined && val !== null) {
+            const numVal = (typeof val === 'object') ? (val.spike ?? val.rawValue ?? val.normalizedScore ?? 0) : val;
+
+            if (m.isDelta) {
+                display = (numVal > 0 ? '+' : '') + numVal.toFixed(2);
+                barWidth = Math.min(100, Math.abs(numVal) * 100) + '%';
+            } else if (m.isMultiplier) {
+                display = numVal.toFixed(1) + 'x';
+                barWidth = Math.min(100, (numVal / 5) * 100) + '%';
+            } else {
+                // Determine if the value is 0-1 or 0-100
+                const isScore = m.label.toLowerCase().includes('quality') || m.label.toLowerCase().includes('score') || numVal > 1.1;
+                const pct = isScore ? numVal : numVal * 100;
+                display = pct.toFixed(0) + '%';
+                barWidth = Math.min(100, pct) + '%';
+            }
+        }
+
+        return `
+            <div class="flex flex-col gap-1.5 p-2 ${bgClass} border border-white/5 rounded-sm group hover:border-white/20 transition-all">
+                <div class="flex justify-between items-center">
+                    <span class="text-[7px] text-bb-muted uppercase font-black truncate">${m.icon} ${m.label}</span>
+                </div>
+                <div class="flex items-end justify-between">
+                    <span class="text-xs font-mono font-black ${colorClass}">${display}</span>
+                </div>
+                <div class="w-full h-1 bg-white/5 rounded-full overflow-hidden mt-1">
+                    <div class="h-full bg-bb-${m.color} opacity-50" style="width: ${barWidth}"></div>
+                </div>
+            </div>
+        `;
+    }).join('');
 }
 
 function updateNarrative(data, sig, master, syn = {}, pillars = {}, hasDivergence = false) {
