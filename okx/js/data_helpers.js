@@ -202,30 +202,88 @@ export function computeData(data, profile = 'INSTITUTIONAL_BASE', timeframe = '1
 
     // SANITY CHECK: If 1H volume is roughly equal to this TF's volume (e.g. fresh data / new coin),
     // then the 1H baseline is diluted by zeros, causing fake 60x spikes.
-    // If v1h is not significantly larger than total (allow 10% bufer), assume lack of history.
-    const isSparseData = (v1h > 0) && (v1h < total * 1.1) && (minutes < 60);
-
-    const spike = (pace1hPerMin > 0 && !isSparseData) ? (currentPacePerMin / pace1hPerMin) : 1.0;
+    // If v1h is not significantly larger than total (allow 10% buffer), assume lack of history.
+    const isSparseData = (v1h > 0) && (v1h < total * 1.1) && (minutes <= 60);
 
     // Historical average pace per minute for this timeframe
     const histBuy = avgRaw[`avg_VOLCOIN_buy_${tf}`] || 0;
     const histSell = avgRaw[`avg_VOLCOIN_sell_${tf}`] || 0;
     const histTotal = histBuy + histSell;
     const histPacePerMin = minutes > 0 ? (histTotal / minutes) : 0;
-    const avgSpike = histPacePerMin > 0 ? (currentPacePerMin / histPacePerMin) : 1.0;
-    // If 1H data looks sparse (e.g. app just started), try to use historical average as baseline
-    let baseline = pace1hPerMin;
-    if (isSparseData || baseline <= 0) {
-      baseline = histPacePerMin;
-    }
 
-    const durability = (baseline > 0) ? calculateDurability(currentPacePerMin, baseline) : 0.5;
+    // Resolve effective baseline — consistent across spike, durability, and baselinePace
+    // If 1H data looks sparse (e.g. app just started), fall back to historical average
+    const effectiveBaseline = (!isSparseData && pace1hPerMin > 0)
+      ? pace1hPerMin
+      : histPacePerMin;
+
+    // spike: vs effective baseline (1H or historical fallback)
+    const spike = effectiveBaseline > 0 ? (currentPacePerMin / effectiveBaseline) : 1.0;
+
+    // avgSpike: always vs historical avg (independent metric)
+    const avgSpike = histPacePerMin > 0 ? (currentPacePerMin / histPacePerMin) : 1.0;
+
+    const durability = effectiveBaseline > 0
+      ? calculateDurability(currentPacePerMin, effectiveBaseline)
+      : 0.5;
 
     return {
-      spike,        // vs 1H baseline (per-minute)
-      avgSpike,     // vs historical avg (per-minute)
+      spike,                          // vs effective baseline (per-minute)
+      avgSpike,                       // vs historical avg (per-minute)
       currentPace: currentPacePerMin,
-      baselinePace: pace1hPerMin,
+      baselinePace: effectiveBaseline, // reflects actual baseline used
+      histPace: histPacePerMin,
+      durability,
+      total,
+      buy,
+      sell
+    };
+  };
+
+  const getFreqSpike = (tf, minutes) => {
+    const buy = (freq[`freq_BUY_${tf}`] || 0);
+    const sell = (freq[`freq_SELL_${tf}`] || 0);
+    const total = buy + sell;
+
+    // Current pace per minute in this timeframe window
+    const currentPacePerMin = minutes > 0 ? (total / minutes) : 0;
+
+    // Baseline: 1H pace per minute
+    const v1h = ((freq.freq_BUY_1JAM || 0) + (freq.freq_SELL_1JAM || 0));
+    const pace1hPerMin = v1h / 60;
+
+    // SANITY CHECK: If 1H volume is roughly equal to this TF's volume (e.g. fresh data / new coin),
+    // then the 1H baseline is diluted by zeros, causing fake 60x spikes.
+    // If v1h is not significantly larger than total (allow 10% buffer), assume lack of history.
+    const isSparseData = (v1h > 0) && (v1h < total * 1.1) && (minutes <= 60);
+
+    // Historical average pace per minute for this timeframe
+    const histBuy = avgRaw[`avg_FREQCOIN_buy_${tf}`] || 0;
+    const histSell = avgRaw[`avg_FREQCOIN_sell_${tf}`] || 0;
+    const histTotal = histBuy + histSell;
+    const histPacePerMin = minutes > 0 ? (histTotal / minutes) : 0;
+
+    // Resolve effective baseline — consistent across spike, durability, and baselinePace
+    // If 1H data looks sparse (e.g. app just started), fall back to historical average
+    const effectiveBaseline = (!isSparseData && pace1hPerMin > 0)
+      ? pace1hPerMin
+      : histPacePerMin;
+
+    // spike: vs effective baseline (1H or historical fallback)
+    const spike = effectiveBaseline > 0 ? (currentPacePerMin / effectiveBaseline) : 1.0;
+
+    // avgSpike: always vs historical avg (independent metric)
+    const avgSpike = histPacePerMin > 0 ? (currentPacePerMin / histPacePerMin) : 1.0;
+
+    const durability = effectiveBaseline > 0
+      ? calculateDurability(currentPacePerMin, effectiveBaseline)
+      : 0.5;
+
+    return {
+      spike,                          // vs effective baseline (per-minute)
+      avgSpike,                       // vs historical avg (per-minute)
+      currentPace: currentPacePerMin,
+      baselinePace: effectiveBaseline, // reflects actual baseline used
       histPace: histPacePerMin,
       durability,
       total,
@@ -288,17 +346,71 @@ export function computeData(data, profile = 'INSTITUTIONAL_BASE', timeframe = '1
     // Volume spikes (normalized to multiplier)
     volSpike1m: getVolSpike('1MENIT', 1).spike,
     volSpike5m: getVolSpike('5MENIT', 5).spike,
+    volSpike10m: getVolSpike('10MENIT', 10).spike,
     volSpike15m: getVolSpike('15MENIT', 15).spike,
-    volDurability: getVolSpike('15MENIT', 15).durability * 100, // Normalized 0-100
+    volSpike20m: getVolSpike('20MENIT', 20).spike,
+    volSpike30m: getVolSpike('30MENIT', 30).spike,
     volSpike1h: getVolSpike('1JAM', 60).spike,
+    volSpike2h: getVolSpike('2JAM', 120).spike,
+
+    volDurability: getVolSpike('15MENIT', 15).durability * 100, // Normalized 0-100
+    volDurability1m: getVolSpike('1MENIT', 1).durability * 100,
+    volDurability5m: getVolSpike('5MENIT', 5).durability * 100,
+    volDurability10m: getVolSpike('10MENIT', 10).durability * 100,
+    volDurability15m: getVolSpike('15MENIT', 15).durability * 100,
+    volDurability20m: getVolSpike('20MENIT', 20).durability * 100,
+    volDurability30m: getVolSpike('30MENIT', 30).durability * 100,
+    volDurability1h: getVolSpike('1JAM', 60).durability * 100,
+    volDurability2h: getVolSpike('2JAM', 120).durability * 100,
     // Buy Ratios (computed if missing in raw)
+    volBuyRatio1m: (vol.vol_BUY_1MENIT != null && vol.vol_SELL_1MENIT > 0) ? (vol.vol_BUY_1MENIT / vol.vol_SELL_1MENIT) : null,
+    volBuyRatio5m: (vol.vol_BUY_5MENIT != null && vol.vol_SELL_5MENIT > 0) ? (vol.vol_BUY_5MENIT / vol.vol_SELL_5MENIT) : null,
+    volBuyRatio10m: (vol.vol_BUY_10MENIT != null && vol.vol_SELL_10MENIT > 0) ? (vol.vol_BUY_10MENIT / vol.vol_SELL_10MENIT) : null,
+    volBuyRatio15m: (vol.vol_BUY_15MENIT != null && vol.vol_SELL_15MENIT > 0) ? (vol.vol_BUY_15MENIT / vol.vol_SELL_15MENIT) : null,
+    volBuyRatio20m: (vol.vol_BUY_20MENIT != null && vol.vol_SELL_20MENIT > 0) ? (vol.vol_BUY_20MENIT / vol.vol_SELL_20MENIT) : null,
+    volBuyRatio30m: (vol.vol_BUY_30MENIT != null && vol.vol_SELL_30MENIT > 0) ? (vol.vol_BUY_30MENIT / vol.vol_SELL_30MENIT) : null,
     volBuyRatio1h: (vol.vol_BUY_1JAM != null && vol.vol_SELL_1JAM > 0) ? (vol.vol_BUY_1JAM / vol.vol_SELL_1JAM) : null,
+    volBuyRatio2h: (vol.vol_BUY_2JAM != null && vol.vol_SELL_2JAM > 0) ? (vol.vol_BUY_2JAM / vol.vol_SELL_2JAM) : null,
+
+
     // Frequency
     freqTotal1m: getFreq('1MENIT').total,
     freqTotal5m: getFreq('5MENIT').total,
     freqTotal15m: getFreq('15MENIT').total,
     freqTotal1h: getFreq('1JAM').total,
     freqNetRatio: getFreq('5MENIT').ratio,
+
+    freqSpike1m: getFreqSpike('1MENIT', 1).spike,
+    freqSpike5m: getFreqSpike('5MENIT', 5).spike,
+    freqSpike10m: getFreqSpike('10MENIT', 10).spike,
+    freqSpike15m: getFreqSpike('15MENIT', 15).spike,
+    freqSpike20m: getFreqSpike('20MENIT', 20).spike,
+    freqSpike30m: getFreqSpike('30MENIT', 30).spike,
+    freqSpike1h: getFreqSpike('1JAM', 60).spike,
+    freqSpike2h: getFreqSpike('2JAM', 120).spike,
+
+    freqDurability: getFreqSpike('15MENIT', 15).durability * 100, // Normalized 0-100
+    freqDurability1m: getFreqSpike('1MENIT', 1).durability * 100,
+    freqDurability5m: getFreqSpike('5MENIT', 5).durability * 100,
+    freqDurability10m: getFreqSpike('10MENIT', 10).durability * 100,
+    freqDurability15m: getFreqSpike('15MENIT', 15).durability * 100,
+    freqDurability20m: getFreqSpike('20MENIT', 20).durability * 100,
+    freqDurability30m: getFreqSpike('30MENIT', 30).durability * 100,
+    freqDurability1h: getFreqSpike('1JAM', 60).durability * 100,
+    freqDurability2h: getFreqSpike('2JAM', 120).durability * 100,
+    // Buy Ratios (computed if missing in raw)
+    freqBuyRatio1m: (freq.freq_BUY_1MENIT != null && freq.freq_SELL_1MENIT > 0) ? (freq.freq_BUY_1MENIT / freq.freq_SELL_1MENIT) : null,
+    freqBuyRatio5m: (freq.freq_BUY_5MENIT != null && freq.freq_SELL_5MENIT > 0) ? (freq.freq_BUY_5MENIT / freq.freq_SELL_5MENIT) : null,
+    freqBuyRatio10m: (freq.freq_BUY_10MENIT != null && freq.freq_SELL_10MENIT > 0) ? (freq.freq_BUY_10MENIT / freq.freq_SELL_10MENIT) : null,
+    freqBuyRatio15m: (freq.freq_BUY_15MENIT != null && freq.freq_SELL_15MENIT > 0) ? (freq.freq_BUY_15MENIT / freq.freq_SELL_15MENIT) : null,
+    freqBuyRatio20m: (freq.freq_BUY_20MENIT != null && freq.freq_SELL_20MENIT > 0) ? (freq.freq_BUY_20MENIT / freq.freq_SELL_20MENIT) : null,
+    freqBuyRatio30m: (freq.freq_BUY_30MENIT != null && freq.freq_SELL_30MENIT > 0) ? (freq.freq_BUY_30MENIT / freq.freq_SELL_30MENIT) : null,
+    freqBuyRatio1h: (freq.freq_BUY_1JAM != null && freq.freq_SELL_1JAM > 0) ? (freq.freq_BUY_1JAM / freq.freq_SELL_1JAM) : null,
+    freqBuyRatio2h: (freq.freq_BUY_2JAM != null && freq.freq_SELL_2JAM > 0) ? (freq.freq_BUY_2JAM / freq.freq_SELL_2JAM) : null,
+
+
+
+
     // Funding APY (annualized)
     fundingApy: (fundAn.currentRate || fundingRaw.funding_Rate || 0) * 3 * 365 * 100,
     // 24h price range %
@@ -539,14 +651,14 @@ export function computeData(data, profile = 'INSTITUTIONAL_BASE', timeframe = '1
         intensity_freqIntensity: intensity.freqIntensity ?? null,
 
         //riRatio
-        riRatio: riRatio.riRatio ?? null,
-        flowType: riRatio.flowType ?? null,
-        avgTradeSize: riRatio.avgTradeSize ?? null,
-        histAvgSize: riRatio.histAvgSize ?? null,
+        riRatio_riRatio: riRatio.riRatio ?? null,
+        riRatio_flowType: riRatio.flowType ?? null,
+        riRatio_avgTradeSize: riRatio.avgTradeSize ?? null,
+        riRatio_histAvgSize: riRatio.histAvgSize ?? null,
 
         //volQuality
-        qualityScore: volQuality.qualityScore ?? null,
-        quality: volQuality.quality ?? null,
+        volQuality_qualityScore: volQuality.qualityScore ?? null,
+        volQuality_quality: volQuality.quality ?? null,
 
         //liqQuality
         liqQuality_tier: liqQuality.tier ?? null,
@@ -680,8 +792,8 @@ export function computeData(data, profile = 'INSTITUTIONAL_BASE', timeframe = '1
         volatility_volatilityRegime: volatility?.volatilityRegime ?? null,
         volatility_volTrend: volatility?.volTrend ?? null,
         //priceAction
-        priceAction_nearestResistance: priceAction?.supportResistance?.nearestResistance ?? null,
-        priceAction_nearestSupport: priceAction?.supportResistance?.nearestSupport ?? null,
+        priceAction_nearestResistance: priceAction?.supportResistance?.nearestResistance ?? {},
+        priceAction_nearestSupport: priceAction?.supportResistance?.nearestSupport ?? {},
         //funding
         funding_fundingDirection: funding?.fundingDirection ?? null,
         funding_fundingLevel: funding?.fundingLevel ?? null,

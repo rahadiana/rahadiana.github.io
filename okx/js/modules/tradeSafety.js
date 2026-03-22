@@ -10,6 +10,7 @@
  */
 
 import OkxClient from '../okx_client.js';
+import { showToast } from './toast.js';
 
 // ─── STORAGE KEY ──────────────────────────────────────────
 const STORAGE_KEY = 'bb_trade_safety';
@@ -77,10 +78,10 @@ function loadState() {
         if (d.ddConfig) Object.assign(ddConfig, d.ddConfig);
         if (d.tsConfig) Object.assign(tsConfig, d.tsConfig);
         if (d.tpConfig) Object.assign(tpConfig, d.tpConfig);
-        if (d.equityPeak) equityPeak = d.equityPeak;
-        if (d.initialEquity) initialEquity = d.initialEquity;
+        if (d.equityPeak != null) equityPeak = d.equityPeak;
+        if (d.initialEquity != null) initialEquity = d.initialEquity;
         if (d.ddTripped) ddTripped = d.ddTripped;
-        if (d.sessionRealizedPnL) sessionRealizedPnL = d.sessionRealizedPnL;
+        if (d.sessionRealizedPnL != null) sessionRealizedPnL = d.sessionRealizedPnL;
         if (d.sessionStartTime) sessionStartTime = d.sessionStartTime;
     } catch (e) { }
 }
@@ -148,11 +149,24 @@ function configureCB(opts = {}) {
     if (opts.maxLosses != null) cbConfig.maxLosses = opts.maxLosses;
     if (opts.windowMs != null) cbConfig.windowMs = opts.windowMs;
     saveState();
+    window.dispatchEvent(new CustomEvent('trade-safety-update'));
 }
 
 // ─── DRAWDOWN GUARD ───────────────────────────────────────
 
 function updateEquity(equity) {
+    if (equity <= 0 || isNaN(equity)) return;
+
+    // ANTI-SPIKE PROTECTION: Ignore massive jumps (>25%) in a single 500ms frame.
+    // This blocks 100x PnL multiplier glitches or partial 0-balance updates from ruining the peak.
+    if (currentEquity > 0) {
+        const jumpPct = Math.abs((equity - currentEquity) / currentEquity) * 100;
+        if (jumpPct > 25) {
+            console.warn(`[Safety] 🚩 Ignoring suspicious equity jump: ${jumpPct.toFixed(2)}% ($${currentEquity.toFixed(2)} -> $${equity.toFixed(2)})`);
+            return;
+        }
+    }
+
     currentEquity = equity;
     if (!initialEquity || initialEquity <= 0) {
         initialEquity = equity;
@@ -189,6 +203,7 @@ function getDrawdownStatus() {
 function configureDD(opts = {}) {
     if (opts.maxDrawdownPct != null) ddConfig.maxDrawdownPct = opts.maxDrawdownPct;
     saveState();
+    window.dispatchEvent(new CustomEvent('trade-safety-update'));
 }
 
 // ─── SESSION PNL & PROFIT TARGET ──────────────────────────
@@ -230,6 +245,7 @@ function configureTP(opts = {}) {
     if (opts.enabled != null) tpConfig.enabled = opts.enabled;
     if (opts.targetPnL != null) tpConfig.targetPnL = parseFloat(opts.targetPnL);
     saveState();
+    window.dispatchEvent(new CustomEvent('trade-safety-update'));
 }
 
 // ─── TRAILING STOP ────────────────────────────────────────
@@ -252,7 +268,7 @@ function updateTrailingStop(instId, currentPnlPct) {
 
     let state = tsState.get(instId);
     if (!state) {
-        state = { highestPnl: currentPnlPct, active: false };
+        state = { highestPnl: Math.max(0, currentPnlPct), active: false };
         tsState.set(instId, state);
     }
 
@@ -285,6 +301,7 @@ function configureTS(opts = {}) {
     if (opts.activationPct != null) tsConfig.activationPct = parseFloat(opts.activationPct);
     if (opts.callbackPct != null) tsConfig.callbackPct = parseFloat(opts.callbackPct);
     saveState();
+    window.dispatchEvent(new CustomEvent('trade-safety-update'));
 }
 
 function getTSStatus(instId) {
@@ -318,8 +335,9 @@ async function flattenAll() {
             results.attempted++;
 
             const instId = p.instId;
+            const absolutePos = Number(p.pos || 0);
             const posSide = (p.posSide || '').toLowerCase();
-            const closeSide = (posSide === 'long' || Number(p.pos) > 0) ? 'long' : 'short';
+            const logSide = absolutePos > 0 ? 'LONG' : 'SHORT';
             // Use the position's actual margin mode; fall back to saved preference
             const tdMode = p.mgnMode || localStorage.getItem('okx_margin_mode') || 'cross';
 
@@ -331,7 +349,7 @@ async function flattenAll() {
                     sz: String(sz),
                 });
                 results.success++;
-                console.log(`✅ [FLATTEN] Closed ${instId} ${closeSide} x${sz}`);
+                console.log(`✅ [FLATTEN] Closed ${instId} ${logSide} x${sz}`);
             } catch (e) {
                 results.failed++;
                 results.errors.push({ instId, error: e.message });
@@ -366,7 +384,7 @@ function canTrade() {
         return { allowed: false, reason: 'Drawdown limit exceeded' };
     }
 
-    if (tpConfig.enabled && sessionRealizedPnL >= tpConfig.targetPnL) {
+    if (tpConfig.enabled && tpConfig.targetPnL > 0 && sessionRealizedPnL >= tpConfig.targetPnL) {
         return { allowed: false, reason: `Profit Target Reached ($${sessionRealizedPnL.toFixed(2)} >= $${tpConfig.targetPnL})` };
     }
 
@@ -508,11 +526,10 @@ function attachSafetyEvents(container) {
     // Profit Target Events
     container.querySelector('#safety-tp-enable')?.addEventListener('change', (e) => {
         configureTP({ enabled: e.target.checked });
-        renderSafetyPanel(); // re-render to update status label
     });
 
     container.querySelector('#safety-tp-val')?.addEventListener('change', (e) => {
-        configureTP({ targetPnL: parseFloat(e.target.value) || 0 });
+        configureTP({ targetPnL: parseFloat(e.target.value) || 100 });
     });
 }
 

@@ -36,7 +36,12 @@ function _readConfig() {
 	}
 }
 
-function _writeConfig(cfg) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg || {})); } catch (e) { } }
+function _writeConfig(cfg, isDemo = false) {
+	try {
+		const key = isDemo ? (STORAGE_KEY + '_demo') : STORAGE_KEY;
+		localStorage.setItem(key, JSON.stringify(cfg || {}));
+	} catch (e) { }
+}
 
 let _apiInstance = null;
 let _posCache = null;
@@ -76,7 +81,10 @@ async function _ensureApi() {
 	}
 
 	try {
-		const mod = await import('./modules/OkxClient/private/privateAPI.js');
+		// Use a path that is likely to resolve correctly regardless of where OkxClient is used.
+		// If running in a browser, /js/ is usually the root of the JS assets.
+		const importPath = (typeof window !== 'undefined') ? '/js/modules/OkxClient/private/privateAPI.js' : './modules/OkxClient/private/privateAPI.js';
+		const mod = await import(importPath);
 		const PrivateAPI = (mod && (mod.default || mod)) ? (mod.default || mod) : null;
 		if (!PrivateAPI) throw new Error('privateAPI did not export a constructor');
 		const boundFetch = (typeof window !== 'undefined' && window.fetch) ? window.fetch.bind(window) : undefined;
@@ -108,9 +116,14 @@ async function _ensureApi() {
 
 const OkxClient = {
 	configure(cfg = {}) {
+		const isDemo = !!(cfg.simulated || (typeof window !== 'undefined' && localStorage.getItem('os_mode') === 'SIM'));
 		const cur = _readConfig();
 		const merged = Object.assign({}, cur, cfg);
-		_writeConfig(merged);
+		_writeConfig(merged, isDemo);
+		// If we just configured real keys, we might want to also ensure they are NOT in the demo slot if they were accidentally placed there
+		if (!isDemo && cfg.key && cfg.secret) {
+			// (optional) cleanup redundant demo config if needed
+		}
 		// force re-init of API instance so new credentials are used
 		_apiInstance = null;
 		window.dispatchEvent(new Event('okx-config-changed'));
@@ -445,21 +458,15 @@ OkxClient.placeOrderByUsd = async function ({ instId, usd, side = 'buy', ordType
 	const usdNum = parseFloat(usd);
 	if (!isFinite(usdNum) || usdNum <= 0) throw new Error('usd must be a positive number');
 
-	// attempt to find instrument ctVal
-	let ctVal = null;
+	// attempt to find instrument info and price
+	let info = null;
 	let price = null;
-	let ctMult = 1; // Default multiplier for nominal calculations
 	try {
 		const instType = instId.includes('-SWAP') ? 'SWAP' : 'SPOT';
 		const infoRes = await this.get('/api/v5/public/instruments', { instType, instId });
-		const info = infoRes && infoRes.data && infoRes.data[0] ? infoRes.data[0] : null;
-		if (info) {
-			ctVal = parseFloat(info.ctVal || info.contractVal || info.contractValUSD || 0) || null;
-			ctMult = parseFloat(info.ctMult || 1) || 1;
-		}
+		info = infoRes && infoRes.data && infoRes.data[0] ? infoRes.data[0] : null;
 	} catch (e) { /* ignore */ }
 
-	// fallback to ticker price if ctVal unavailable
 	try {
 		const tk = await this.get('/api/v5/market/ticker', { instId });
 		const t = tk && tk.data && tk.data[0] ? tk.data[0] : null;
@@ -467,31 +474,59 @@ OkxClient.placeOrderByUsd = async function ({ instId, usd, side = 'buy', ordType
 	} catch (e) { /* ignore */ }
 
 	let contracts = 0;
-	if (instId.includes('-USDT-SWAP') && ctVal && price) {
-		// For USDT-margined swaps, the nominal value is ctVal * price * ctMult
-		contracts = usdNum / (ctVal * price * ctMult);
-	} else if (ctVal && ctVal > 0) {
-		// For Coin-margined USD contracts (e.g. BTC-USD-SWAP), ctVal is usually $10 or $100
-		contracts = usdNum / ctVal;
+	if (instId.includes('-USDT-SWAP') && info && price) {
+		const ctVal = parseFloat(info.ctVal || info.contractVal || 0) || 0;
+		const ctMult = parseFloat(info.ctMult || 1) || 1;
+		if (ctVal > 0) {
+			// For USDT-margined swaps: contracts = nominal / (ctVal * price * ctMult)
+			contracts = usdNum / (ctVal * price * ctMult);
+		} else {
+			contracts = usdNum / price;
+		}
+	} else if (info && (info.ctVal || info.contractVal) && info.instType !== 'SPOT') {
+		const ctVal = parseFloat(info.ctVal || info.contractVal || 0) || 0;
+		if (ctVal > 0) {
+			// For Coin-margined contracts, ctVal is usually fixed USD (e.g. 10 USD)
+			contracts = usdNum / ctVal;
+		} else if (price) {
+			contracts = usdNum / price;
+		}
 	} else if (price && price > 0) {
 		// Spot trading
 		contracts = usdNum / price;
 	} else {
-		throw new Error('Unable to determine conversion (no ctVal and no market price)');
+		throw new Error('Unable to determine conversion (no instrument info or market price)');
 	}
 
 	// use adjustSize to round to instrument lot step
-	const adjusted = await this.adjustSize(instId, String(contracts));
-	if (!adjusted || parseFloat(adjusted) <= 0) throw new Error('Converted size too small after adjusting to lot step');
+	// Pass isAlreadyUnits: true because we already converted USD to the expected API units (contracts or base-qty)
+	const adjusted = await this.adjustSize(instId, String(contracts), { isAlreadyUnits: true, info });
+	if (!adjusted || parseFloat(adjusted) <= 0) {
+		let minUsd = 0;
+		try {
+			const lotSz = parseFloat(info?.lotSz || info?.minSz || 1);
+			if (instId.includes('-USDT-SWAP')) {
+				const ctVal = parseFloat(info?.ctVal || info?.contractVal || 0);
+				const ctMult = parseFloat(info?.ctMult || 1) || 1;
+				minUsd = lotSz * ctVal * price * ctMult;
+			} else if (info && (info.ctVal || info.contractVal) && info.instType !== 'SPOT') {
+				const ctVal = parseFloat(info?.ctVal || info?.contractVal || 0);
+				minUsd = lotSz * ctVal;
+			} else if (price) {
+				minUsd = lotSz * price;
+			}
+		} catch (e) { }
+
+		const minText = minUsd > 0 ? ` (Min required: ~$${minUsd.toFixed(2)})` : '';
+		console.warn('[OkxClient] Sizing too small:', { instId, usdNum, price, contracts, adjusted, minUsd });
+		throw new Error(`Converted size too small after adjusting to lot step${minText}`);
+	}
 
 	const payload = { instId, side, ordType, sz: String(adjusted) };
-	// include price if provided (for limit orders)
 	if (px) payload.px = String(px);
-	// include tdMode if provided; otherwise placeOrder will inject saved mode
 	if (tdMode) { payload.tdMode = tdMode; payload.mgnMode = tdMode; }
 	if (posSide) payload.posSide = posSide;
 
-	// delegate to placeOrder which already does pre-flight leverage application, checks and retries
 	return this.placeOrder(payload);
 };
 
@@ -660,18 +695,20 @@ OkxClient.fetchPositionsHistoryRange = async function ({ months = 3, instId = nu
 };
 
 // Adjust an order size to instrument lot step (returns string)
-OkxClient.adjustSize = async function (instId, requestedSz) {
+OkxClient.adjustSize = async function (instId, requestedSz, opts = {}) {
 	if (!instId) throw new Error('instId is required');
 	if (!requestedSz) return String(requestedSz || '0');
 	try {
-		let info = null;
-		// Primary: query specific instrument
-		try {
-			const instType = instId.includes('-SWAP') ? 'SWAP' : 'SPOT';
-			const res = await this.get('/api/v5/public/instruments', { instType, instId });
-			info = (res && res.data && Array.isArray(res.data) && res.data[0]) ? res.data[0] : (res && res.data ? res.data : null);
-		} catch (err) {
-			console.debug('[OkxClient] adjustSize primary instrument lookup failed', err && err.message ? err.message : err);
+		let info = opts.info || null;
+		// Primary: query specific instrument if not provided
+		if (!info) {
+			try {
+				const instType = instId.includes('-SWAP') ? 'SWAP' : 'SPOT';
+				const res = await this.get('/api/v5/public/instruments', { instType, instId });
+				info = (res && res.data && Array.isArray(res.data) && res.data[0]) ? res.data[0] : (res && res.data ? res.data : null);
+			} catch (err) {
+				console.debug('[OkxClient] adjustSize primary instrument lookup failed', err && err.message ? err.message : err);
+			}
 		}
 		// Fallback: fetch list of SWAP instruments and try to find a matching instId
 		if (!info) {
@@ -696,6 +733,17 @@ OkxClient.adjustSize = async function (instId, requestedSz) {
 		if (!isFinite(sStep) || !isFinite(sReq) || sStep <= 0) return String(requestedSz);
 		// calculate decimals from step string where possible
 		const decimals = (String(step).split('.')[1] || '').length;
+
+		const instType = (info && info.instType) ? info.instType : (instId.includes('-SWAP') ? 'SWAP' : 'SPOT');
+
+		// If isAlreadyUnits is true, we skip the conversion logic (viaCt) and just do direct rounding
+		if (opts.isAlreadyUnits) {
+			const adjustedNum = Math.floor(sReq / sStep) * sStep;
+			const final = adjustedNum <= 0 ? 0 : Number(adjustedNum.toFixed(decimals));
+			console.debug('[OkxClient] adjustSize (isAlreadyUnits) result:', final);
+			return String(final);
+		}
+
 		// Try interpreting the requested size directly (user provided contracts/coins matching API expectations)
 		const tryDirect = () => {
 			const adjustedNum = Math.floor(sReq / sStep) * sStep;
@@ -718,8 +766,6 @@ OkxClient.adjustSize = async function (instId, requestedSz) {
 
 		const direct = tryDirect();
 		const viaCt = tryWithCt();
-
-		const instType = (info && info.instType) ? info.instType : (instId.includes('-SWAP') ? 'SWAP' : 'SPOT');
 
 		// ⚡ PRIORITY: If SWAP/FUTURE and contract value is present, prioritized viaCt (conversion)
 		if (instType === 'SWAP' || instType === 'FUTURES') {

@@ -14,7 +14,9 @@ const _realCancelPending = new Set();
 const _pendingCloses = new Set();
 let _posPollTimer = null;
 let _lastOkxPositions = [];
-let _lastAccountBalance = 0;
+const _instMetaCache = new Map(); // Stable metadata (ctVal, lotSz, etc)
+let _lastAccountBalance = 0; // Equity (includes PnL from broker)
+let _lastCashBalance = 0;    // Cash Balance (excludes PnL)
 // Throttling to prevent 429s on rapid event firing
 let _lastAccountFetch = 0;
 let _lastPosFetch = 0;
@@ -404,21 +406,21 @@ export function render(container) {
 
   // reflect API connection state
   updateApiButtons();
-  window.addEventListener('okx-config-changed', updateApiButtons);
-  // Notify user when OkxClient falls back to a transient demo instance
-  window.addEventListener('okx-demo-fallback', () => {
-    try { showToast('Using demo fallback (transient) — showing demo data for this session', 'info'); updateModeIndicator(); } catch (e) { }
-  });
-  // when connected, fetch account info periodically
-  window.addEventListener('okx-config-changed', () => { if (OkxClient.isConfigured()) { ensurePrivateSubscription(); loadAccountInfo(); loadRealFills(); loadRealPositions(); } });
-  window.addEventListener('okx-config-changed', () => { loadRealPositions(); });
-  // Keep margin mode UI in sync when settings change
+  // reflect API connection state
   window.addEventListener('okx-config-changed', () => {
+    updateApiButtons();
     try {
       const savedMode = localStorage.getItem('okx_margin_mode') || 'cross';
       const osTd = document.getElementById('os-tdmode');
       if (osTd) osTd.value = savedMode;
     } catch (e) { }
+
+    if (OkxClient.isConfigured()) {
+      ensurePrivateSubscription();
+      loadAccountInfo();
+      loadRealFills();
+      loadRealPositions();
+    }
   });
 
 
@@ -428,7 +430,7 @@ export function render(container) {
   // ensurePrivateSubscription();
 
   // update detected mode display on load
-  _startPosPolling();
+  updateModeIndicator();
 }
 
 /**
@@ -457,6 +459,7 @@ export function update(snapshot, profile, timeframe) {
 
   // Periodic positions/account refresh if needed (already has polling but good to be sure)
   // loadRealPositions() and loadAccountInfo() have internal throttling
+  updatePositionsUI();
 }
 
 async function ensurePrivateSubscription() {
@@ -482,14 +485,43 @@ async function ensurePrivateSubscription() {
             for (const d of data) {
               const key = d.posId || `${d.instId}_${d.mgnMode}_${d.posSide}`;
               // If pos is '0', it means closed
-              if (d.pos && parseFloat(d.pos) === 0) {
+              if (parseFloat(d.pos ?? 0) === 0) {
                 map.delete(key);
               } else {
-                map.set(key, d);
+                // BUG FIX: Selective property merge instead of replace to preserve ctVal, lever, etc.
+                const existing = map.get(key) || {};
+                const merged = { ...existing };
+                for (const k in d) {
+                  // Only overwrite if new value is non-empty/non-null
+                  if (d[k] !== null && d[k] !== undefined && d[k] !== '') {
+                    merged[k] = d[k];
+                  }
+                }
+                map.set(key, merged);
               }
             }
 
             _lastOkxPositions = Array.from(map.values());
+
+            // ─── PENDING POSITION CLEANUP ───
+            try {
+              const pendingRaw = localStorage.getItem('os_pending_entries');
+              if (pendingRaw) {
+                const pending = JSON.parse(pendingRaw);
+                let changed = false;
+                for (const pos of _lastOkxPositions) {
+                  const c = (pos.instId || '').toUpperCase();
+                  if (pending[c]) {
+                     delete pending[c];
+                     changed = true;
+                  }
+                }
+                if (changed) localStorage.setItem('os_pending_entries', JSON.stringify(pending));
+              }
+            } catch(e){}
+
+            // Sync with OkxClient's global cache for other modules (Signal Composer)
+            if (OkxClient.updatePositionCache) OkxClient.updatePositionCache(_lastOkxPositions);
             try { window._okx_ws_last_pos_update = Date.now(); } catch (e) { }
             updatePositionsUI();
 
@@ -512,16 +544,35 @@ async function ensurePrivateSubscription() {
             if (data.length > 0) {
               const bal = data[0];
               if (bal && bal.details) {
-                const d = bal.details.find(x => x.ccy === 'USDT') || bal.details[0];
+                const d = bal.details.find(x => x.ccy === 'USDT');
                 if (d) {
-                  const val = parseFloat(d.eq || d.totalEq || d.cashBal || 0);
-                  if (val > 0) {
-                    _lastAccountBalance = val;
+                  const eq = parseFloat(d.eq || d.totalEq || 0);
+                  const cash = parseFloat(d.cashBal || d.bal || 0);
+                  
+                  // STABILITY FIX: If the new equity or cash is significantly lower than last (>25%), 
+                  // it's almost certainly a partial OKX WS update. Ignore it to prevent DD spikes.
+                  if (_lastCashBalance > 0) {
+                    const cashJump = Math.abs((cash - _lastCashBalance) / _lastCashBalance) * 100;
+                    if (cashJump > 25 && cash < _lastCashBalance) {
+                      console.warn(`[viewOrderSim] Ignoring suspicious cashBal drop: ${cashJump.toFixed(2)}% ($${_lastCashBalance.toFixed(2)} -> $${cash.toFixed(2)})`);
+                      return;
+                    }
+                  }
+
+                  if (eq > 0 || cash > 0) {
+                    _lastAccountBalance = eq;
+                    _lastCashBalance = cash;
                     const balEl = document.getElementById('os-balance');
-                    if (balEl) balEl.innerText = `$${val.toFixed(2)}`;
+                    if (balEl) balEl.innerText = `$${_lastCashBalance.toFixed(2)}`;
                     const el = document.getElementById('os-account');
-                    if (el) el.innerHTML = `<div style="font-size:12px;color:#4ade80">WS: ${d.ccy} Eq=$${val.toFixed(2)} Avail=$${d.availBal || d.avail}</div>`;
-                    try { if (val > 0) TradeSafety.updateEquity(val); } catch (e) { }
+                    if (el) el.innerHTML = `<div style="font-size:12px;color:#4ade80">WS: ${d.ccy} Cash=$${_lastCashBalance.toFixed(2)} Eq=$${eq.toFixed(2)}</div>`;
+                    
+                    // High-frequency PnL sync
+                    try { 
+                      if (eq > 0) {
+                        TradeSafety.updateEquity(eq); 
+                      }
+                    } catch (e) { }
                   }
                 }
               }
@@ -816,7 +867,7 @@ async function placeOrder() {
               // compute ROE approx using markPx/avgPx and leverage if available
               const avg = parseFloat(pos.avgPx || pos.posAvgPx || pos.entryPrice || 0);
               const mark = parseFloat(pos.markPx || pos.markPrice || pos.last || 0);
-              const lever = parseFloat(pos.lever || pos.lever || 1) || 1;
+              const lever = parseFloat(pos.lever || pos.leverage || 1) || 1;
               let roe = 0;
               if (avg > 0 && mark > 0) roe = ((mark - avg) / avg) * (existingSide === 'LONG' ? 1 : -1) * lever * 100;
 
@@ -944,6 +995,13 @@ async function placeOrder() {
       appendFill({ orderId: oid, coin, price: price || 'market', qty: size, ts: Date.now(), note: 'real:placed' });
       renderOrders();
 
+      // Synchronize with Signal Composer cooldowns
+      try {
+        const syncData = { side: side.toUpperCase() === 'BUY' ? 'buy' : 'sell', size: String(size), price, ts: Date.now() };
+        localStorage.setItem(`last_exec_v2_${coin}`, JSON.stringify(syncData));
+        localStorage.setItem(`last_dca_ts_${coin}`, Date.now());
+      } catch (e) { }
+
       // Trigger Native TP/SL if provided
       if (tpPct > 0 || slPct > 0) {
         setTimeout(() => OkxClient.syncTpSl(coin, tpPct, slPct).catch(e => console.error('[TRADE] TP/SL Sync failed', e)), 2000);
@@ -1028,8 +1086,17 @@ async function loadAccountInfo() {
     if (!res || !res.data) { el.innerText = 'No account data'; return; }
     // Feed equity to TradeSafety for drawdown tracking
     try {
-      const totalEq = Number(res.data[0]?.totalEq || res.data[0]?.eq || 0);
-      if (totalEq > 0) TradeSafety.updateEquity(totalEq);
+      const main = res.data[0] || {};
+      const totalEq = Number(main.totalEq || main.eq || 0);
+      if (totalEq > 0) {
+        _lastAccountBalance = totalEq;
+        TradeSafety.updateEquity(totalEq);
+      }
+      // Also find USDT cash balance if possible
+      if (main.details) {
+        const d = main.details.find(x => x.ccy === 'USDT') || main.details[0];
+        if (d) _lastCashBalance = parseFloat(d.cashBal || d.bal || 0);
+      }
     } catch (e) { }
     // build a compact summary
     const rows = [];
@@ -1075,6 +1142,30 @@ async function loadRealPositions(attempt = 0) {
     // Only update global list if we got actual data (prevents mock/empty response from wiping WS data)
     if (okxList.length > 0) {
       _lastOkxPositions = okxList;
+      
+      // STABILITY FIX: Proactively fetch and cache instrument metadata (ctVal)
+      // This prevents PnL/ROE spikes if WS updates are partial
+      for (const p of okxList) {
+        const instId = p.instId || p.instrumentId;
+        if (instId && !_instMetaCache.has(instId)) {
+          // Fire and forget caching (async)
+          (async () => {
+            try {
+              const itype = instId.includes('-SWAP') ? 'SWAP' : 'SPOT';
+              const infoRes = await OkxClient.get('/api/v5/public/instruments', { instType: itype, instId });
+              const info = infoRes?.data?.[0];
+              if (info) {
+                _instMetaCache.set(instId, {
+                  ctVal: parseFloat(info.ctVal || info.contractVal || 0),
+                  lotSz: parseFloat(info.lotSz || info.minSz || 0),
+                  tickSz: parseFloat(info.tickSz || 0)
+                });
+                console.log(`[viewOrderSim] Metadata cached for ${instId}`);
+              }
+            } catch (e) { console.debug('inst fetch fail', instId); }
+          })();
+        }
+      }
     }
     // try to include Composer in-memory positions if available
     let composerPositions = [];
@@ -1095,11 +1186,13 @@ async function loadRealPositions(attempt = 0) {
           if (d) { found = d; break; }
         }
         if (found) {
-          const bal = parseFloat(found.eq || found.balance || found.total || found.avail || 0) || 0;
-          _lastAccountBalance = bal;
-          const balEl = document.getElementById('os-balance'); if (balEl) balEl.innerText = `$${_lastAccountBalance.toFixed(2)}`;
-          // Also update equity display
-          const eqEl = document.getElementById('os-equity'); if (eqEl) eqEl.innerText = `$${bal.toFixed(2)}`;
+          const eq = parseFloat(found.eq || found.totalEq || 0);
+          const cash = parseFloat(found.cashBal || found.bal || 0);
+          _lastAccountBalance = eq;
+          _lastCashBalance = cash;
+          const balEl = document.getElementById('os-balance'); if (balEl) balEl.innerText = `$${_lastCashBalance.toFixed(2)}`;
+          // Initial equity display
+          const eqEl = document.getElementById('os-equity'); if (eqEl) eqEl.innerText = `$${eq.toFixed(2)}`;
         }
       }
     } catch (e) { console.warn('[loadRealPositions] balance fetch error', e); }
@@ -1124,11 +1217,6 @@ async function loadRealPositions(attempt = 0) {
   }
 }
 
-function _startPosPolling() {
-  if (_posPollTimer) return;
-  _posPollTimer = setInterval(() => updatePositionsUI(), 1000);
-}
-function _stopPosPolling() { if (_posPollTimer) { clearInterval(_posPollTimer); _posPollTimer = null; } }
 
 function updatePositionsUI() {
   const el = document.getElementById('os-positions'); if (!el) return;
@@ -1160,25 +1248,103 @@ function updatePositionsUI() {
 
   for (const p of okxList) {
     const coin = (p.instId || p.instrumentId || p.symbol || '').toUpperCase();
-    const entry = p.avgPx || p.avgCost || p.posAvgPx || p.entryPrice || null;
-    const mark = p.markPx || p.markPrice || p.last || ((window.marketState && window.marketState[coin] && window.marketState[coin].raw && window.marketState[coin].raw.PRICE && window.marketState[coin].raw.PRICE.last) ? window.marketState[coin].raw.PRICE.last : null);
+    let entry = p.avgPx || p.avgCost || p.posAvgPx || p.entryPrice || null;
+    const okxMark = p.markPx || p.markPrice || null;
+    const okxLast = p.last || null;
+    const wsPrice = (window.marketState && window.marketState[coin] && window.marketState[coin].raw && window.marketState[coin].raw.PRICE && window.marketState[coin].raw.PRICE.last) ? window.marketState[coin].raw.PRICE.last : null;
+    
+    // Prioritize Ticker Last (WS > OKX API Last > OKX API Mark)
+    const mark = Number(wsPrice || okxLast || okxMark || 0);
+
+    // FIX: Declare side/size/lever BEFORE using them in the guard below
     const side = (p.posSide || p.side || (p.pos && Number(p.pos) < 0 ? 'SHORT' : 'LONG')).toUpperCase();
     const size = Number(p.pos || p.posSize || p.posQty || p.qty || p.size || 0);
+    const absSize = Math.abs(size);
     const lever = p.lever || '';
-    let pnl = 0, pnlPct = 0;
-    // Prefer OKX-provided unrealized pnl when available
-    if (typeof p.upl !== 'undefined' && p.upl !== null && p.upl !== '') {
-      pnl = Number(p.upl) || 0;
-      if (typeof p.uplRatio !== 'undefined' && p.uplRatio !== null && p.uplRatio !== '') pnlPct = Number(p.uplRatio) * 100;
-      else pnlPct = (entry ? (pnl / (Number(entry) * (Math.abs(size) || 1))) * 100 : 0);
-    } else if (mark != null && entry != null && !isNaN(size)) {
-      // If OKX provides a contract value/multiplier, use it
-      const ct = (typeof p.ctVal !== 'undefined' && p.ctVal) || (typeof p.contractVal !== 'undefined' && p.contractVal) || (typeof p.contractValUSD !== 'undefined' && p.contractValUSD) || null;
-      const multiplier = ct ? Number(ct) : 1;
-      if (side === 'LONG') pnl = (Number(mark) - Number(entry)) * size * multiplier;
-      else pnl = (Number(entry) - Number(mark)) * size * multiplier;
-      pnlPct = (entry ? (pnl / (Number(entry) * (Math.abs(size) || 1) * multiplier)) * 100 : 0);
+    const instType = (p.instType || '').toUpperCase();
+    const instId = p.instId || p.instrumentId || p.symbol || '';
+    
+    // GUARD: If price is essentially 0 or missing, skip calculation to avoid massive PnL swings
+    if (mark <= 0) {
+      rows.push({ tag: 'OKX', coin, side, size, lever, entry, price: null, pnl: 0, pnlPct: 0 });
+      continue;
     }
+
+    // STALE API FIX: If trade happened in last 30s, use the actual execution price from localStorage
+    // because OKX often lags several seconds before updating p.avgPx in the position data.
+    try {
+        const lastExecRaw = localStorage.getItem(`last_exec_v2_${coin}`);
+        if (lastExecRaw) {
+            const lastExec = JSON.parse(lastExecRaw);
+            const ageSec = (Date.now() - (lastExec.ts || 0)) / 1000;
+            if (ageSec < 30 && lastExec.price && Number(lastExec.price) > 0) {
+                entry = Number(lastExec.price);
+            }
+        }
+    } catch(e){}
+
+    // side, size, absSize, lever, instType, instId already declared above
+    const meta = _instMetaCache.get(instId);
+    
+    // Multiplier Logic (ctVal)
+    const ct = meta ? meta.ctVal : ((typeof p.ctVal !== 'undefined' && p.ctVal) || (typeof p.contractVal !== 'undefined' && p.contractVal) || (typeof p.contractValUSD !== 'undefined' && p.contractValUSD) || null);
+    
+    // STABILITY FIX: If SWAP/FUTURES and we don't have ctVal yet, do NOT default to 1. 
+    // This blocks the 100x PnL spike (0.7% -> 70%) effectively.
+    let multiplier = (ct != null) ? Number(ct) : null;
+    const isSwap = coin.includes('-SWAP') || coin.includes('-FUTURES') || instType === 'SWAP' || instType === 'FUTURES';
+    
+    if (multiplier === null) {
+      if (isSwap) {
+        // Trigger lazy fetch if not in cache
+        if (instId && !_instMetaCache.has(instId)) {
+          (async () => {
+            try { 
+              const itype = instId.includes('-SWAP') ? 'SWAP' : 'FUTURES';
+              const infoRes = await OkxClient.get('/api/v5/public/instruments', { instType: itype, instId });
+              const info = infoRes?.data?.[0];
+              if (info) {
+                _instMetaCache.set(instId, {
+                  ctVal: parseFloat(info.ctVal || info.contractVal || 0),
+                  lotSz: parseFloat(info.lotSz || info.minSz || 0),
+                  tickSz: parseFloat(info.tickSz || 0)
+                });
+                console.log(`[viewOrderSim] Metadata lazy-cached for ${instId}`);
+              }
+            } catch(e){}
+          })();
+        }
+        // Force 0 PnL while syncing to prevent spike
+        rows.push({ tag: 'OKX', coin, side, size, lever, entry, price: mark, pnl: 0, pnlPct: 0, syncing: true });
+        continue;
+      } else {
+        multiplier = 1; // Spot always 1
+      }
+    }
+
+    let pnl = 0, pnlPct = 0;
+    
+    // FIX: Use explicit direction from side (not raw size sign) to handle both
+    // net mode (pos is negative for SHORT) and long_short mode (pos is positive for SHORT)
+    const dir = (side === 'SHORT') ? -1 : 1;
+    
+    // Use high-frequency mark price if available for real-time ticking
+    if (mark != null && entry != null && !isNaN(size) && absSize > 0) {
+      pnl = (Number(mark) - Number(entry)) * absSize * multiplier * dir;
+      
+      const notional = Math.abs(Number(entry)) * absSize * multiplier;
+      if (notional > 0) {
+          pnlPct = (pnl / notional) * 100;
+          if (lever && Number(lever) > 0) {
+            pnlPct = pnlPct * Number(lever);
+          }
+      }
+    } else if (typeof p.upl !== 'undefined' && p.upl !== null && p.upl !== '') {
+      pnl = Number(p.upl) || 0;
+      // FIX: OKX uplRatio is already relative to margin (includes leverage effect), do NOT multiply by lever again
+      if (typeof p.uplRatio !== 'undefined' && p.uplRatio !== null && p.uplRatio !== '') pnlPct = Number(p.uplRatio) * 100;
+    }
+
     totalPnl += pnl || 0;
     rows.push({ tag: 'OKX', coin, side, size, lever, entry, price: mark, pnl, pnlPct });
   }
@@ -1236,7 +1402,15 @@ function updatePositionsUI() {
     }
     const eqEl = document.getElementById('os-equity');
     if (eqEl) {
-      eqEl.innerText = `$${(_lastAccountBalance + totalPnl).toFixed(2)}`;
+      // Use Cash Balance as base to prevent double-counting of unrealized PnL
+      const liveEquity = _lastCashBalance + totalPnl;
+      eqEl.innerText = `$${liveEquity.toFixed(2)}`;
+      
+      // Update TradeSafety with high-frequency ticker-based equity for accurate drawdown tracking
+      // GUARD: Only update if we have a valid cash balance, otherwise it triggers a fake drawdown spike
+      if (TradeSafety && typeof TradeSafety.updateEquity === 'function' && _lastCashBalance > 0 && liveEquity > 0) {
+          TradeSafety.updateEquity(liveEquity);
+      }
     }
   } catch (e) { }
 
@@ -1264,7 +1438,7 @@ function updatePositionsUI() {
         <div style="text-align:right;display:flex;align-items:center;gap:8px;">
             <div style="text-align:right">
                 <div style="font-weight:800" class="${pnlClass}">$${(r.pnl || 0).toFixed(2)}</div>
-                <div style="font-size:10px" class="${pnlClass}">${(r.pnlPct || 0).toFixed(2)}%</div>
+                <div style="font-size:10px" class="${pnlClass}">${(r.pnlPct || 0).toFixed(2)}% ${r.lever ? 'ROE' : 'ROI'}</div>
             </div>
             ${r.tag === 'OKX' ? `<button class="ps-edit-btn opacity-40 hover:opacity-100 transition-opacity" data-coin="${r.coin}" title="Position Settings">⚙️</button>` : ''}
         </div>
@@ -1437,7 +1611,7 @@ function renderOrders() {
     const d = document.createElement('div');
     d.className = 'list-row';
     const sideColor = (o.side || '').toUpperCase() === 'BUY' ? 'text-bb-green' : 'text-bb-red';
-    const id = o.algoId || o.ordId || o.clOrdId || ('inst:' + (o.instId || '') || o.id);
+    const id = isSim ? (o.id || o.clOrdId || 'sim-' + Math.random()) : (o.algoId || o.ordId || o.clOrdId || ('inst:' + (o.instId || o.coin || '')));
 
     d.innerHTML = `
             <div>

@@ -36,7 +36,14 @@ export default {
     ORDERBOOK: { name: 'ORDERBOOK', icon: '📚' },
     BTC: { name: 'BTC Benchmark', icon: '₿', color: 'yellow-500' },
     GUARD: { name: 'META-GUARD', icon: '🛡️', color: 'emerald-500' },
-
+    FREQ: { name: 'Frequency', icon: '⚡' },
+    VOLUME: { name: 'Volume', icon: '📊' },
+    OI: { name: 'Open Interest', icon: '📈' },
+    LSR: { name: 'Long/Short', icon: '⚖️' },
+    LIQ: { name: 'Liquidation', icon: '💥' },
+    FUNDING: { name: 'Funding', icon: '💰' },
+    SENTIMENT: { name: 'Sentiment', icon: '🔄' },
+    OB: { name: 'Orderbook', icon: '🧱' },
     // SYNT: { name: 'Synthesis', icon: '🌊', color: 'blue-500' },
     // MICRO: { name: 'Microstructure', icon: '🔬', color: 'purple-500' },
     // DERIV: { name: 'Derivatives', icon: '📊', color: 'orange-500' },
@@ -50,12 +57,6 @@ export default {
     // DASH: { name: 'Dashboard', icon: '🖥️', color: 'white' },
     // ENHANCED: { name: 'Enhanced', icon: '✨', color: 'blue-400' },
 
-    // VOLUME: { name: 'Volume', icon: '📊' },
-    // FREQ: { name: 'Frequency', icon: '⚡' },
-    // OI: { name: 'Open Interest', icon: '📈' },
-    // FUNDING: { name: 'Funding', icon: '💰' },
-    // LSR: { name: 'Long/Short', icon: '⚖️' },
-    // LIQ: { name: 'Liquidation', icon: '💥' },
     // OB: { name: 'Orderbook', icon: '🧱' },
 
 

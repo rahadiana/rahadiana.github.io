@@ -151,7 +151,8 @@ export async function connectPrivate() {
                     const sign = await hmacSha256(c.secret, prehash);
                     const loginArg = { apiKey: c.key, passphrase: c.passphrase, timestamp: ts, sign };
                     if (c.simulated) loginArg.simulated = 1;
-                    console.log('[OKX-WS] Sending login op with ts:', ts, 'simulated:', !!c.simulated);
+                    const mask = s => { try { s = String(s || ''); return s.length > 8 ? (s.slice(0, 4) + '...' + s.slice(-4)) : (s ? '***' : ''); } catch (e) { return '***'; } };
+                    console.log('[OKX-WS] Sending login op with ts:', ts, 'simulated:', !!c.simulated, 'key:', mask(c.key));
                     wsPrivate.send(JSON.stringify({ op: 'login', args: [loginArg] }));
                     return true;
                 } catch (e) { console.error('[OKX-WS] tryLoginWithTimestamp error', e); return false; }
@@ -211,7 +212,8 @@ export async function connectPrivate() {
                         const sign = await hmacSha256(c.secret, prehash);
                         const loginArg = { apiKey: c.key, passphrase: c.passphrase, timestamp: ts, sign };
                         try { loginArg.simulated = (typeof c.simulated !== 'undefined' && c.simulated) ? 1 : 0; } catch (e) { }
-                        console.debug('[OKX-WS] Retrying login with seconds ts:', ts);
+                        const mask = s => { try { s = String(s || ''); return s.length > 8 ? (s.slice(0, 4) + '...' + s.slice(-4)) : (s ? '***' : ''); } catch (e) { return '***'; } };
+                        console.debug('[OKX-WS] Retrying login with seconds ts:', ts, 'key:', mask(c.key));
                         wsPrivate.send(JSON.stringify({ op: 'login', args: [loginArg] }));
                     } catch (e) { console.error('[OKX-WS] Retry login failed', e); }
                     return;

@@ -15,6 +15,7 @@ import * as InfoView from './modules/viewInfo.js';
 import * as ViewVisual from './modules/viewVisual.js';
 import * as Sidebar from './modules/sidebar.js';
 import * as ViewStrategy from './modules/viewStrategy.js';
+import * as ViewFlow from './modules/viewFlow.js';
 
 import * as ViewSynthesis from './modules/viewSynthesis.js';
 import * as ViewAutomation from './modules/viewAutomation.js';
@@ -57,6 +58,7 @@ try {
 const VIEWS = {
     'GLOBAL': ViewGlobal,
     'STRATEGY': ViewStrategy,
+    'FLOW': ViewFlow,
     'VISUAL': ViewVisual,
     'MAIN': ViewDecision,
     'DERIVATIVES': ViewDerivatives,
@@ -307,7 +309,7 @@ function initTabs() {
 }
 
 function switchTab(tabName) {
-    if (!['GLOBAL', 'STRATEGY', 'DETAILS', 'VISUAL', 'INFO', 'AUTOMATION', 'SIMULATION', 'COMPOSER', 'ALERTS', 'BACKTEST', 'PORTFOLIO', 'RISK', 'ORDERS', 'OKXTRADE'].includes(tabName)) return;
+    if (!['GLOBAL', 'STRATEGY', 'FLOW', 'DETAILS', 'VISUAL', 'INFO', 'AUTOMATION', 'SIMULATION', 'COMPOSER', 'ALERTS', 'BACKTEST', 'PORTFOLIO', 'RISK', 'ORDERS', 'OKXTRADE'].includes(tabName)) return;
 
     // Lifecycle cleanup for outgoing tab/subtab
     if (currentTab === 'DETAILS' && tabName !== 'DETAILS') {
@@ -385,6 +387,7 @@ function switchTab(tabName) {
         detailsSubnav.classList.add('hidden');
         if (tabName === 'GLOBAL') ViewGlobal.render(viewContainer);
         else if (tabName === 'STRATEGY') ViewStrategy.render(viewContainer);
+        else if (tabName === 'FLOW') ViewFlow.render(viewContainer);
         else if (tabName === 'VISUAL') ViewVisual.render(viewContainer);
         updateCurrentView();
     }
@@ -457,6 +460,10 @@ function updateCurrentView() {
     }
     if (currentTab === 'STRATEGY') {
         ViewStrategy.update(marketState);
+        return;
+    }
+    if (currentTab === 'FLOW') {
+        ViewFlow.update(marketState, selectedProfile, selectedTimeframe);
         return;
     }
     if (currentTab === 'VISUAL') {

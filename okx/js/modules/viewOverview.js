@@ -13,7 +13,7 @@ export function render(container) {
         <div class="h-full flex flex-col gap-4">
             
             <!-- GLOBAL MARKET STATS -->
-            <div class="grid grid-cols-4 gap-2 h-20">
+            <div class="grid grid-cols-5 gap-2 h-20">
                 <div class="panel bg-bb-sidebar flex flex-col justify-center items-center">
                     <span class="text-[10px] text-bb-muted uppercase tracking-widest">MARKET SENTIMENT</span>
                     <div class="text-2xl font-bold text-white" id="global-sentiment">--</div>
@@ -25,6 +25,10 @@ export function render(container) {
                 <div class="panel bg-bb-sidebar flex flex-col justify-center items-center">
                     <span class="text-[9px] text-bb-muted uppercase tracking-widest">LONG/SHORT RATIO</span>
                     <div class="text-2xl font-bold text-white" id="global-lsr">--</div>
+                </div>
+                <div class="panel bg-bb-sidebar flex flex-col justify-center items-center">
+                    <span class="text-[9px] text-bb-muted uppercase tracking-widest">NET FLOW</span>
+                    <div class="text-2xl font-bold font-mono" id="global-netflow">--</div>
                 </div>
                 <div class="panel bg-bb-sidebar flex flex-col justify-center items-center">
                     <span class="text-[9px] text-bb-muted uppercase tracking-widest">ACTIVE ASSETS</span>
@@ -75,6 +79,7 @@ export function update(marketState, profile = 'INSTITUTIONAL_BASE', timeframe = 
     // 1. Calculate Global Stats
     let totalFunding = 0;
     let totalLSR = 0;
+    let totalNetFlow = 0;
     let bullCount = 0;
     let bearCount = 0;
     let validCount = 0;
@@ -108,6 +113,10 @@ export function update(marketState, profile = 'INSTITUTIONAL_BASE', timeframe = 
         if (String(trend).includes('BEAR')) bearCount++;
         validCount++;
 
+        const flowObj = data.synthesis?.flow || {};
+        const netFlow = flowObj.net_flow_15MENIT ?? flowObj.net_flow_15m ?? flowObj.net_flow_5m ?? flowObj.netFlow ?? 0;
+        totalNetFlow += Number(netFlow) || 0;
+
         return {
             coin: coin,
             fullCoin: coin,
@@ -122,15 +131,16 @@ export function update(marketState, profile = 'INSTITUTIONAL_BASE', timeframe = 
         };
     });
 
-    updateGlobalStats((totalFunding / Math.max(1, validCount)), (totalLSR / Math.max(1, validCount)), bullCount, bearCount, coins.length);
+    updateGlobalStats((totalFunding / Math.max(1, validCount)), (totalLSR / Math.max(1, validCount)), bullCount, bearCount, coins.length, totalNetFlow);
     updateTable(items);
 }
 
-function updateGlobalStats(avgFunding, avgLSR, bulls, bears, total) {
+function updateGlobalStats(avgFunding, avgLSR, bulls, bears, total, totalNetFlow) {
     const elSent = document.getElementById('global-sentiment');
     const elFund = document.getElementById('global-funding');
     const elLSR = document.getElementById('global-lsr');
     const elAssets = document.getElementById('active-assets');
+    const elNetFlow = document.getElementById('global-netflow');
 
     if (elAssets) elAssets.innerText = total;
 
@@ -141,12 +151,27 @@ function updateGlobalStats(avgFunding, avgLSR, bulls, bears, total) {
     }
 
     if (elFund) {
-        const fVal = (avgFunding * Utils.safeFixed(100), 4);
+        const fVal = Utils.safeFixed(avgFunding * 100, 4);
         elFund.innerHTML = `<span class="${avgFunding > 0.01 ? 'text-bb-red' : avgFunding < -0.01 ? 'text-bb-green' : 'text-white'}">${fVal}%</span>`;
     }
 
     if (elLSR) {
         elLSR.innerText = Utils.safeFixed(avgLSR, 2);
+    }
+
+    if (elNetFlow) {
+        const flowColor = totalNetFlow > 0 ? 'text-bb-green' : totalNetFlow < 0 ? 'text-bb-red' : 'text-white';
+        const sign = totalNetFlow > 0 ? '+' : '';
+        const absVal = Math.abs(totalNetFlow);
+        let displayStr = Utils.safeFixed(totalNetFlow, 0);
+        if (absVal >= 1000000) {
+            displayStr = sign + Utils.safeFixed(totalNetFlow / 1000000, 2) + 'M';
+        } else if (absVal >= 1000) {
+            displayStr = sign + Utils.safeFixed(totalNetFlow / 1000, 1) + 'k';
+        } else {
+            displayStr = sign + Utils.safeFixed(totalNetFlow, 0);
+        }
+        elNetFlow.innerHTML = `<span class="${flowColor}">$${displayStr}</span>`;
     }
 }
 
